@@ -11,8 +11,36 @@ config_version=5
 [application]
 
 config/name="CardSortMath"
+run/main_scene="res://scenes/main/main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameManager="*res://autoloads/game_manager.gd"
+LevelData="*res://autoloads/level_data.gd"
+
+[display]
+
+window/size/viewport_width=390
+window/size/viewport_height=844
+; Desktop preview window sized in physical pixels (this Mac reports the screen
+; as 3024x1964). ~855x1850 keeps the iPhone aspect and fills the screen height,
+; so on a 2x Retina display it "looks like" ~427x925 instead of a tiny window.
+; Ignored on-device, where the game is fullscreen.
+window/size/window_width_override=855
+window/size/window_height_override=1850
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="portrait"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
 
 [physics]
 
