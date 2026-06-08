@@ -46,8 +46,9 @@ This repo uses a Godot-focused subset of the
 framework (MIT). Specialist **agents** live in `.claude/agents/`, workflow
 **skills** (slash commands) in `.claude/skills/`, and path-scoped **rules** in
 `.claude/rules/`. See `.claude/ATTRIBUTION.md` for exactly what was imported and
-adapted. No executable hooks were imported; `.claude/settings.json` holds only
-permission defaults.
+adapted. No hooks were imported from that framework; the only hook is our own
+`SessionStart` hook (`.claude/hooks/session-start.sh`), which installs Godot 4.6
+so the gdUnit4 suite can run in Claude Code on the web sessions.
 
 Skills write design artifacts to `design/` and production artifacts to
 `production/`.
