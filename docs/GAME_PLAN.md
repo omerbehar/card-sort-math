@@ -57,7 +57,7 @@ good about."*
 | Autoloads | `SaveService`, `SettingsService`, `AudioService`, `JuiceService`, `GameManager`, `LevelData` |
 | View layer (`scenes/`) | main, card, stack, discard_row, floor_area, hud, ui_factory |
 | Skin | Kenney UI assets (licensed); Kenney CC0 audio (`assets/audio/`) |
-| Tests | 13 gdUnit4 suites, 74 cases |
+| Tests | 15 gdUnit4 suites, 87 cases |
 | CI | GitHub Actions runs gdUnit4 headless on push/PR |
 | Tooling | `tools/playthrough.gd` automated playthrough |
 
@@ -68,8 +68,7 @@ model, audio, and juice all landed behind the model/view seam. See
 `production/milestones/m1-review.md`.
 
 **Gaps before "shippable v1":** no meta/progression, no economy, no monetization,
-no settings UI or onboarding/tutorial yet (S1-010/S1-011, in progress), no
-analytics, no store presence.
+no onboarding/tutorial yet (S1-010, in progress), no analytics, no store presence.
 
 ---
 

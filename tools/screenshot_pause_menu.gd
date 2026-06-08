@@ -4,7 +4,7 @@ extends SceneTree
 ## xvfb-run) — headless uses a dummy renderer that produces no image.
 ##
 ##   xvfb-run -a godot --path . --rendering-driver opengl3 \
-##     --rendering-method gl_compatibility -s res://tools/screenshot_settings.gd
+##     --rendering-method gl_compatibility -s res://tools/screenshot_pause_menu.gd
 
 const OUT_PATH := "user://settings_screenshot.png"
 
