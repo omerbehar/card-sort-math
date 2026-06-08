@@ -31,6 +31,7 @@ var _input_locked: bool = false
 
 func _ready() -> void:
 	_build_board()
+	AudioService.refresh_music()
 	start_level(GameManager.current_level)
 
 
@@ -113,6 +114,7 @@ func _play_events(events: Array[GameEvent]) -> void:
 
 
 func _play_event(event: GameEvent) -> void:
+	AudioService.play_event(event)
 	match event.kind:
 		GameEvent.Kind.ROUTE:
 			await _into_stack(event.card_id, event.stack_index)

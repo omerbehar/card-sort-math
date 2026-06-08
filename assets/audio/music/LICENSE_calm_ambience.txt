@@ -1,0 +1,11 @@
+calm_ambience.ogg
+
+Source: Kenney "Starter Kit: City Builder" (sounds/ambience.ogg)
+        https://github.com/KenneyNL/Starter-Kit-City-Builder
+Author: Kenney (www.kenney.nl)
+License: Creative Commons Zero (CC0 1.0) — public domain.
+         https://creativecommons.org/publicdomain/zero/1.0/
+
+The repository's code is MIT; its bundled assets (sprites, models, sounds)
+are CC0. Free for personal, educational, and commercial use; crediting
+Kenney is appreciated but not required. Used here as a calm background bed.
