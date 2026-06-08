@@ -69,6 +69,15 @@ func test_unknown_event_kind_has_no_stream() -> void:
 	assert_object(audio.event_stream(999)).is_null()
 
 
+func test_ui_cues_are_preloaded() -> void:
+	# UI cues must be preloaded (not loaded per-call) to avoid hot-path disk I/O.
+	var audio = _make_audio(_make_settings())
+	for cue: String in AudioCues.UI_CUES:
+		assert_object(audio._ui_streams.get(cue, null)) \
+			.override_failure_message("UI cue not preloaded: %s" % cue) \
+			.is_not_null()
+
+
 func test_play_event_with_sound_off_is_a_noop() -> void:
 	# Arrange: sound disabled
 	var settings = _make_settings()

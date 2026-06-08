@@ -12,7 +12,7 @@ dest_files=["res://.godot/imported/calm_ambience.ogg-7bebce330c08c59f4d0abf7fab4
 
 [params]
 
-loop=false
+loop=true
 loop_offset=0
 bpm=0
 beat_count=0

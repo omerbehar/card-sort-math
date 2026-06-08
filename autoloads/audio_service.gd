@@ -18,6 +18,7 @@ var _sfx_players: Array[AudioStreamPlayer] = []
 var _sfx_index: int = 0
 var _music_player: AudioStreamPlayer = null
 var _event_streams: Dictionary = {}   # GameEvent.Kind -> AudioStream
+var _ui_streams: Dictionary = {}      # UI cue name -> AudioStream
 var _music_stream: AudioStream = null
 var _initialized: bool = false
 
@@ -38,8 +39,9 @@ func configure(settings: Object) -> void:
 	_connect_settings()
 
 
-## Plays the SFX cue for a resolved [GameEvent], if sound is enabled. Unknown
-## kinds (e.g. WIN with no distinct cue) are simply skipped.
+## Plays the SFX cue for a resolved [GameEvent], if sound is enabled. Kinds with
+## no mapped cue (all kinds are mapped today; defensive for future ones) are
+## simply skipped.
 func play_event(event: GameEvent) -> void:
 	if not is_sfx_enabled():
 		return
@@ -51,9 +53,8 @@ func play_event(event: GameEvent) -> void:
 func play_ui(cue: String) -> void:
 	if not is_sfx_enabled():
 		return
-	var path: String = AudioCues.ui_cue_path(cue)
-	if path != "" and ResourceLoader.exists(path):
-		_play_stream(load(path))
+	if _ui_streams.has(cue):
+		_play_stream(_ui_streams[cue])
 
 
 ## Starts / stops the music bed to match the current music setting.
@@ -98,10 +99,15 @@ func _init_audio() -> void:
 		if ResourceLoader.exists(path):
 			_event_streams[kind] = load(path)
 
+	# Preload UI cues too, so a button press never blocks on disk I/O.
+	for cue: String in AudioCues.UI_CUES:
+		var ui_path: String = AudioCues.ui_cue_path(cue)
+		if ResourceLoader.exists(ui_path):
+			_ui_streams[cue] = load(ui_path)
+
 	if ResourceLoader.exists(AudioCues.MUSIC_PATH):
+		# Looping is set in the .import (loop=true) — no runtime fixup needed.
 		_music_stream = load(AudioCues.MUSIC_PATH)
-		if _music_stream is AudioStreamOggVorbis:
-			(_music_stream as AudioStreamOggVorbis).loop = true
 		_music_player.stream = _music_stream
 
 
