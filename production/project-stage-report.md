@@ -35,9 +35,10 @@
 1. **Roadmap systems undocumented** — Save, Settings, Audio, Tutorial, Level
    Generator, Economy, Monetization have no GDDs. → Author via `/design-system`
    when each is picked up (Sprint 1 covers the first wave).
-2. **Audience positioning undecided** — `GAME_PLAN.md` §10: general-audience (13+)
-   vs. kids product. This gates the entire monetization design. → Product decision
-   needed before Milestone M4.
+2. **Audience positioning — DECIDED (2026-06-08): 13+ age-gated** (mixed-audience),
+   see `docs/architecture/ADR-0005`. Monetization design (§§8–9, §11) now unblocked.
+   Remaining follow-ups: legal review of the child-directed determination, and a
+   `ComplianceService` GDD before the ad/analytics SDK work (M4).
 3. **No milestone tracker** — Sprint 1 exists; M1–M7 not yet broken into a
    tracked roadmap. → `/milestone-review` at end of Sprint 1.
 4. **View/UI untested** — acceptable (advisory per testing standards); add manual
@@ -46,7 +47,8 @@
 
 ## Recommended Next Steps (priority order)
 
-1. **Decide audience positioning** (§10) — unblocks monetization design. *Product call.*
+1. ~~Decide audience positioning~~ ✅ **Done** — 13+ age-gated (ADR-0005). Follow-up:
+   author a `ComplianceService` GDD before M4 ad/analytics SDK work.
 2. **Execute Sprint 1** — SaveService → progression persistence → Settings →
    Audio → Juice → Tutorial (`production/sprints/sprint-01.md`).
 3. **Author GDDs** for the Sprint 1 systems via `/design-system` as they start.

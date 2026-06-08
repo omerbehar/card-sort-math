@@ -25,7 +25,7 @@ has settings, and the core loop has audio + juice + a first-time tutorial.
 
 | ID | Task | Agent/Owner | Est. Days | Dependencies | Acceptance Criteria | Status |
 |----|------|-------------|-----------|-------------|--------------------|--------|
-| S1-001 | **SaveService** autoload: versioned JSON in `user://` (schema_version, current_level, settings); load on boot, save on change; corrupt/missing → safe defaults | godot-gdscript-specialist | 2 | None | Unit tests: round-trip save/load; missing file → defaults; bumped schema migrates without data loss. Behind model/view seam (ADR-0001) | Not Started |
+| S1-001 | **SaveService** autoload: versioned JSON in `user://` (schema_version, current_level, settings, **age_band** per ADR-0005); load on boot, save on change; corrupt/missing → safe defaults | godot-gdscript-specialist | 2 | None | Unit tests: round-trip save/load; missing file → defaults; bumped schema migrates without data loss; `age_band` persists. Behind model/view seam (ADR-0001) | Not Started |
 | S1-002 | Persist progression: `GameManager.current_level`/score read/written via SaveService | gameplay-programmer | 1 | S1-001 | Win advances & persists across app restart (test + manual) | Not Started |
 | S1-003 | **Settings**: data model (sound on/off, music on/off, haptics, reduced-motion) persisted via SaveService | godot-gdscript-specialist | 1 | S1-001 | Toggles persist; defaults sane; unit test on settings model | Not Started |
 | S1-004 | **Audio**: `AudioService` + SFX for tap/route/discard/stack-clear/win/lose + calm music bed; honors Settings mute | sound-designer + godot-gdscript-specialist | 2 | S1-003 | Each `GameEvent.Kind` triggers correct SFX on replay; mute respected; no audio logic in `core/` | Not Started |

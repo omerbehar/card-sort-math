@@ -230,18 +230,30 @@ all non-rewarded ads immediately and persist across reinstalls (receipt restore)
 ## 10. Compliance & Privacy (do not skip)
 
 Because the game is **math/education-flavored**, store algorithms and regulators
-may treat it as appealing to children. Decide positioning **early**:
+may treat it as appealing to children.
 
-- **Path A — General audience (13+):** add a neutral **age gate**, label store
-  listing 13+, keep ads/analytics standard but consent-gated. (Assumed by §§8–9.)
-- **Path B — Kids product (<13):** join Google **Designed for Families** / Apple
-  **Kids Category**; ads must use kid-safe/contextual networks only, no behavioral
-  targeting, no IDFA/AAID; data minimization (COPPA, GDPR-K). Monetization leans
-  on **remove-ads / subscription / paid** rather than ad ARPU.
+> **DECISION (2026-06-08): General audience (13+), neutral age gate, COPPA
+> "mixed-audience" handling.** See [ADR-0005](architecture/ADR-0005-audience-positioning-13plus-age-gated.md).
+> Adults (13+) get the full ad/IAP/analytics experience; any user who declares
+> under 13 gets child-safe restrictions (no ad ID, contextual-only/no ads, data
+> minimization, parental-gated IAP). The label is backed by substance: neutral
+> art direction, 13+ store rating, **no marketing to children**. §§8–9 (ads/IAP)
+> and §11 (analytics) assume this posture.
 
-**Always:** clear Privacy Policy + ToS, data-safety form (Play) / privacy nutrition
-labels (App Store), DSAR handling, and a documented data inventory. Keep PII
-collection at zero where possible (no login required for core loop).
+**Implementation seam:** a `ComplianceService` (behind the ADR-0001 model/view
+seam) owns `age_band` (persisted via SaveService) + consent state; `AdService`,
+`Analytics`, and `IAPService` must query it — never assume. Neutral date-style
+gate on first launch; collect no personal data before it resolves.
+
+**Resilience rule:** design the economy to survive on **Remove-Ads + IAP alone**
+— ad revenue is upside, not load-bearing — so a future tightening or
+reclassification doesn't sink the business.
+
+**Always:** clear Privacy Policy + ToS, CMP/UMP consent + iOS ATT, data-safety
+form (Play) / privacy nutrition labels (App Store), DSAR handling, and a
+documented data inventory. Keep PII collection at zero where possible (no login
+required for core loop). **Legal review of the "child-directed" determination is
+required before launch.**
 
 ---
 
