@@ -1,3 +1,16 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# GDUnit4 test reports
+/reports/
+
+# Generated capture images from tools/
+tools/*.png
+
+# Unity asset source pack (copy needed sprites into assets/ui/ instead)
+/Layer Lab/
+
+# macOS
+.DS_Store
+tools/*.png.import
