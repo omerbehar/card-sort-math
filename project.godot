@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 SaveService="*res://autoloads/save_service.gd"
 SettingsService="*res://autoloads/settings_service.gd"
+AudioService="*res://autoloads/audio_service.gd"
 GameManager="*res://autoloads/game_manager.gd"
 LevelData="*res://autoloads/level_data.gd"
 

@@ -13,6 +13,21 @@ appreciated but not required.
 These are **placeholder/shippable SFX** for Sprint 1 audio (S1-004). The bespoke
 audio pass can swap individual cues later without touching the mapping.
 
+## Music — `music/calm_ambience.ogg` (CC0)
+
+A gentle ambient bed used as the looping background track. **License: CC0 1.0**
+(see `music/LICENSE_calm_ambience.txt`). Source: Kenney *Starter Kit: City
+Builder* (`sounds/ambience.ogg`) — https://github.com/KenneyNL/Starter-Kit-City-Builder.
+Placeholder; a dedicated calm music loop can replace it by editing
+`AudioCues.MUSIC_PATH`.
+
+## Implementation
+
+- Cue selection: `data/audio_cues.gd` (`AudioCues`) — pure, unit-tested mapping.
+- Playback: `autoloads/audio_service.gd` (`AudioService`) — plays event SFX and
+  the music bed, gated by `SettingsService` (`sound` / `music`). The view
+  (`scenes/main/main.gd`) calls `AudioService.play_event(event)` during replay.
+
 ## Suggested cue → game-event mapping (for `AudioService`, S1-004)
 
 The `AudioService` should map each `GameEvent.Kind` (see `core/game_event.gd`) to
