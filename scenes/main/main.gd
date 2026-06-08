@@ -126,9 +126,11 @@ func _play_event(event: GameEvent) -> void:
 		GameEvent.Kind.STACK_CLEARED:
 			await _clear_stack(event.stack_index, event.new_target)
 		GameEvent.Kind.WIN:
+			JuiceService.haptic(40)
 			GameManager.complete_level()
 			_show_overlay("You Win!")
 		GameEvent.Kind.LOSE:
+			JuiceService.haptic(60)
 			GameManager.fail_level()
 			_show_overlay("Game Over")
 
@@ -168,6 +170,12 @@ func _clear_stack(stack_index: int, new_target: int) -> void:
 	for card_id: int in card_ids:
 		_floor.remove_card(card_id)
 	_stacks[stack_index].set_target(new_target)
+
+	# Juice: celebrate the clear (gated by reduced_motion / haptics settings).
+	JuiceService.haptic(15)
+	JuiceService.burst(self, _stacks[stack_index].position + Vector2(36.0, 24.0))
+	JuiceService.punch(_stacks[stack_index])
+
 	await _stacks[stack_index].play_clear()
 
 
