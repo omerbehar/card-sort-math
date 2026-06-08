@@ -9,8 +9,8 @@ func test_defaults_are_safe() -> void:
 	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
 	assert_int(data.current_level).is_equal(1)
 	assert_int(int(data.age_band)).is_equal(int(SaveData.AgeBand.UNKNOWN))
-	assert_bool(data.settings["sound"]).is_true()
-	assert_bool(data.settings["reduced_motion"]).is_false()
+	assert_bool(data.settings.sound).is_true()
+	assert_bool(data.settings.reduced_motion).is_false()
 
 
 func test_to_dict_from_dict_round_trips() -> void:
@@ -18,21 +18,21 @@ func test_to_dict_from_dict_round_trips() -> void:
 	var original := SaveData.new()
 	original.current_level = 7
 	original.age_band = SaveData.AgeBand.ADULT
-	original.settings["music"] = false
+	original.settings.music = false
 	# Act
 	var restored := SaveData.from_dict(original.to_dict())
 	# Assert
 	assert_int(restored.current_level).is_equal(7)
 	assert_int(int(restored.age_band)).is_equal(int(SaveData.AgeBand.ADULT))
-	assert_bool(restored.settings["music"]).is_false()
-	assert_bool(restored.settings["sound"]).is_true()
+	assert_bool(restored.settings.music).is_false()
+	assert_bool(restored.settings.sound).is_true()
 
 
 func test_from_dict_missing_fields_use_defaults() -> void:
 	var data := SaveData.from_dict({})
 	assert_int(data.current_level).is_equal(1)
 	assert_int(int(data.age_band)).is_equal(int(SaveData.AgeBand.UNKNOWN))
-	assert_bool(data.settings["haptics"]).is_true()
+	assert_bool(data.settings.haptics).is_true()
 
 
 func test_from_dict_clamps_current_level_to_minimum() -> void:
@@ -52,8 +52,9 @@ func test_from_dict_accepts_valid_age_band() -> void:
 
 func test_from_dict_ignores_unknown_settings_keys() -> void:
 	var data := SaveData.from_dict({"settings": {"sound": false, "bogus": 123}})
-	assert_bool(data.settings["sound"]).is_false()
-	assert_bool(data.settings.has("bogus")).is_false()
+	assert_bool(data.settings.sound).is_false()
+	# The typed model only ever serializes the canonical keys — no "bogus".
+	assert_bool(data.settings.to_dict().has("bogus")).is_false()
 
 
 func test_from_dict_normalizes_schema_version() -> void:
