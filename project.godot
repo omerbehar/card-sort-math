@@ -24,10 +24,6 @@ LevelData="*res://autoloads/level_data.gd"
 
 window/size/viewport_width=390
 window/size/viewport_height=844
-; Desktop preview window sized in physical pixels (this Mac reports the screen
-; as 3024x1964). ~855x1850 keeps the iPhone aspect and fills the screen height,
-; so on a 2x Retina display it "looks like" ~427x925 instead of a tiny window.
-; Ignored on-device, where the game is fullscreen.
 window/size/window_width_override=855
 window/size/window_height_override=1850
 window/stretch/mode="canvas_items"
