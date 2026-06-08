@@ -17,7 +17,7 @@ enum AgeBand { UNKNOWN, ADULT, CHILD }
 var schema_version: int = CURRENT_SCHEMA_VERSION
 var current_level: int = 1
 var age_band: AgeBand = AgeBand.UNKNOWN
-var settings: Dictionary = _default_settings()
+var settings: Settings = Settings.new()
 
 
 ## A fresh save with safe defaults.
@@ -31,7 +31,7 @@ func to_dict() -> Dictionary:
 		"schema_version": schema_version,
 		"current_level": current_level,
 		"age_band": int(age_band),
-		"settings": settings.duplicate(true),
+		"settings": settings.to_dict(),
 	}
 
 
@@ -46,7 +46,7 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.schema_version = CURRENT_SCHEMA_VERSION
 	data.current_level = maxi(1, int(migrated.get("current_level", 1)))
 	data.age_band = _parse_age_band(migrated.get("age_band", AgeBand.UNKNOWN))
-	data.settings = _merge_settings(migrated.get("settings", {}))
+	data.settings = Settings.from_dict(migrated.get("settings", {}))
 	return data
 
 
@@ -64,15 +64,6 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 	return out
 
 
-static func _default_settings() -> Dictionary:
-	return {
-		"sound": true,
-		"music": true,
-		"haptics": true,
-		"reduced_motion": false,
-	}
-
-
 # Accepts an int or enum value; anything outside the known bands -> UNKNOWN.
 static func _parse_age_band(value: Variant) -> AgeBand:
 	match int(value):
@@ -82,14 +73,3 @@ static func _parse_age_band(value: Variant) -> AgeBand:
 			return AgeBand.CHILD
 		_:
 			return AgeBand.UNKNOWN
-
-
-# Starts from defaults and overlays only known, type-checked keys, so unknown or
-# malformed entries in a save can never introduce stray/garbage settings.
-static func _merge_settings(raw: Variant) -> Dictionary:
-	var merged: Dictionary = _default_settings()
-	if raw is Dictionary:
-		for key: String in merged:
-			if (raw as Dictionary).has(key):
-				merged[key] = bool((raw as Dictionary)[key])
-	return merged

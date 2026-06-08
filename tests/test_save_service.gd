@@ -30,7 +30,7 @@ func test_save_then_load_round_trips_to_disk() -> void:
 	writer.configure(TEST_PATH)
 	writer.data.current_level = 5
 	writer.data.age_band = SaveData.AgeBand.ADULT
-	writer.data.settings["music"] = false
+	writer.data.settings.music = false
 	# Act
 	writer.save_game()
 	var reader = auto_free(SAVE_SCRIPT.new())
@@ -39,7 +39,7 @@ func test_save_then_load_round_trips_to_disk() -> void:
 	# Assert
 	assert_int(reader.data.current_level).is_equal(5)
 	assert_int(int(reader.data.age_band)).is_equal(int(SaveData.AgeBand.ADULT))
-	assert_bool(reader.data.settings["music"]).is_false()
+	assert_bool(reader.data.settings.music).is_false()
 
 
 func test_load_missing_file_uses_defaults() -> void:
