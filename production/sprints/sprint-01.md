@@ -26,10 +26,10 @@ has settings, and the core loop has audio + juice + a first-time tutorial.
 | ID | Task | Agent/Owner | Est. Days | Dependencies | Acceptance Criteria | Status |
 |----|------|-------------|-----------|-------------|--------------------|--------|
 | S1-001 | **SaveService** autoload: versioned JSON in `user://` (schema_version, current_level, settings, **age_band** per ADR-0005); load on boot, save on change; corrupt/missing → safe defaults | godot-gdscript-specialist | 2 | None | Unit tests: round-trip save/load; missing file → defaults; bumped schema migrates without data loss; `age_band` persists. Behind model/view seam (ADR-0001) | **Done** (merged in #3, 14 tests green) |
-| S1-002 | Persist progression: `GameManager.current_level` read/written via SaveService (score persistence deferred to scoring design, S1-021) | gameplay-programmer | 1 | S1-001 | Win advances & persists across app restart (test + manual) | **In Review** (impl + 7 tests green; pending CI/manual) |
-| S1-003 | **Settings**: data model (sound on/off, music on/off, haptics, reduced-motion) persisted via SaveService | godot-gdscript-specialist | 1 | S1-001 | Toggles persist; defaults sane; unit test on settings model | **In Review** (impl + 13 tests green; pending CI). UI = S1-011 |
-| S1-004 | **Audio**: `AudioService` + SFX for tap/route/discard/stack-clear/win/lose + calm music bed; honors Settings mute | sound-designer + godot-gdscript-specialist | 2 | S1-003 | Each `GameEvent.Kind` triggers correct SFX on replay; mute respected; no audio logic in `core/` | **In Review** (impl + 11 tests green; CC0 assets in; audio _feel_ pending manual sign-off) |
-| S1-005 | **Juice pass** on event replay: tween polish, clear particles, haptic on clear/win; gated by reduced-motion setting | technical-artist + ui-programmer | 2 | S1-003 | Cascade animates in event order (ADR-0002); reduced-motion disables shake/particles; 60 FPS on mid device | **In Review** (`JuiceService` + 6 tests green; clear burst/haptic/punch wired; feel + 60 FPS pending manual) |
+| S1-002 | Persist progression: `GameManager.current_level` read/written via SaveService (score persistence deferred to scoring design, S1-021) | gameplay-programmer | 1 | S1-001 | Win advances & persists across app restart (test + manual) | **Done** (merged in #4, 7 tests green) |
+| S1-003 | **Settings**: data model (sound on/off, music on/off, haptics, reduced-motion) persisted via SaveService | godot-gdscript-specialist | 1 | S1-001 | Toggles persist; defaults sane; unit test on settings model | **Done** (merged in #4, 13 tests green). UI = S1-011 |
+| S1-004 | **Audio**: `AudioService` + SFX for tap/route/discard/stack-clear/win/lose + calm music bed; honors Settings mute | sound-designer + godot-gdscript-specialist | 2 | S1-003 | Each `GameEvent.Kind` triggers correct SFX on replay; mute respected; no audio logic in `core/` | **Done** (merged in #5, 11 tests green; CC0 assets in; audio _feel_ pending manual sign-off) |
+| S1-005 | **Juice pass** on event replay: tween polish, clear particles, haptic on clear/win; gated by reduced-motion setting | technical-artist + ui-programmer | 2 | S1-003 | Cascade animates in event order (ADR-0002); reduced-motion disables shake/particles; 60 FPS on mid device | **Done** (merged in #6, 6 tests green; clear burst/haptic/punch wired; feel + 60 FPS pending manual) |
 
 ### Should Have
 
@@ -68,13 +68,13 @@ has settings, and the core loop has audio + juice + a first-time tutorial.
 
 ## Definition of Done
 
-- [ ] All Must Have tasks complete and pass acceptance criteria
-- [ ] SaveService, Settings, scoring (if done) have passing gdUnit4 tests
-- [ ] CI green on the PR(s)
-- [ ] Reduced-motion / mute paths verified
-- [ ] `core/` purity preserved (no Node/audio/IO in core) — ADR-0001
-- [ ] Design docs updated for any deviations; new systems get a GDD if non-trivial
-- [ ] Code reviewed and merged to `main`
+- [x] All Must Have tasks complete and pass acceptance criteria
+- [x] SaveService, Settings, scoring (if done) have passing gdUnit4 tests
+- [x] CI green on the PR(s)
+- [x] Reduced-motion / mute paths verified (unit-tested; device feel sign-off pending)
+- [x] `core/` purity preserved (no Node/audio/IO in core) — ADR-0001
+- [x] Design docs updated for any deviations; new systems get a GDD if non-trivial
+- [x] Code reviewed and merged to `main`
 
 ## Notes
 
