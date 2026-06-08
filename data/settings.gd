@@ -12,9 +12,10 @@ var sound: bool = true
 var music: bool = true
 var haptics: bool = true
 var reduced_motion: bool = false
+var colorblind: bool = false
 
 ## Ordered list of the persisted keys — the canonical settings schema.
-const KEYS: Array[String] = ["sound", "music", "haptics", "reduced_motion"]
+const KEYS: Array[String] = ["sound", "music", "haptics", "reduced_motion", "colorblind"]
 
 
 ## A fresh settings object with safe defaults.
@@ -29,6 +30,7 @@ func to_dict() -> Dictionary:
 		"music": music,
 		"haptics": haptics,
 		"reduced_motion": reduced_motion,
+		"colorblind": colorblind,
 	}
 
 
@@ -42,6 +44,7 @@ static func from_dict(raw: Variant) -> Settings:
 		s.music = _read_bool(d, "music", s.music)
 		s.haptics = _read_bool(d, "haptics", s.haptics)
 		s.reduced_motion = _read_bool(d, "reduced_motion", s.reduced_motion)
+		s.colorblind = _read_bool(d, "colorblind", s.colorblind)
 	return s
 
 
@@ -52,6 +55,7 @@ func get_value(key: String) -> bool:
 		"music": return music
 		"haptics": return haptics
 		"reduced_motion": return reduced_motion
+		"colorblind": return colorblind
 		_:
 			push_warning("Settings: unknown key '%s'" % key)
 			return false
@@ -65,6 +69,7 @@ func set_value(key: String, value: bool) -> bool:
 		"music": music = value
 		"haptics": haptics = value
 		"reduced_motion": reduced_motion = value
+		"colorblind": colorblind = value
 		_:
 			push_warning("Settings: cannot set unknown key '%s'" % key)
 			return false

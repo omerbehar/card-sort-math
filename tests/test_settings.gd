@@ -8,6 +8,21 @@ func test_defaults_are_sane() -> void:
 	assert_bool(s.music).is_true()
 	assert_bool(s.haptics).is_true()
 	assert_bool(s.reduced_motion).is_false()
+	assert_bool(s.colorblind).is_false()
+
+
+func test_colorblind_round_trips_and_sets_by_key() -> void:
+	var s := Settings.new()
+	assert_bool(s.set_value("colorblind", true)).is_true()
+	assert_bool(s.get_value("colorblind")).is_true()
+	var restored := Settings.from_dict(s.to_dict())
+	assert_bool(restored.colorblind).is_true()
+
+
+func test_from_dict_missing_colorblind_defaults_false() -> void:
+	# Saves written before the colorblind key existed must load safely.
+	var s := Settings.from_dict({"sound": true, "music": true, "haptics": true, "reduced_motion": false})
+	assert_bool(s.colorblind).is_false()
 
 
 func test_to_dict_from_dict_round_trips() -> void:

@@ -50,7 +50,8 @@ good about."*
 | Card model (`data/card_data.gd`) | Addition exercise → result |
 | Level data + solvability invariant (`autoloads/level_data.gd`) | 3 authored levels, `is_solvable()` |
 | Save/persistence (`autoloads/save_service.gd`, `core/save_data.gd`) | Versioned `user://` JSON, schema migration, `age_band` (ADR-0005) |
-| Settings (`autoloads/settings_service.gd`, `data/settings.gd`) | Sound/music/haptics/reduced-motion model, persisted (UI = S1-011, pending) |
+| Settings (`autoloads/settings_service.gd`, `data/settings.gd`) | Sound/music/haptics/reduced-motion/colorblind model, persisted |
+| Pause menu + accessibility (`scenes/ui/pause_menu.gd`, `data/stack_palette.gd`) | Pause overlay (audio toggles, accessibility switches, Home/Continue); colorblind stack palette (Okabe-Ito) |
 | Audio (`autoloads/audio_service.gd`) | Event SFX + calm music bed (Kenney CC0); honors mute |
 | Juice (`autoloads/juice_service.gd`) | Haptics + particle burst + scale punch; gated by reduced-motion |
 | Autoloads | `SaveService`, `SettingsService`, `AudioService`, `JuiceService`, `GameManager`, `LevelData` |

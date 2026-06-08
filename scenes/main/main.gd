@@ -22,7 +22,7 @@ var _stacks: Array[Stack] = []
 var _discard: DiscardRow
 var _hud: Hud
 var _hud_layer: CanvasLayer
-var _settings_panel: SettingsPanel
+var _pause_menu: PauseMenu
 
 # Visual bookkeeping kept in lockstep with the model by replaying events in order.
 var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
@@ -46,11 +46,12 @@ func _build_board() -> void:
 	add_child(_floor)
 	_floor.card_tapped.connect(_on_card_tapped)
 
+	var colorblind: bool = SettingsService.get_value("colorblind")
 	for i in BoardModel.STACK_COUNT:
 		var stack := Stack.new()
 		stack.position = Vector2(STACK_XS[i], STACK_Y)
 		add_child(stack)
-		stack.setup(i, -1)
+		stack.setup(i, -1, colorblind)
 		_stacks.append(stack)
 		_stack_cards.append([])
 
@@ -66,7 +67,9 @@ func _build_board() -> void:
 	add_child(_hud_layer)
 	_hud = Hud.new()
 	_hud_layer.add_child(_hud)
-	_hud.settings_pressed.connect(_open_settings)
+	_hud.settings_pressed.connect(_open_pause)
+	# Live-recolour the stacks when the colorblind palette is toggled in-game.
+	SettingsService.changed.connect(_on_setting_changed)
 
 
 ## (Re)starts level [param n]: rebuilds the model and floor, resets the view.
@@ -192,12 +195,35 @@ func _update_discard_warning() -> void:
 	_discard.set_warning(filled >= DISCARD_WARN_AT)
 
 
-func _open_settings() -> void:
-	if _settings_panel != null and is_instance_valid(_settings_panel):
+func _open_pause() -> void:
+	if _pause_menu != null and is_instance_valid(_pause_menu):
 		return
-	_settings_panel = SettingsPanel.new()
-	_settings_panel.closed.connect(func() -> void: _settings_panel = null)
-	_hud_layer.add_child(_settings_panel)
+	get_tree().paused = true
+	_pause_menu = PauseMenu.new()
+	# Keep the menu live while the rest of the tree is paused.
+	_pause_menu.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause_menu.resumed.connect(_close_pause)
+	_pause_menu.home_pressed.connect(_on_home_pressed)
+	_hud_layer.add_child(_pause_menu)
+
+
+func _close_pause() -> void:
+	_pause_menu = null
+	get_tree().paused = false
+
+
+# No main-menu screen exists yet, so "home" restarts the current level. Rewire to
+# scene navigation once a menu/world-map screen lands (M3).
+func _on_home_pressed() -> void:
+	_close_pause()
+	start_level(GameManager.current_level)
+
+
+# Recolours the live board when the colorblind palette setting changes.
+func _on_setting_changed(key: String, value: bool) -> void:
+	if key == "colorblind":
+		for stack: Stack in _stacks:
+			stack.apply_palette(value)
 
 
 func _show_overlay(text: String) -> void:
