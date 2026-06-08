@@ -49,17 +49,26 @@ good about."*
 | Layouts (`core/layouts.gd`) | 3 hand-authored layout presets |
 | Card model (`data/card_data.gd`) | Addition exercise → result |
 | Level data + solvability invariant (`autoloads/level_data.gd`) | 3 authored levels, `is_solvable()` |
-| Autoloads | `GameManager`, `LevelData` |
+| Save/persistence (`autoloads/save_service.gd`, `core/save_data.gd`) | Versioned `user://` JSON, schema migration, `age_band` (ADR-0005) |
+| Settings (`autoloads/settings_service.gd`, `data/settings.gd`) | Sound/music/haptics/reduced-motion/colorblind model, persisted |
+| Pause menu + accessibility (`scenes/ui/pause_menu.gd`, `data/stack_palette.gd`) | Pause overlay (audio toggles, accessibility switches, Home/Continue); colorblind stack palette (Okabe-Ito) |
+| Audio (`autoloads/audio_service.gd`) | Event SFX + calm music bed (Kenney CC0); honors mute |
+| Juice (`autoloads/juice_service.gd`) | Haptics + particle burst + scale punch; gated by reduced-motion |
+| Autoloads | `SaveService`, `SettingsService`, `AudioService`, `JuiceService`, `GameManager`, `LevelData` |
 | View layer (`scenes/`) | main, card, stack, discard_row, floor_area, hud, ui_factory |
-| Skin | Kenney UI assets (licensed) |
-| Tests | 5 gdUnit4 suites, 22 cases |
+| Skin | Kenney UI assets (licensed); Kenney CC0 audio (`assets/audio/`) |
+| Tests | 15 gdUnit4 suites, 87 cases |
 | CI | GitHub Actions runs gdUnit4 headless on push/PR |
 | Tooling | `tools/playthrough.gd` automated playthrough |
 
 **Engine/target:** Godot 4.6, Mobile renderer, portrait (390×844), touch input.
 
+**Built since MVP (Milestone M1, Sprint 1 Must-Haves):** persistence, settings
+model, audio, and juice all landed behind the model/view seam. See
+`production/milestones/m1-review.md`.
+
 **Gaps before "shippable v1":** no meta/progression, no economy, no monetization,
-no audio, no onboarding/tutorial, no persistence, no analytics, no store presence.
+no onboarding/tutorial yet (S1-010, in progress), no analytics, no store presence.
 
 ---
 

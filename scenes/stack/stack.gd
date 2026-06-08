@@ -19,32 +19,27 @@ const DOT_GAP: float = 5.0
 const DOT_Y: float = FRAME_H - DOT_SIZE * 0.5
 const DOT_Z: int = 130
 
-# Kenney coloured slot per stack index (mirrors the reference: red, amber, green,
-# blue).
-const _SLOT_FILES: Array[String] = [
-	"kenney/slot_red.png",
-	"kenney/slot_yellow.png",
-	"kenney/slot_green.png",
-	"kenney/slot_blue.png",
-]
-
 var stack_index: int = -1
 var target: int = -1
+# Whether the colour-blind palette is active (see [StackPalette]).
+var _colorblind: bool = false
 
 var _frame: NinePatchRect
 var _label: Label
 var _dots: Array[Sprite2D] = []
 
 
-func setup(index: int, target_value: int) -> void:
+func setup(index: int, target_value: int, colorblind: bool = false) -> void:
 	stack_index = index
+	_colorblind = colorblind
 	_build_visuals()
 	set_target(target_value)
 
 
 func _build_visuals() -> void:
-	var slot_file: String = _SLOT_FILES[stack_index % _SLOT_FILES.size()]
+	var slot_file: String = StackPalette.slot_file(stack_index, _colorblind)
 	_frame = UiFactory.nine_patch(self, slot_file, Vector2.ZERO, Vector2(FRAME_W, FRAME_H), 16)
+	_frame.self_modulate = StackPalette.tint(stack_index, _colorblind)
 
 	# Target number, centred on the frame.
 	_label = UiFactory.label(self, "", Vector2.ZERO, Vector2(FRAME_W, FRAME_H), 34, Color.WHITE)
@@ -66,12 +61,32 @@ func set_target(value: int) -> void:
 	target = value
 	if _label != null:
 		_label.text = str(target) if target >= 0 else ""
-	# Empty (no active target) stacks dim slightly.
+	# Empty (no active target) stacks dim slightly, preserving the palette hue.
 	var active: bool = target >= 0
 	if _frame != null:
-		_frame.self_modulate.a = 1.0 if active else 0.5
+		var base: Color = _base_tint()
+		base.a = 1.0 if active else 0.5
+		_frame.self_modulate = base
 	# A (re)targeted stack starts empty.
 	set_filled(0)
+
+
+# The frame's palette tint at full alpha (white for the default skin, an
+# Okabe-Ito colour under the colorblind palette).
+func _base_tint() -> Color:
+	return StackPalette.tint(stack_index, _colorblind)
+
+
+## Re-skins the frame for a palette change (e.g. the colorblind setting toggled
+## while a level is in play). Preserves the current active/dim alpha.
+func apply_palette(colorblind: bool) -> void:
+	_colorblind = colorblind
+	if _frame == null:
+		return
+	_frame.texture = load(UiFactory.UI_DIR + StackPalette.slot_file(stack_index, _colorblind))
+	var tint: Color = _base_tint()
+	tint.a = 1.0 if target >= 0 else 0.5
+	_frame.self_modulate = tint
 
 
 ## Lights the first [param count] capacity dots (0..[constant
@@ -86,9 +101,13 @@ func slot_global_position(slot: int) -> Vector2:
 	return to_global(Vector2(CARD_INSET_X, SLOT_TOP + slot * SLOT_DY))
 
 
-## Brief flash when the stack clears and adopts a new target.
+## Brief flash when the stack clears and adopts a new target. Returns to the
+## palette tint (not plain white) so a colorblind hue survives the clear.
 func play_clear() -> void:
+	var base: Color = _base_tint()
+	var flash := base * 1.8
+	flash.a = 1.0
 	var tween := create_tween()
-	tween.tween_property(_frame, "self_modulate", Color(1.8, 1.8, 1.8), 0.08)
-	tween.tween_property(_frame, "self_modulate", Color.WHITE, 0.14)
+	tween.tween_property(_frame, "self_modulate", flash, 0.08)
+	tween.tween_property(_frame, "self_modulate", base, 0.14)
 	await tween.finished
