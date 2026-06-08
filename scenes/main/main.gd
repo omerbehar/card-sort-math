@@ -21,6 +21,8 @@ var _floor: FloorArea
 var _stacks: Array[Stack] = []
 var _discard: DiscardRow
 var _hud: Hud
+var _hud_layer: CanvasLayer
+var _settings_panel: SettingsPanel
 
 # Visual bookkeeping kept in lockstep with the model by replaying events in order.
 var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
@@ -59,11 +61,12 @@ func _build_board() -> void:
 		_discard_cards.append(-1)
 
 	# Cosmetic chrome (header + tool bar + zoom slider) on its own layer.
-	var hud_layer := CanvasLayer.new()
-	hud_layer.layer = 1
-	add_child(hud_layer)
+	_hud_layer = CanvasLayer.new()
+	_hud_layer.layer = 1
+	add_child(_hud_layer)
 	_hud = Hud.new()
-	hud_layer.add_child(_hud)
+	_hud_layer.add_child(_hud)
+	_hud.settings_pressed.connect(_open_settings)
 
 
 ## (Re)starts level [param n]: rebuilds the model and floor, resets the view.
@@ -187,6 +190,14 @@ func _update_discard_warning() -> void:
 		if card_id != -1:
 			filled += 1
 	_discard.set_warning(filled >= DISCARD_WARN_AT)
+
+
+func _open_settings() -> void:
+	if _settings_panel != null and is_instance_valid(_settings_panel):
+		return
+	_settings_panel = SettingsPanel.new()
+	_settings_panel.closed.connect(func() -> void: _settings_panel = null)
+	_hud_layer.add_child(_settings_panel)
 
 
 func _show_overlay(text: String) -> void:
