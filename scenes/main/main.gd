@@ -11,6 +11,8 @@ const STACK_Y: float = 112.0
 const DISCARD_ORIGIN: Vector2 = Vector2(7, 250)
 const FLOOR_ORIGIN: Vector2 = Vector2(0.0, 300.0)
 const DISCARD_WARN_AT: int = 4
+# Offset from a stack's origin to its centre, where the clear burst spawns.
+const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 
 var _model: BoardModel
 var _config: LevelConfig
@@ -126,9 +128,11 @@ func _play_event(event: GameEvent) -> void:
 		GameEvent.Kind.STACK_CLEARED:
 			await _clear_stack(event.stack_index, event.new_target)
 		GameEvent.Kind.WIN:
+			JuiceService.haptic(40)
 			GameManager.complete_level()
 			_show_overlay("You Win!")
 		GameEvent.Kind.LOSE:
+			JuiceService.haptic(60)
 			GameManager.fail_level()
 			_show_overlay("Game Over")
 
@@ -168,6 +172,12 @@ func _clear_stack(stack_index: int, new_target: int) -> void:
 	for card_id: int in card_ids:
 		_floor.remove_card(card_id)
 	_stacks[stack_index].set_target(new_target)
+
+	# Juice: celebrate the clear (gated by reduced_motion / haptics settings).
+	JuiceService.haptic(15)
+	JuiceService.burst(self, _stacks[stack_index].position + STACK_BURST_OFFSET)
+	JuiceService.punch(_stacks[stack_index])
+
 	await _stacks[stack_index].play_clear()
 
 
