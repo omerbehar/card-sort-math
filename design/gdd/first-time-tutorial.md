@@ -1,7 +1,7 @@
 # GDD: First-Time Tutorial
 
-> **Status:** Revised after design review (2026-06-09) — MAJOR REVISION items
-> addressed (re-review 2). Ready for implementation.
+> **Status:** Revised after design review (2026-06-09, re-review 3) — NEEDS REVISION
+> items addressed. Ready for implementation.
 > **Story:** S1-010 (`production/sprints/sprint-01.md`) · **Milestone:** M1
 
 ## Design decisions (locked)
@@ -13,7 +13,7 @@
 | Trigger | **Once, fire-and-forget** | Shows once on first Level 1, sets a save flag, never offered again. No replay path (tracked as a future a11y story — see §6). |
 | Completion | **First ROUTE, not any tap** | The tutorial completes when the player actually *routes* a card to its match (with a safety valve). A pre-route discard keeps the coach up. Resolves the "exit un-taught" risk while keeping "shows once, never returns". |
 | Safety valve flag | **Sets `tutorial_seen` permanently** | Confused player's recovery path (replay tutorial / how-to-play) is the post-M1 a11y story (see §6). M1 ships without it — **deliberate scoped deferral**. The valve's silent exit is intentional: the coach never traps the player, and future in-context help is planned. |
-| Arrow gesture | **Attention pointer only** | The highlight ring + arrow point *at* the highlighted card; they are not a directional cue for card travel and do not indicate the destination stack. Teaching which card to act on is sufficient for the first-time frame. No secondary stack highlight at M1. |
+| Arrow gesture | **Attention pointer only** | The highlight ring + arrow point *at* the highlighted card; they are not a directional cue for card travel and do not indicate the destination stack. Teaching which card to act on is sufficient for the first-time frame. No secondary stack highlight at M1. **Pre-M1 playtest gate:** verify that new players parse the arrow as "look here" (not directional) and that "picks the stack" is understood without prior context. If either fails, update copy or add a secondary stack highlight before ship. |
 
 ---
 
@@ -46,7 +46,7 @@ sees the tutorial again and is never nagged.
 
 | State | Entered when | Behaviour |
 |-------|-------------|-----------|
-| `ARMED` | A level starts and `should_show` is true | Pick the highlight target **once** (at board spawn, before any tap); spawn the `CoachOverlay`. |
+| `ARMED` | A level starts and `should_show` is true | Pick the highlight target **once** (at board spawn, before any tap); spawn the `CoachOverlay`. **E=∅ exception:** if `pick_target` returns `-1`, the overlay is **not** spawned and `ARMED` exits silently — no `COACHING` state entered, flag not set, no overlay shown. The session stays inert until the next `start_level(1)` call (see R9). |
 | `COACHING` | Overlay shown | Hint visible, non-blocking. Waiting for the first **ROUTE** (or the safety valve / a terminal LOSE). A call to `start_level(1)` while in `COACHING` exits to a fresh `ARMED → COACHING` cycle (EC10); this is the only mid-session re-arm path. |
 | `DONE` | First ROUTE, safety valve, terminal LOSE, or already-seen | `tutorial_seen = true` set and persisted (except the defensive E=∅ case, R9); overlay faded out. **DONE is terminal** — once entered, the coach is never re-armed this session (the flag suppresses it). |
 
@@ -79,12 +79,12 @@ sees the tutorial again and is never nagged.
    - **Highlight ring** hugs the target card's rect, stroke `HIGHLIGHT_RING_WIDTH`.
      `card.rect` is computed as `Rect2(card.global_position, Vector2(Layouts.CARD_W, Layouts.CARD_H))`
      (`Card` is an `Area2D` — use `global_position`, not a `global_rect` property).
+     **Pivot contract:** `global_position` is the node origin; card scenes must use a top-left pivot (`(0,0)`) so it matches the visual top-left corner. Verify against the Card scene before implementing ring/arrow anchors.
      Read this once at overlay spawn (after `ARMED` picks the target); the card
-     does not move while `COACHING` (it is on the static floor).
+     does not move while `COACHING` (it is on the static floor). *This invariant holds because `TUTORIAL_LEVEL = 1` uses a static floor; if `TUTORIAL_LEVEL` is ever pointed at a different level (QA-only), verify the card is still present and unmoved before reading its rect.*
    - **Arrow** sits just outside the card pointing **at** it (attention pointer —
      arrowhead faces the card). It points **down** from above the card by default.
-     When the card sits in the top band (`card.global_position.y < 300` in screen
-     space, near the stack row at `y = 112`), the arrow flips to point **up** from
+     When the card sits in the top band (`card.global_position.y < Layouts.FLOOR_ORIGIN.y` — equal to `300` today — in screen space, near the stack row at `y = 112`), the arrow flips to point **up** from
      below, keeping it clear of the stack row. **Note:** with `FLOOR_ORIGIN =
      Vector2(0, 300)`, all floor cards in the current authored layouts (0–2) have
      `global_position.y ≥ 350`, so the flip branch is currently inactive. The
@@ -166,6 +166,9 @@ pick_target = min(productive)        if productive ≠ ∅
 Inputs are plain `Array`/`Dictionary` (no `BoardModel` reference). `min` over
 `card_id` is deterministic; the returned id is always a member of `exposed`
 (hence guaranteed tappable).
+**Caller contract:** every id in `exposed` must have an entry in `results`; using `results[c]`
+(subscript) is safe only under this guarantee. If defensive access is preferred, use
+`results.get(c, -1)` with a sentinel below any valid target value (all real targets are ≥ 0).
 
 **Route test** — `is_route(events: Array[GameEvent]) -> bool`
 ```
@@ -189,6 +192,10 @@ else:                                  → { "complete": false, "routed": false 
 ```
 (`events` is assumed non-empty — i.e. a *committed* tap. Empty event lists, from
 tapping a covered/removed card, are ignored and do not advance `n_nonroute`.)
+**Priority note:** `should_complete` checks `is_route` before `is_lose`. A `[ROUTE, LOSE]` event
+list (possible if routing the last card simultaneously triggers a lose condition) resolves as
+`{complete: true, routed: true}`. This ordering is deliberate: a successful route is the
+tutorial's positive outcome even if the board also loses.
 
 `n_nonroute` is the caller's responsibility to track (see §6 `TutorialState`) and
 is passed by value to `should_complete`. The caller increments it **after** calling
@@ -248,10 +255,10 @@ caller passes `n_nonroute = 2`; `(2 + 1) >= 3` is true → safety valve fires.
 
 | System | Why | Change required |
 |--------|-----|-----------------|
-| `SaveData` / `SaveService` (`core/save_data.gd`) | Persist `tutorial_seen` | **Add** `tutorial_seen: bool` (default `false`) to `to_dict`/`from_dict`, missing-key-defaulted (no schema bump — same pattern as `colorblind`). |
+| `SaveData` / `SaveService` (`core/save_data.gd`) | Persist `tutorial_seen` | **Add** `tutorial_seen: bool` (default `false`) to `to_dict` and `from_dict`. In `from_dict`, use `bool(migrated.get("tutorial_seen", false))` — missing-key-defaulted, no schema bump required. Old saves silently default to `false`, which is the correct value (they have not seen the tutorial). Note: the `colorblind` precedent for this pattern lives in `Settings`; the `SaveData`-level equivalent is any optional bool field added after v1 whose absent value correctly maps to its safe default. |
 | `BoardModel` (`core/board_model.gd`, read-only) | Exposed card ids, card results, and **stack target + count** per stack (for capacity-aware `Topen`) | **Read** `stack_count(i)` (already exposed) alongside `stack_target(i)`. No model change. |
 | `GameEvent` (`core/game_event.gd`) | `ROUTE`/`LOSE` kinds drive completion + confirm | None. |
-| `main.gd` (view controller) | Arms the coach once on `start_level`; feeds each committed tap's events to the coach in `_on_card_tapped` | Wire-up only. After `BoardModel.tap_card(card_id)` returns a non-empty event list, call `_coach.on_committed_tap(events)` if `_coach != null` (coach is null when `tutorial_seen == true` or after `DONE`). On `start_level`, free any existing `_coach` before creating a new one: call `_coach.tween_kill(); _coach.free(); _coach = null` before instantiation to prevent double-overlay during rapid restarts. |
+| `main.gd` (view controller) | Arms the coach once on `start_level`; feeds each committed tap's events to the coach in `_on_card_tapped` | Wire-up only. After `BoardModel.tap_card(card_id)` returns a non-empty event list, call `_coach.on_committed_tap(events)` if `is_instance_valid(_coach)`. On `start_level`, free any existing `_coach` before creating a new one: `if is_instance_valid(_coach): _coach.queue_free(); _coach = null` before instantiation to prevent double-overlay during rapid restarts. No tween cancellation call is needed — `CoachOverlay` uses node-scoped tweens that are automatically freed with the node. |
 | `Settings` (`data/settings.gd`) | `reduced_motion` gates highlight animation | None — no new setting. |
 | `FloorArea` / `Card` (`scenes/`) | Resolve the highlighted card's global rect to anchor ring/arrow | None. |
 | **Level 1 content** (`autoloads/level_data.gd`, `data/level_config.gd`; `level-and-solvability.md`) | Tutorial effectiveness | **Constraint:** Level 1 must expose ≥1 productive card at spawn (a card whose result matches an open, non-full stack) and present **no discard-pressure loss on a first clear**, so the route lesson always lands and first play isn't punishing. Co-authored with this GDD. |
@@ -275,8 +282,14 @@ caller passes `n_nonroute = 2`; `(2 + 1) >= 3` is true → safety valve fires.
   completion feedback is shown, not when the model processes the tap.
   `CoachOverlay` exposes a `configure(state: TutorialState, save_data: SaveData,
   save_service: Object) -> void` method for test dependency injection (enables
-  instantiation without a full scene). The overlay must call `_tween.kill()` before
-  `queue_free()` to prevent use-after-free on active tweens.
+  instantiation without a full scene). The overlay must use `self.create_tween()` for all
+  tweens (node-scoped; automatically freed when the node is freed). **Do not** use
+  `get_tree().create_tween()` — an unbound tween survives node death and may fire callbacks
+  on a freed object. `Tween.kill()` does not exist in Godot 4; no manual cancellation call
+  is needed or valid. `queue_free()` alone is sufficient on cleanup.
+  **All child `Control` nodes** (banner `Label`, ring `TextureRect`/`Polygon2D`, arrow
+  `Sprite2D`) must individually have `mouse_filter = MOUSE_FILTER_IGNORE` set in the scene
+  file — this property does not propagate from the parent `Control`.
   **Observable test hooks:**
   `signal armed(card_id: int, productive: bool)`,
   `signal completed(routed: bool)`,
@@ -286,7 +299,7 @@ caller passes `n_nonroute = 2`; `(2 + 1) >= 3` is true → safety valve fires.
   `var is_productive: bool`,
   `var confirm_shown: bool`,
   `func on_committed_tap(events: Array[GameEvent]) -> void` (called by `main.gd`),
-  and `mouse_filter == MOUSE_FILTER_IGNORE` at spawn.
+  and `mouse_filter == MOUSE_FILTER_IGNORE` at spawn (root and all children).
   Parented to the **HUD `CanvasLayer`** (`layer 1`, same layer as the HUD) so it
   renders above all 2D floor/stack nodes without interfering with `Overlay` (layer 10).
 
@@ -352,24 +365,32 @@ Use `GdUnitSceneRunner` loading `res://scenes/main/main.tscn` with `SaveService`
 replaced by an injected double (`double(SaveService).new()`), OR instantiate
 `CoachOverlay` directly and call `configure(state, save_data, save_service)` before
 adding it to the scene tree. The chosen pattern must be documented in
-`tests/test_tutorial_integration.gd` before implementation begins. All timing
-assertions must use `await runner.simulate_seconds(N)` (simulated frame time), never
-wall-clock `await get_tree().create_timer(N).timeout`, to remain deterministic in
-headless CI.
+`tests/test_tutorial_integration.gd` before implementation begins. All timing assertions must use `await runner.simulate_frames(N, 16)` (simulated frame
+time; default delta_milli=16 ≈ 60 Hz; `N = ⌈target_seconds / 0.016⌉ + 2` for margin),
+never wall-clock `await get_tree().create_timer(N).timeout`. **`simulate_seconds()` does
+not exist in gdUnit4 v6.1.3** — use `simulate_frames` throughout.
 
 | AC | Pass condition |
 |----|----------------|
-| AC7 | Fresh save → `start_level(1)` adds a `CoachOverlay` whose `coach.state == CoachOverlay.State.COACHING`, `coach.target_card_id == TutorialLogic.pick_target(...)`, and `coach.is_productive == true` (Level 1 constraint). |
+| AC7 | Fresh save → `start_level(1)` adds a `CoachOverlay` whose `coach.state == CoachOverlay.State.COACHING`, `coach.target_card_id == TutorialLogic.pick_target(...)`, and `coach.is_productive == true` (Level 1 constraint). *Note: this AC depends on Level 1's authored card pool containing ≥1 productive card at spawn (see §6 Level 1 content constraint). If Level 1 data is ever changed, update this test alongside it.* |
 | AC8a | At spawn, `coach.mouse_filter == Control.MOUSE_FILTER_IGNORE`. |
-| AC8b | **BLOCKING (automated):** While `COACHING`, simulate a touch at the position of the highlighted card; assert that `BoardModel.tap_card` is called (board model registers the event, e.g. event list is non-empty). Use `GdUnitSceneRunner.simulate_mouse_button_pressed(card_global_pos)`. This verifies that `MOUSE_FILTER_IGNORE` passes input through the overlay to the card beneath. |
-| AC8c | **Grace period:** Simulate a tap at `t = 0` (immediately after overlay spawns); assert `coach.completed` signal has **not** fired and `coach.state == COACHING` after the tap. Then `await runner.simulate_seconds(MESSAGE_FADE_IN + INPUT_GRACE + 0.05)`; if the tap was a ROUTE, assert `coach.completed(true)` fired (deferred completion). |
+| AC8b | **BLOCKING (automated):** While `COACHING`, simulate a touch at the position of the highlighted card using `GdUnitSceneRunner.simulate_mouse_button_pressed(card_global_pos)`; assert the observable side-effect: the `BoardModel` event list from the subsequent tap is non-empty (board model accepted the input). Do **not** assert `tap_card` by call-interception — gdUnit4 v6.1.3 has no built-in spy/stub for concrete `RefCounted` methods; assert the side-effect instead. This verifies `MOUSE_FILTER_IGNORE` passes input through the overlay to the card beneath. |
+| AC8c | **Grace period:** Simulate a tap at `t = 0` (immediately after overlay spawns); assert `coach.completed` signal has **not** fired and `coach.state == COACHING` after the tap. Then `await runner.simulate_frames(40)` (= ⌈(MESSAGE_FADE_IN + INPUT_GRACE + 0.05) / 0.016⌉ frames, covering ≈ 0.60 s at 60 Hz); if the tap was a ROUTE, assert `coach.completed(true)` fired (deferred completion). |
 | AC9 | A committed **discard** tap while `COACHING` (below the valve): `injected_save_data.tutorial_seen` stays `false`, `coach.state == COACHING`, `coach.confirm_shown == false`, and `coach._state_obj.n_nonroute == 1` (counter incremented). |
-| AC10 | A committed **ROUTE** tap (after grace window — use `await runner.simulate_seconds(MESSAGE_FADE_IN + INPUT_GRACE + 0.05)` before checking): (1) `coach.completed` signal emitted with `routed == true`; (2) `coach.confirm_shown == true`; (3) `injected_save_data.tutorial_seen == true`; (4) injected spy `SaveService.save()` called exactly once; (5) `await runner.simulate_seconds(CONFIRM_DWELL + FADE_OUT + 0.1)` → `is_instance_valid(coach) == false`. Assert each step in order. |
+| AC10 | A committed **ROUTE** tap (after grace window — `await runner.simulate_frames(40)` before checking): (1) `coach.completed` signal emitted with `routed == true`; (2) `coach.confirm_shown == true`; (3) `injected_save_data.tutorial_seen == true`; (4) injected spy `SaveService.save()` called exactly once; (5) `await runner.simulate_frames(105)` (= ⌈(CONFIRM_DWELL + FADE_OUT + 0.1) / 0.016⌉, covering ≈ 1.6 s) then `await runner.simulate_frames(2)` (flush `queue_free` deferred deletion) → assert `is_instance_valid(coach) == false`. Assert each step in order. |
 | AC10b | **ROUTE+WIN path:** Tap the last card on the board during `COACHING`; event list contains both `ROUTE` and `WIN`. Assert `coach.completed(true)` fires (not suppressed by WIN), `tutorial_seen == true`, and the normal WIN overlay still shows. |
 | AC11 | Safety valve: issue exactly `CoachOverlay.TUTORIAL_MAX_TAPS` committed non-route taps (read the constant — do not hardcode the literal). Assert `coach.completed(false)` fires, `coach.confirm_shown == false`, `injected_save_data.tutorial_seen == true`. |
-| AC12 | Re-arm (EC10): call `start_level(1)` while `COACHING` with `seen == false`; assert the old overlay is freed (`is_instance_valid(old_coach) == false`) and a fresh `COACHING` overlay has `coach.state == COACHING`, a (re)picked `target_card_id`, `coach.confirm_shown == false`, and `coach._state_obj.n_nonroute == 0`. |
+| AC12 | Re-arm (EC10): **before** calling `start_level(1)`, capture `var old_coach: Node = main.find_child("CoachOverlay", true, false)`. Then call `start_level(1)`; `await runner.simulate_frames(2)` (flush `queue_free` deferred deletion); assert `is_instance_valid(old_coach) == false`. Then capture `var coach := main.find_child("CoachOverlay", true, false)` and assert: `coach.state == COACHING`, a (re)picked `target_card_id`, `coach.confirm_shown == false`, and `coach._state_obj.n_nonroute == 0`. |
 | AC13 | With `tutorial_seen == true`, `start_level(1)` creates **no** `CoachOverlay` in the scene tree (assert `main.find_child("CoachOverlay", true, false) == null`). |
-| AC14 | Save-fail (EC12): with a `SaveService` stub that always fails to write, after completion the in-session `should_show(false, 1)` call returns `false` (in-memory `tutorial_seen` flag suppresses re-show). Separately assert `injected_save_data.tutorial_seen` on disk remains `false` (write failure did not corrupt the in-memory data object — the disk state is separate from the session guard). |
+| AC14 | Save-fail (EC12): with a `SaveService` stub that always fails to write, after completion the in-session `should_show(false, 1)` call returns `false` (in-memory `tutorial_seen` flag suppresses re-show). Separately assert `stub.data.tutorial_seen == false` (the stub's data object was not mutated by the failed write — the write failure is separate from the in-memory session guard). |
+| AC_E0 | **E=∅ guard (defensive):** configure the board so `BoardModel.exposed_cards()` returns an empty array before `start_level(1)` fires; assert (1) no `CoachOverlay` exists in the scene tree (`main.find_child("CoachOverlay", true, false) == null`) and (2) `injected_save_data.tutorial_seen == false` (flag not set when no cards are exposed). |
+
+**Integration — ADVISORY** (cover additional paths; not CI-blocking at M1):
+
+| AC | Pass condition |
+|----|----------------|
+| AC_LOSE | **LOSE during COACHING:** trigger a board state where the player's tap returns `[…, LOSE]` while the overlay is in `COACHING`; assert `coach.completed(routed=false)` fires, `injected_save_data.tutorial_seen == true`, and the game-over overlay is not blocked (the coach fades behind it without intercepting input). |
+| AC_NEU | **Neutral copy path:** configure the board so no exposed card's result matches any open stack at spawn (or use a synthetic board); assert `coach.is_productive == false` and the banner copy resolves the `tutorial_neutral` localization key (not `tutorial_route`). |
 
 **Visual — ADVISORY** (screenshot + lead sign-off, `production/qa/evidence/`):
 

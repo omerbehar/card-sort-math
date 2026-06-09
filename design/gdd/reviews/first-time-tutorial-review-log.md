@@ -49,3 +49,22 @@ post-M1 recovery path). (4) Copy revised to math-result framing. (5) Integration
 test DI contract specified (configure() method + simulated-frame timing for CI).
 Bidirectional ref added to level-and-solvability.md.
 Prior verdict resolved: Yes — 5 MAJOR REVISION items addressed in same-day revision.
+
+## Review — 2026-06-09 (re-review 3) — Verdict: NEEDS REVISION
+Scope signal: M
+Specialists: game-designer, systems-designer, ux-designer, qa-lead, godot-specialist, creative-director
+Blocking items: 6 | Recommended: 10
+Summary: Design identity confirmed sound; 6 blockers were all engine-API precision errors and
+spec gaps — no design rethinking required. (1) `Tween.kill()` does not exist in Godot 4;
+spec updated to mandate `node.create_tween()` (auto-freed with node, no manual kill).
+(2) `simulate_seconds()` does not exist in gdUnit4 v6.1.3; all integration ACs updated to
+`simulate_frames(N, 16)`. (3) State machine ARMED→no-overlay arc added for E=∅ case.
+(4) AC8b rewritten to assert side-effect (event list non-empty) rather than unimplementable
+call-interception. (5) AC10 step 5 and AC12 updated with `simulate_frames(2)` frame-advance
+before `is_instance_valid` checks. (6) AC_E0 added for E=∅ integration coverage. Recommended
+fixes also applied: caller contract for `results[c]`, ROUTE+LOSE priority note, `node.create_tween`
+throughout, MOUSE_FILTER_IGNORE children note, pivot contract, arrow flip threshold derived from
+constant, schema version decision documented, pre-M1 playtest gate added to arrow design decision,
+AC14 "on disk" wording clarified. Advisory integration ACs added for LOSE-during-COACHING and
+neutral-copy path.
+Prior verdict resolved: Yes — all 6 NEEDS REVISION items addressed in same-day revision.
