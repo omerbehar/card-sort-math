@@ -64,8 +64,13 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 	return out
 
 
-# Accepts an int or enum value; anything outside the known bands -> UNKNOWN.
+# Accepts an int / float / enum value; null, non-numeric, or out-of-range -> UNKNOWN.
+# Guards the numeric coercion: int(null) and int("x") raise in GDScript, so a save
+# with an explicit JSON null age_band must be rejected before coercion (a bad save
+# never crashes — see GDD Edge Case 7 / AC AG-06).
 static func _parse_age_band(value: Variant) -> AgeBand:
+	if not (value is int or value is float):
+		return AgeBand.UNKNOWN
 	match int(value):
 		AgeBand.ADULT:
 			return AgeBand.ADULT
