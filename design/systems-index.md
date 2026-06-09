@@ -21,7 +21,7 @@
 | Floor Exposure | [`floor-exposure.md`](gdd/floor-exposure.md) | Implemented | `core/exposure.gd`, `core/layouts.gd` |
 | Level & Solvability | [`level-and-solvability.md`](gdd/level-and-solvability.md) | Implemented | `autoloads/level_data.gd`, `data/level_config.gd` |
 | Math Exercises | [`math-exercises.md`](gdd/math-exercises.md) | Implemented (addition only) | `data/card_data.gd` |
-| First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Designed — In Review (revised, awaiting re-review) | `core/` (`TutorialLogic`) + `scenes/ui/coach_overlay.gd` (planned, S1-010) |
+| First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Designed — Approved (re-review 2, 2026-06-09) | `core/` (`TutorialLogic`, `TutorialState`) + `scenes/ui/coach_overlay.gd` (planned, S1-010) |
 
 ## Dependency graph
 

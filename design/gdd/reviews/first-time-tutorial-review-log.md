@@ -33,3 +33,19 @@ All 7 blocking items addressed in commit `9730ae4`:
 Recommended items also folded in (route-scoped goal framing, softened fantasy
 line, ACs for re-arm + save-fail).
 Status: Awaiting re-review (clean session).
+
+## Review — 2026-06-09 — Verdict: MAJOR REVISION NEEDED
+Scope signal: L
+Specialists: game-designer, systems-designer, ux-designer, qa-lead, godot-specialist, creative-director
+Blocking items: 5 | Recommended: 16
+Summary: Design direction confirmed sound; 5 blockers required design decisions and
+architecture spec before code. (1) Arrow threshold (`card.top < 300`) confirmed as
+global screen-space coordinates — with `FLOOR_ORIGIN=(0,300)` the flip branch is
+dead code for all current layouts; explicitly documented as attention-pointer spec.
+(2) `TutorialState` RefCounted intermediary specified for `n_nonroute` ownership;
+grace timer in `CoachOverlay`; tap-observation wiring via `on_committed_tap()`.
+(3) Safety-valve flag policy locked as explicit design decision (permanent flag,
+post-M1 recovery path). (4) Copy revised to math-result framing. (5) Integration
+test DI contract specified (configure() method + simulated-frame timing for CI).
+Bidirectional ref added to level-and-solvability.md.
+Prior verdict resolved: Yes — 5 MAJOR REVISION items addressed in same-day revision.

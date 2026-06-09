@@ -93,6 +93,7 @@ result 7 (matches `7×6`). `9,11,13` each once → 3 cards each. ✓
 | `count ≠ 3 × occurrences` | `is_solvable` = false | Supply/demand mismatch leaves stranded cards or unfillable stacks |
 | `get_level(n)` out of range | Clamped to nearest authored level | Safe fallback |
 | `results.size() ≠ layout slots` | Assert fails at build | Authoring error caught early |
+| **Level 1 modified** — initial exposed cards no longer include a productive card | First-Time Tutorial coach falls back to neutral copy; effectiveness of onboarding degrades | **Co-authoring constraint** — Level 1 **must always** expose ≥1 card whose result matches an open, non-full stack at spawn (see `design/gdd/first-time-tutorial.md` §6). Verify after any Level 1 content edit. |
 
 ## Dependencies
 
@@ -101,6 +102,7 @@ result 7 (matches `7×6`). `9,11,13` each once → 3 cards each. ✓
 | Floor Exposure (Layouts) | This depends on it | Slot count + placements |
 | Math Exercises | This depends on it | Builds a `CardData` per result |
 | Card Routing & Stacks | Depends on this | Receives a validated, winnable board |
+| First-Time Tutorial | Depends on Level 1 content | Level 1 must expose ≥1 productive card at spawn for tutorial effectiveness (see tutorial GDD §6) |
 
 ## Tuning Knobs
 
