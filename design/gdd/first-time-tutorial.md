@@ -14,10 +14,23 @@
 ---
 
 ## 1. Overview
-_TBD_
+
+A non-blocking, first-run **coach** on Level 1. Once the board spawns for a
+brand-new player, the tutorial highlights a single *productive* card (one whose
+result matches an open stack target) and shows a one-line prompt to solve it and
+tap. The player may tap **anything** — the hint never gates input. On the
+player's first committed tap the coach briefly confirms (when that tap routed a
+card) and fades out, sets a persistent `tutorial_seen` flag, and is never shown
+again. The decision logic (should-show, pick-highlight-target) is pure and
+node-free per ADR-0001; a thin `CoachOverlay` view renders the hint.
 
 ## 2. Player Fantasy
-_TBD_
+
+*"I get it in one tap."* The player feels gently oriented, never lectured. One
+clear nudge points the way, the first card flies satisfyingly onto its matching
+stack, and then they're trusted to play. No modal walls, no forced sequence, no
+quiz — the game's calm tone holds from the very first second. A returning player
+never sees the tutorial again and is never nagged.
 
 ## 3. Detailed Rules
 _TBD_
