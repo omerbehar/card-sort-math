@@ -66,6 +66,19 @@ func test_set_unknown_key_returns_false() -> void:
 	assert_bool(s.set_value("bogus", true)).is_false()
 
 
+func test_all_canonical_keys_set_get_round_trip() -> void:
+	# ST-02: every key in KEYS must round-trip through set_value/get_value. A per-key
+	# sweep catches a missing `match` arm if a new key is ever added to the model
+	# but not wired into set_value/get_value.
+	for key: String in Settings.KEYS:
+		var s := Settings.new()
+		var target: bool = not s.get_value(key)
+		assert_bool(s.set_value(key, target)).override_failure_message(
+			"set_value should accept canonical key '%s'" % key).is_true()
+		assert_bool(s.get_value(key)).override_failure_message(
+			"get_value('%s') should reflect the value just set" % key).is_equal(target)
+
+
 func test_keys_constant_matches_serialized_shape() -> void:
 	var keys: Array = Settings.new().to_dict().keys()
 	for key: String in Settings.KEYS:

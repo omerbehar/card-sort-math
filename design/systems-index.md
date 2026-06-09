@@ -22,7 +22,7 @@
 | Level & Solvability | [`level-and-solvability.md`](gdd/level-and-solvability.md) | Implemented | `autoloads/level_data.gd`, `data/level_config.gd` |
 | Math Exercises | [`math-exercises.md`](gdd/math-exercises.md) | Implemented (addition only) | `data/card_data.gd` |
 | First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Designed — Approved (re-review 3, 2026-06-09) | `core/` (`TutorialLogic`, `TutorialState`) + `scenes/ui/coach_overlay.gd` (planned, S1-010) |
-| Save & Settings | [`save-service.md`](gdd/save-service.md) | Designed — Approved (revised after review, 2026-06-09); 3 P0 code follow-ups tracked | `core/save_data.gd`, `autoloads/save_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
+| Save & Settings | [`save-service.md`](gdd/save-service.md) | Approved + 3 P0 follow-ups implemented (atomic write, load_failed, ComplianceService) 2026-06-09 | `core/save_data.gd`, `autoloads/save_service.gd`, `autoloads/compliance_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
 
 ## Dependency graph
 

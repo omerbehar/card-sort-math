@@ -84,3 +84,60 @@ func test_set_unknown_key_does_not_emit() -> void:
 	svc.changed.connect(func(_key: String, _value: bool) -> void: emitted[0] = true)
 	svc.set_value("bogus", true)
 	assert_bool(emitted[0]).is_false()
+
+
+func test_toggle_emits_changed_signal() -> void:
+	# SS-06: toggle flips and must emit `changed` with the post-toggle value.
+	var svc = auto_free(SETTINGS_SCRIPT.new())
+	svc.configure(_make_save())
+	var captured: Array = ["", true]
+	svc.changed.connect(func(key: String, value: bool) -> void:
+		captured[0] = key
+		captured[1] = value)
+	svc.toggle("sound")  # default true → toggles to false
+	assert_str(captured[0]).is_equal("sound")
+	assert_bool(captured[1]).is_false()
+
+
+func test_unknown_key_does_not_mutate_save() -> void:
+	# SS-07: an unknown key must not touch the persisted file at all.
+	var save = _make_save()
+	var svc = auto_free(SETTINGS_SCRIPT.new())
+	svc.configure(save)
+	svc.set_value("bogus", true)
+	# A fresh reader sees untouched defaults across all five settings.
+	var reader = auto_free(SAVE_SCRIPT.new())
+	reader.configure(TEST_PATH)
+	reader.load_game()
+	assert_bool(reader.data.settings.sound).is_true()
+	assert_bool(reader.data.settings.music).is_true()
+	assert_bool(reader.data.settings.haptics).is_true()
+	assert_bool(reader.data.settings.reduced_motion).is_false()
+	assert_bool(reader.data.settings.colorblind).is_false()
+
+
+func test_settings_accessor_returns_live_reference() -> void:
+	# SS-08: settings() must return the SAME instance as SaveService.data.settings
+	# (reference identity, not a defensive copy).
+	var save = _make_save()
+	var svc = auto_free(SETTINGS_SCRIPT.new())
+	svc.configure(save)
+	assert_bool(svc.settings() == save.data.settings).override_failure_message(
+		"settings() must return the live Settings instance, not a copy").is_true()
+
+
+func test_all_canonical_keys_round_trip() -> void:
+	# SS-09: every key flips through set_value and survives a disk reload.
+	var save = _make_save()
+	var svc = auto_free(SETTINGS_SCRIPT.new())
+	svc.configure(save)
+	for key: String in Settings.KEYS:
+		var target: bool = not svc.get_value(key)
+		svc.set_value(key, target)
+		assert_bool(svc.get_value(key)).is_equal(target)
+	# Reload from disk and confirm every key persisted.
+	var reader = auto_free(SAVE_SCRIPT.new())
+	reader.configure(TEST_PATH)
+	reader.load_game()
+	for key: String in Settings.KEYS:
+		assert_bool(reader.data.settings.get_value(key)).is_equal(svc.get_value(key))

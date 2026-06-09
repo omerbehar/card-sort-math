@@ -5,15 +5,21 @@
 > **Last Updated**: 2026-06-09
 > **Implements Pillar**: Foundation — enables all player-facing systems by making state trustworthy across sessions
 
-> **Code-follow-up flags (scheduled, not yet in `autoloads/save_service.gd`):**
-> 1. **Atomic write** — `save_game()` must write to `user://save.json.tmp` then
->    `DirAccess.rename()` over the real path (atomic on Android/iOS/desktop). The
->    current in-place overwrite is torn-write-unsafe (see Edge Case 4).
-> 2. **`load_failed` signal** — `load_game()` must distinguish a corrupt/unreadable
->    save (data lost) from a genuine first launch (see Edge Case 14).
-> 3. **`ComplianceService` chokepoint** — the sole permitted reader of `age_band`
->    (see Core Rule 9 and ADR-0005); future `AdService`/`Analytics` must not read
->    `age_band` directly.
+> **P0 review follow-ups — IMPLEMENTED 2026-06-09:**
+> 1. **Atomic write** ✓ — `save_game()` writes `user://save.json.tmp` then
+>    `DirAccess.rename()` over the real path (atomic on Android/iOS/desktop).
+>    Tests: SV-14, SV-09/10/11.
+> 2. **`load_failed` signal** ✓ — `load_game()` emits `load_failed` (not `loaded`)
+>    when a file existed but was unreadable/corrupt, distinguishing lost data from a
+>    genuine first launch (Edge Case 14). Tests: SV-07/08.
+> 3. **`ComplianceService` chokepoint** ✓ — new autoload `autoloads/compliance_service.gd`
+>    is the sole reader of `age_band` (Core Rule 9, ADR-0005); exposes
+>    `can_collect_personal_data()` etc. Tests: `tests/test_compliance_service.gd` (AG-08).
+>
+> Also fixed: `SaveData._parse_age_band` is now null-safe (a JSON `null` age_band
+> no longer crashes the load — `int(null)` raises in GDScript). Test: AG-06.
+> **Still pending:** HMAC/signature on `age_band` (required pre-AdService), and
+> wiring `colorblind`/`reduced_motion` to view consumers.
 
 ## Overview
 
