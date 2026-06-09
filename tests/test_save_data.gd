@@ -130,3 +130,38 @@ func test_null_age_band_coerces_to_unknown() -> void:
 	# AG-06: an explicit JSON null must NOT crash (int(null) raises) — _parse_age_band
 	# guards the type before coercion and falls back to UNKNOWN.
 	assert_int(int(SaveData.from_dict({"age_band": null}).age_band)).is_equal(int(SaveData.AgeBand.UNKNOWN))
+
+
+# ---------------------------------------------------------------------------
+# AC6 — tutorial_seen serialization (design/gdd/first-time-tutorial.md §8)
+# ---------------------------------------------------------------------------
+
+func test_to_dict_contains_tutorial_seen_key() -> void:
+	# AC6: to_dict() must contain the key "tutorial_seen"
+	var keys: Array = SaveData.new().to_dict().keys()
+	assert_bool(keys.has("tutorial_seen")).is_true()
+
+
+func test_from_dict_tutorial_seen_true_round_trips() -> void:
+	# AC6: from_dict({"tutorial_seen":true}).tutorial_seen == true
+	var data := SaveData.from_dict({"tutorial_seen": true})
+	assert_bool(data.tutorial_seen).is_true()
+
+
+func test_from_dict_missing_tutorial_seen_defaults_to_false() -> void:
+	# AC6: from_dict({}).tutorial_seen == false  (missing-key default — no schema bump)
+	var data := SaveData.from_dict({})
+	assert_bool(data.tutorial_seen).is_false()
+
+
+func test_from_dict_tutorial_seen_false_round_trips() -> void:
+	# AC6: from_dict({"tutorial_seen":false}).tutorial_seen == false
+	var data := SaveData.from_dict({"tutorial_seen": false})
+	assert_bool(data.tutorial_seen).is_false()
+
+
+func test_tutorial_seen_does_not_bump_schema_version() -> void:
+	# AC6: schema_version must still equal CURRENT_SCHEMA_VERSION after a round-trip
+	# that includes tutorial_seen — no schema bump was performed.
+	var data := SaveData.from_dict({"tutorial_seen": true})
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)

@@ -6,6 +6,9 @@ extends RefCounted
 ## are the serialization seam; [SaveService] performs the actual file I/O. Keeping
 ## this class pure (no [Node], no file access) makes save / load / migration fully
 ## unit-testable (see [code]tests/test_save_data.gd[/code]) per ADR-0001.
+##
+## Persisted fields: [member schema_version], [member current_level],
+## [member age_band], [member settings], [member tutorial_seen].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
 const CURRENT_SCHEMA_VERSION: int = 1
@@ -18,6 +21,12 @@ var schema_version: int = CURRENT_SCHEMA_VERSION
 var current_level: int = 1
 var age_band: AgeBand = AgeBand.UNKNOWN
 var settings: Settings = Settings.new()
+## Whether the player has already seen the first-time tutorial coach.
+## Defaults to [code]false[/code]. Set to [code]true[/code] on first ROUTE (or
+## safety-valve / LOSE) while coaching (see [code]design/gdd/first-time-tutorial.md[/code]
+## §3 R6). Missing-key-defaulted in [method from_dict]; no schema bump required —
+## old saves correctly default to [code]false[/code] (they have not seen the tutorial).
+var tutorial_seen: bool = false
 
 
 ## A fresh save with safe defaults.
@@ -32,6 +41,7 @@ func to_dict() -> Dictionary:
 		"current_level": current_level,
 		"age_band": int(age_band),
 		"settings": settings.to_dict(),
+		"tutorial_seen": tutorial_seen,
 	}
 
 
@@ -47,6 +57,7 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.current_level = maxi(1, int(migrated.get("current_level", 1)))
 	data.age_band = _parse_age_band(migrated.get("age_band", AgeBand.UNKNOWN))
 	data.settings = Settings.from_dict(migrated.get("settings", {}))
+	data.tutorial_seen = bool(migrated.get("tutorial_seen", false))
 	return data
 
 
