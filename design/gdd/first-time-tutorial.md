@@ -1,6 +1,6 @@
 # GDD: First-Time Tutorial
 
-> **Status:** Drafting (skeleton). Sections filled one at a time with sign-off.
+> **Status:** Complete — all 8 sections approved.
 > **Story:** S1-010 (`production/sprints/sprint-01.md`) · **Milestone:** M1
 
 ## Design decisions (locked)
@@ -173,7 +173,49 @@ show_confirm = first_committed_events contains a ROUTE event
   coding-standards "every system → ADR" guideline as a deliberate exception.
 
 ## 7. Tuning Knobs
-_TBD_
+
+| Knob | Default | Safe range | Affects |
+|------|---------|-----------|---------|
+| `TUTORIAL_LEVEL` | `1` | any valid level index | Which level triggers the coach. Keep `1` for true first-run. |
+| Productive copy | *"Add it up, then tap the card to sort it."* | ≤ ~40 chars | First-tap instruction; must fit the banner at 390 px width. |
+| Neutral copy | *"Tap a card to sort it onto a stack."* | ≤ ~40 chars | Instruction when no productive tap exists. |
+| Confirm copy | *"Nice — matched the stack!"* | ≤ ~30 chars | Positive reinforcement after a route. |
+| `MESSAGE_FADE_IN` | `0.25` s | `0.10–0.60` | How quickly the hint appears (snappy vs gentle). |
+| `CONFIRM_DWELL` | `1.2` s | `0.6–2.5` | How long the success toast lingers; too long delays free play. |
+| `FADE_OUT` | `0.30` s | `0.10–0.60` | Hint dismissal smoothness. |
+| `HIGHLIGHT_PULSE_PERIOD` | `0.90` s | `0.5–1.5` (or off) | Attention-pulse cadence; **ignored** under `reduced_motion`. |
+| `HIGHLIGHT_ARROW_BOB` | `6` px | `0–8` px | Arrow bob amplitude; forced to `0` under `reduced_motion`. |
+| Target pick rule | `min(card_id)` | must stay deterministic | Which productive card is highlighted; determinism keeps it unit-testable. |
+
+> Knobs live as constants colocated with `TutorialLogic` / `CoachOverlay`. If they
+> proliferate, promote to a small config resource (per the data-driven rule).
+> User-facing strings are placeholders pending the future localization system.
 
 ## 8. Acceptance Criteria
-_TBD_
+
+**Logic — automated unit tests, BLOCKING** (`tests/unit/tutorial/`):
+
+| AC | Pass condition |
+|----|----------------|
+| AC1 | `should_show(false, 1) == true`; `should_show(true, 1) == false`; `should_show(false, 2) == false`. |
+| AC2 | `pick_target` returns the **lowest** productive `card_id` when a productive card exists. |
+| AC3 | `pick_target` falls back to the lowest exposed id when none are productive; returns `-1` when `E` is empty. |
+| AC4 | `is_route(events)` is true iff the list contains a `ROUTE`; false for discard-only and empty lists. |
+| AC5 | `SaveData` round-trips `tutorial_seen`; a save missing the key loads it as `false`. |
+
+**Integration — BLOCKING** (integration test or documented playtest):
+
+| AC | Pass condition |
+|----|----------------|
+| AC6 | Fresh save → starting Level 1 spawns the `CoachOverlay` highlighting the picked card with the productive message. |
+| AC7 | Overlay does **not** block input: a tap on any exposed card is accepted (model processes it) while the coach is visible. |
+| AC8 | After the first committed tap, `tutorial_seen` is `true` and persisted, and the overlay is removed. |
+| AC9 | A routing first tap shows the confirm toast; a discard-only first tap does not. |
+| AC10 | With `tutorial_seen == true`, no overlay appears on Level 1. |
+
+**Visual — ADVISORY** (screenshot + sign-off, `production/qa/evidence/`):
+
+| AC | Pass condition |
+|----|----------------|
+| AC11 | With `reduced_motion == true`, the highlight is static (no pulse/bob). |
+| AC12 | The highlight is legible without colour (outline ring + arrow), colorblind-safe. |
