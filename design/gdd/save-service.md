@@ -255,8 +255,108 @@ migration or serialization logic.
 
 ## Acceptance Criteria
 
-[To be designed]
+**Legend:** COVERED = an existing test exercises this (function named in parens).
+NEW = no test covers it yet; must be written before sign-off. All Logic/Integration
+ACs are BLOCKING. Async waits use `simulate_frames(N, 16)` — `simulate_seconds()`
+does not exist in gdUnit4 v6.1.3. (Most ACs here are synchronous and need no frames.)
+
+### Group 1 — Unit: pure `SaveData` (no I/O) — `tests/test_save_data.gd`
+
+| ID | Pass condition | Coverage |
+|----|---------------|----------|
+| SD-01 | `defaults()` → version=CURRENT, level=1, age=UNKNOWN, sound/music/haptics=true, reduced_motion/colorblind=false | COVERED (`test_defaults_are_safe`) |
+| SD-02 | Round-trip `to_dict`/`from_dict` preserves level, age_band, settings | COVERED (`test_to_dict_from_dict_round_trips`) |
+| SD-03 | `from_dict({})` == `defaults()` | COVERED (`test_from_dict_missing_fields_use_defaults`) |
+| SD-04 | `current_level` 0 and -5 both clamp to 1 | COVERED (`test_from_dict_clamps_current_level_to_minimum`) |
+| SD-05 | `age_band:99` → UNKNOWN | COVERED (`test_from_dict_rejects_invalid_age_band`) |
+| SD-06 | `age_band:2` → CHILD | COVERED (`test_from_dict_accepts_valid_age_band`) |
+| SD-07 | Unknown settings key dropped from `to_dict` | COVERED (`test_from_dict_ignores_unknown_settings_keys`) |
+| SD-08 | Pre-versioned save → version normalized to CURRENT | COVERED (`test_from_dict_normalizes_schema_version`) |
+| SD-09 | JSON string round-trip preserves int fields | COVERED (`test_json_serialization_round_trips`) |
+| SD-10 | `{schema_version:9999, current_level:3}` loads without crash; level=3, version=CURRENT (no infinite migrate loop) | **NEW** `test_save_data_future_schema_version_loads_known_fields` |
+| SD-11 | `to_dict().keys()` == exactly {schema_version, current_level, age_band, settings} | **NEW** `test_save_data_to_dict_contains_exactly_canonical_keys` |
+
+### Group 2 — Unit: pure `Settings` (no I/O) — `tests/test_settings.gd`
+
+| ID | Pass condition | Coverage |
+|----|---------------|----------|
+| ST-01 | Defaults: sound/music/haptics=true, reduced_motion/colorblind=false | COVERED (`test_defaults_are_sane`) |
+| ST-02 | Every key in `Settings.KEYS` set/get round-trips | **NEW** `test_settings_all_canonical_keys_set_get_round_trip` (per-key sweep catches a missing `match` arm on future key additions) |
+| ST-03 | `set_value("bogus",true)` → false, no mutation | COVERED (`test_set_unknown_key_returns_false`) |
+| ST-04 | `from_dict({"sound":false})` → only sound changes | COVERED (`test_from_dict_missing_keys_use_defaults`) |
+| ST-05 | Unknown key ignored, absent from `to_dict` | COVERED (`test_from_dict_ignores_unknown_keys`) |
+| ST-06 | `from_dict("not a dict")` → all defaults | COVERED (`test_from_dict_non_dictionary_yields_defaults`) |
+| ST-07 | `KEYS` matches serialized shape exactly | COVERED (`test_keys_constant_matches_serialized_shape`) |
+| ST-08 | `colorblind` round-trips | COVERED (`test_colorblind_round_trips_and_sets_by_key`) |
+| ST-09 | Pre-colorblind save → colorblind=false | COVERED (`test_from_dict_missing_colorblind_defaults_false`) |
+
+### Group 3 — Integration: `SaveService` file I/O — `tests/test_save_service.gd`
+Inject temp path via `configure(TEST_PATH)`; clean up in `after_test`.
+
+| ID | Pass condition | Coverage |
+|----|---------------|----------|
+| SV-01 | Round-trip persists level, age_band, settings across two instances | COVERED (`test_save_then_load_round_trips_to_disk`) |
+| SV-02 | Missing file → defaults | COVERED (`test_load_missing_file_uses_defaults`) |
+| SV-03 | Corrupt JSON → defaults, no crash | COVERED (`test_load_corrupt_file_uses_defaults`) |
+| SV-04 | `set_current_level(9)` persists | COVERED (`test_set_current_level_persists`) |
+| SV-05 | `set_age_band(CHILD)` persists | COVERED (`test_set_age_band_persists`) |
+| SV-06 | `set_current_level(0)` → reloads as 1 | **NEW** `test_save_service_set_current_level_zero_clamps_to_one` |
+| SV-07 | `loaded` fires once on missing-file load and on success | **NEW** `test_save_service_loaded_signal_emitted_on_missing_file`, `..._on_success` |
+| SV-08 | `loaded` fires on corrupt-file load | **NEW** `test_save_service_loaded_signal_emitted_on_corrupt_file` |
+| SV-09 | `saved` fires once on successful save | **NEW** `test_save_service_saved_signal_emitted_on_success` |
+| SV-10 | Three rapid `save_game()` → last write wins on reload | **NEW** `test_save_service_rapid_saves_last_write_wins` |
+| SV-11 | `configure(B)` after writing A → save/reload uses B; A untouched | **NEW** `test_save_service_configure_redirects_io` |
+
+### Group 4 — Integration: `SettingsService` — `tests/test_settings_service.gd`
+Inject via `configure(_make_save())` (temp-file-backed `SaveService`).
+
+| ID | Pass condition | Coverage |
+|----|---------------|----------|
+| SS-01 | `get_value` returns defaults on fresh save | COVERED (`test_get_value_reads_defaults`) |
+| SS-02 | `set_value("music",false)` persists to disk | COVERED (`test_set_value_persists_to_disk`) |
+| SS-03 | `set_value` emits `changed(key,value)` | COVERED (`test_set_value_emits_changed_signal`) |
+| SS-04 | `toggle("sound")` flips and persists | COVERED (`test_toggle_flips_and_persists`) |
+| SS-05 | `set_value("bogus",...)` never emits `changed` | COVERED (`test_set_unknown_key_does_not_emit`) |
+| SS-06 | `toggle` emits `changed` | **NEW** `test_settings_service_toggle_emits_changed_signal` |
+| SS-07 | Unknown key does not mutate the save file | **NEW** `test_settings_service_unknown_key_does_not_mutate_save` |
+| SS-08 | `settings()` returns the live instance, not a copy | **NEW** `test_settings_service_settings_accessor_returns_live_reference` |
+| SS-09 | All `KEYS` round-trip through `get_value`/`set_value` to disk | **NEW** `test_settings_service_all_canonical_keys_round_trip` |
+
+### Group 5 — Compliance / Age Gate (ADR-0005, BLOCKING)
+Protects the invariant: `UNKNOWN` must be treated as `CHILD` (restrictive) by every consumer.
+
+| ID | Pass condition | Coverage |
+|----|---------------|----------|
+| AG-01 | Fresh `SaveData` age_band == UNKNOWN | COVERED (`test_defaults_are_safe`) |
+| AG-02 | `age_band:0` explicitly → UNKNOWN | **NEW** `test_save_data_age_band_zero_coerces_to_unknown` |
+| AG-03 | `age_band:1` → ADULT | COVERED (`test_to_dict_from_dict_round_trips`) |
+| AG-04 | `age_band:2` → CHILD | COVERED (`test_from_dict_accepts_valid_age_band`) |
+| AG-05 | `age_band:-1` → UNKNOWN | **NEW** `test_save_data_negative_age_band_coerces_to_unknown` |
+| AG-06 | `age_band:null` → UNKNOWN | **NEW** `test_save_data_null_age_band_coerces_to_unknown` |
+| AG-07 | Persisted UNKNOWN reloads as UNKNOWN (never silently upgraded) | **NEW** `test_save_service_age_band_unknown_persists_as_unknown` |
+| AG-08 | Policy: a gate keyed on `age_band` is restrictive for both UNKNOWN and CHILD, permissive only for ADULT (assert `age_band != ADULT` as the guard) | **NEW** `test_age_gate_compliance_unknown_treated_as_child` (new file `tests/test_age_gate_compliance.gd`) |
+
+### New Tests Required Before Sign-Off (19, all BLOCKING)
+SD-10, SD-11, ST-02, SV-06, SV-07 (×2), SV-08, SV-09, SV-10, SV-11, SS-06, SS-07,
+SS-08, SS-09, AG-02, AG-05, AG-06, AG-07, AG-08. The existing suite (22 tests across
+`test_save_data.gd`, `test_settings.gd`, `test_save_service.gd`, `test_settings_service.gd`)
+already covers the remaining ACs.
+
+**Implementation notes:**
+- **Signal tests** (SV-07/08/09, SS-06): `load_game`/`save_game`/`emit` are synchronous —
+  connect a lambda flag before the call, assert after. No `await`, no frame sim.
+- **AG-08**: assert the *rule* (`age_band != AgeBand.ADULT` is restrictive) as a pure
+  boolean test — do not import a not-yet-existing `AdService`. When `AdService` ships,
+  its own test must include this assertion.
+- **SD-10**: confirms `_migrate` has no unbounded loop on a future/downgrade version.
 
 ## Open Questions
 
-[To be designed]
+- **Cloud save / cross-device sync** — deferred past M1. When added, the migration seam
+  and single-file model must be revisited (conflict resolution, last-write-wins vs. merge).
+- **Save encryption / tamper resistance** — `user://save.json` is plain JSON today. If
+  leaderboard or anti-cheat requirements emerge, decide between obfuscation, signing, or
+  server-authoritative state. Out of scope at M1.
+- **Settings expansion** — when non-boolean settings appear (e.g., volume sliders, language
+  selection), `Settings` must move beyond the bool-only `match` model. That change requires
+  a schema-version bump and a migration step (it is not a missing-key-default case).

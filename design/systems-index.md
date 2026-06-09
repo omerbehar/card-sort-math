@@ -8,7 +8,7 @@
 
 | Layer | Systems |
 |-------|---------|
-| **Foundation** | Floor Exposure, Level & Solvability |
+| **Foundation** | Floor Exposure, Level & Solvability, Save & Settings |
 | **Core** | Card Routing & Stacks (the game) |
 | **Feature** | Math Exercises (card content) |
 | **Presentation** | View replay (`scenes/`), HUD — not yet GDD'd |
@@ -22,6 +22,7 @@
 | Level & Solvability | [`level-and-solvability.md`](gdd/level-and-solvability.md) | Implemented | `autoloads/level_data.gd`, `data/level_config.gd` |
 | Math Exercises | [`math-exercises.md`](gdd/math-exercises.md) | Implemented (addition only) | `data/card_data.gd` |
 | First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Designed — Approved (re-review 3, 2026-06-09) | `core/` (`TutorialLogic`, `TutorialState`) + `scenes/ui/coach_overlay.gd` (planned, S1-010) |
+| Save & Settings | [`save-service.md`](gdd/save-service.md) | Implemented — GDD complete (8/8 sections, 2026-06-09) | `core/save_data.gd`, `autoloads/save_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
 
 ## Dependency graph
 
@@ -35,9 +36,10 @@ Save + BoardModel + Settings + Level 1 content ──read by──▶ First-Time
 
 ## Not yet designed (see `docs/GAME_PLAN.md`)
 
-Save/profile, settings, audio, tutorial, level generator, economy/currencies,
-boosters, monetization (IAP/ads), analytics, meta/progression. These are roadmap
-items; GDDs should be authored (via `/design-system`) before implementation.
+Audio, level generator, economy/currencies, boosters, monetization (IAP/ads),
+analytics, meta/progression. These are roadmap items; GDDs should be authored
+(via `/design-system`) before implementation. (Save/profile, settings, and the
+first-time tutorial are now documented — see the systems table above.)
 
 ## Architecture decisions
 
