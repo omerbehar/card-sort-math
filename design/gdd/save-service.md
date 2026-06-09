@@ -77,7 +77,7 @@ position. The system is successful when the player never notices it.
    `defaults()` and emits **`load_failed`** (not `loaded`) so consumers and telemetry can
    distinguish lost data from a new player — a returning level-47 player must not be
    silently treated as a first-timer (see Edge Case 14). The prior file is not clobbered on
-   a load failure. *(`load_failed` is a scheduled code follow-up; see header.)*
+   a load failure. *(`load_failed` is implemented in `save_service.gd`.)*
 
 6. **Schema versioning.** `SaveData.CURRENT_SCHEMA_VERSION` (currently `1`) is incremented
    whenever the persisted shape changes in a breaking way. `_migrate(dict, from_version)`
@@ -115,8 +115,9 @@ position. The system is successful when the player never notices it.
    never `age_band` directly — this makes the `== CHILD`-instead-of-`!= ADULT` mistake
    structurally impossible. The integer ordinals `UNKNOWN=0 / ADULT=1 / CHILD=2` are a
    stable persisted contract, not free-to-reorder enum values (see Formulas → AgeBand
-   coercion). *(`ComplianceService` is a scheduled prerequisite for the first ad/analytics
-   system; see header.)*
+   coercion). *(`ComplianceService` is implemented as an autoload in
+   `autoloads/compliance_service.gd`; an HMAC on `age_band` remains a prerequisite for the
+   first ad/analytics system — see Open Questions.)*
 
 10. **Injectable path for tests.** `SaveService.configure(path: String)` overrides the
     save path. Call before `load_game()`. Integration tests use a temp file under `user://`
@@ -175,7 +176,7 @@ not an observable concurrent state).
 | `SettingsService` (autoload) | Reads/writes `SaveService.data.settings` | All settings *mutation* goes through `set_value`/`toggle`. **Caveat:** `settings()` returns the **live** `Settings` instance, not a copy — a caller could mutate it directly and bypass persistence + the `changed` signal. Treat `settings()` as read-only by convention; do not mutate through it. |
 | `CoachOverlay` / `TutorialLogic` | Reads/writes `save.tutorial_seen` *(planned field — not yet in the schema; see first-time-tutorial.md §6 and Edge Case 12)* | First-time tutorial seen flag |
 | ADR-0005 age gate (future) | Writes `age_band` via `SaveService.set_age_band()` | Compliance routing |
-| **`ComplianceService` (future, ADR-0005)** | **Sole reader** of `SaveService.data.age_band` | Centralises the UNKNOWN=CHILD rule; exposes `can_collect_personal_data()` etc. |
+| **`ComplianceService` (autoload, ADR-0005)** | **Sole reader** of `SaveService.data.age_band` | Centralises the UNKNOWN=CHILD rule; exposes `can_collect_personal_data()` etc. |
 | Future `AdService` / `Analytics` | Reads compliance verdicts **via `ComplianceService`** (never `age_band` directly) | Ad/analytics mode gating |
 | `gdUnit4` tests | Injects temp path via `configure()`; uses `.new()` + manual `load_game()` (never `add_child` before `configure`, or `_ready` reads the real save) | Isolated I/O testing without touching real save |
 
@@ -292,7 +293,7 @@ everything outside {1,2}.
 | 1 | **File missing** (first install, cleared app data) | `load_game()` falls back to `SaveData.defaults()`; `loaded` emitted. Clean state, no error. |
 | 2 | **File exists but unreadable** (bad permissions, partial write from a crash) | `FileAccess.open()` returns null; warning logged; `data = defaults()`; **`load_failed` emitted** (real data was lost — distinct from EC1). Broken file left on disk. *This branch is distinct from EC1/EC3 and needs its own test; triggering it requires a `FileAccess` DI seam or platform chmod — see AC notes.* |
 | 3 | **Corrupt JSON** | `JSON.parse_string()` returns non-Dictionary; warning logged; `data = defaults()`; **`load_failed` emitted**. |
-| 4 | **Save write fails** (disk full, read-only filesystem, or kill mid-write) | Writes go to `save.json.tmp` then atomic `DirAccess.rename()`. If `open(WRITE)` or `rename()` fails, error logged, method returns early, and the prior `save.json` is **genuinely intact** (it was never touched). A process kill mid-write damages only the `.tmp` file; the real save is untouched. *(This atomic pattern is the scheduled fix; the current in-place overwrite does NOT honour this — a mid-write kill on the live file yields a torn/zero-byte save that loads as EC3 → progress reset. Edge Case 4 describes the required behaviour, not the shipped one.)* |
+| 4 | **Save write fails** (disk full, read-only filesystem, or kill mid-write) | Writes go to `save.json.tmp` then atomic `DirAccess.rename()`. If `open(WRITE)` or `rename()` fails, error logged, method returns early, and the prior `save.json` is **genuinely intact** (it was never touched). A process kill mid-write damages only the `.tmp` file; the real save is untouched. *(This atomic temp-then-rename pattern is implemented in `save_service.gd`.)* |
 | 5 | **Missing field in save dict** | Each `from_dict` field uses `.get(key, default)` — missing keys silently use safe defaults. No crash, no data loss. |
 | 6 | **`current_level ≤ 0`** (corrupt or edited save) | Clamped to `1` via `maxi(1, int(value))`. |
 | 7 | **`age_band` out of range** (e.g., `99` or `null`) | `_parse_age_band` returns `AgeBand.UNKNOWN`. All downstream consumers must treat `UNKNOWN` as `CHILD` (restrictive fallback). |
@@ -323,7 +324,7 @@ everything outside {1,2}.
 | `SettingsService` (autoload) | Depends on this | Wraps `SaveService.data.settings`; calls `save_game()` on every change |
 | First-Time Tutorial (`TutorialLogic`, `CoachOverlay`) | Depends on this | Reads/writes the **planned** `save.tutorial_seen`; injected via `configure()` in tests |
 | Age gate / compliance (future) | Depends on this | Writes `age_band` via `set_age_band()`; ADR-0005 |
-| **`ComplianceService` (future, ADR-0005)** | Depends on this | **Mandatory intermediary** — the only reader of `age_band`; `AdService`/`Analytics` depend on `ComplianceService`, not on this directly |
+| **`ComplianceService` (autoload, ADR-0005)** | Depends on this | **Mandatory intermediary** — the only reader of `age_band`; `AdService`/`Analytics` depend on `ComplianceService`, not on this directly |
 | `AdService` / `Analytics` (future) | Depends on `ComplianceService` | Gate ad/data-collection mode via compliance verdicts, never raw `age_band` |
 
 **Test-seam dependency:** the EC2 (unreadable file) and EC4 (write failure) branches cannot
@@ -458,8 +459,8 @@ covers the ACs marked COVERED. Note that `test_get_and_set_value_by_key` is an o
 
 **Coverage categories (be honest about all three):** (a) COVERED by an existing test;
 (b) NEW test needed; (c) **documented Edge Cases with no test and no trivial test path** —
-EC2/EC4 (SV-12/SV-13) need a `FileAccess` DI seam or manual-platform verification, and the
-atomic-write / `load_failed` ACs depend on the scheduled code follow-ups.
+EC2/EC4 (SV-12/SV-13) still need a `FileAccess` DI seam or manual-platform verification.
+The atomic-write and `load_failed` ACs (SV-07/08/14) are now implemented and tested.
 
 **Implementation notes:**
 - **Signal tests** (SV-07/08/09, SS-06): `load_game`/`save_game`/`emit` are synchronous —
