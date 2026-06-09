@@ -129,10 +129,48 @@ show_confirm = first_committed_events contains a ROUTE event
 > confirm toast 1.2 s → `tutorial_seen = true` → fade to `DONE`.
 
 ## 5. Edge Cases
-_TBD_
+
+| # | Situation | Explicit behaviour |
+|---|-----------|--------------------|
+| 1 | **No productive tap at start** (no exposed card's result matches an open target) | Highlight `min(E)` (first exposed card) with the **neutral** copy. Tutorial still completes on the first committed tap; if that tap discards, no confirm toast. |
+| 2 | **No exposed cards at all** (`E = ∅`, defensive — shouldn't occur on a valid Level 1) | `pick_target = -1`: show the message banner only, no highlight. Completes on first committed tap. |
+| 3 | **Player taps a non-highlighted card** | Allowed (free play). Tutorial completes on that tap; coach does **not** re-point. Confirm shown iff it routed. |
+| 4 | **First tap is a discard (no match)** | Completion fires and the flag is set, but **no** confirm toast (don't celebrate a non-match). |
+| 5 | **Player opens the pause menu during coaching** | Pause menu (S1-011) overlays and pauses the tree; the coach overlay sits underneath untouched. On resume it's still shown, still waiting. Pausing changes no flag. |
+| 6 | **Returning player** (`tutorial_seen == true`) | `should_show = false`: overlay is never created; zero runtime cost. |
+| 7 | **`reduced_motion` on** | Highlight is static (no pulse/bob); confirm toast fades only. Fully functional. |
+| 8 | **Level 1 restarts before first tap** (Home button, or lose→retry while still unseen) | `start_level(1)` re-evaluates `should_show`; since `seen` is still false, the coach **re-arms** on the fresh board with a freshly-picked target. Consistent. |
+| 9 | **Highlighted card "disappears" before the tap** | Cannot happen: nothing on the board moves until the player taps, and the first tap completes the tutorial. No stale-highlight path exists. |
+| 10 | **Save write fails on completion** | The in-memory `tutorial_seen` still suppresses the coach for the rest of the session; a failed disk write only risks re-showing next launch. Non-fatal, consistent with SaveService's "bad save never crashes" stance. |
 
 ## 6. Dependencies
-_TBD_
+
+**This system depends on:**
+
+| System | Why | Change required |
+|--------|-----|-----------------|
+| `SaveData` / `SaveService` (`core/save_data.gd`) | Persist `tutorial_seen` | **Add** `tutorial_seen: bool` (default `false`) to `to_dict`/`from_dict`, missing-key-defaulted (no schema bump — same pattern as `colorblind`). |
+| `BoardModel` (`core/board_model.gd`, read-only) | Source of exposed card ids, card results, open stack targets | None — the pure selector consumes plain data extracted from the model. |
+| `GameEvent` (`core/game_event.gd`) | `ROUTE` kind is the confirm trigger | None. |
+| `main.gd` (view controller) | Arms the coach on `start_level`; completes it on the first committed tap in `_on_card_tapped` | Wire-up only. |
+| `Settings` (`data/settings.gd`) | `reduced_motion` gates highlight animation | None — no new setting (`colorblind` irrelevant, highlight is shape-based). |
+| `FloorArea` / `Card` (`scenes/`) | Resolve the highlighted card's global position to anchor the marker | None. |
+
+**New components introduced:**
+
+- `TutorialLogic` (pure, node-free — `core/`): `should_show`, `pick_target`,
+  `is_route(events)`. Unit-tested.
+- `CoachOverlay` (view — `scenes/ui/coach_overlay.gd`): renders highlight ring +
+  arrow + message + confirm toast; owns no game state.
+
+**Reverse references to update when implementing (bidirectional):**
+
+- `design/systems-index.md` — add a **First-Time Tutorial** node (depends on
+  Save, BoardModel, Settings).
+- `core/save_data.gd` doc comment — list `tutorial_seen` among persisted fields.
+- Follows ADR-0001 (model/view) and ADR-0002 (event replay); **no new ADR**
+  required (small feature reusing existing seams) — noted here per the
+  coding-standards "every system → ADR" guideline as a deliberate exception.
 
 ## 7. Tuning Knobs
 _TBD_
