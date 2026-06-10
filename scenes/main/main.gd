@@ -28,6 +28,8 @@ var _pause_menu: PauseMenu
 var _coach: CoachOverlay = null
 ## Mutable session counter for the tutorial coach; reset on each start_level(1).
 var _tutorial_state: TutorialState = null
+## Win/lose result screen; null when not shown (S1-020).
+var _result_screen: ResultScreen = null
 
 # Visual bookkeeping kept in lockstep with the model by replaying events in order.
 var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
@@ -36,6 +38,7 @@ var _input_locked: bool = false
 
 @onready var _overlay: Control = $Overlay/Root
 @onready var _overlay_label: Label = $Overlay/Root/Label
+@onready var _overlay_layer: CanvasLayer = $Overlay
 
 
 func _ready() -> void:
@@ -160,8 +163,7 @@ func is_input_locked() -> bool:
 
 
 func _on_card_tapped(card_id: int) -> void:
-	if _overlay.visible:
-		_dismiss_overlay()
+	if is_instance_valid(_result_screen):
 		return
 	if _input_locked or _model.is_game_over():
 		return
@@ -198,11 +200,11 @@ func _play_event(event: GameEvent) -> void:
 		GameEvent.Kind.WIN:
 			JuiceService.haptic(40)
 			GameManager.complete_level()
-			_show_overlay("You Win!")
+			_show_result(ResultScreen.Mode.WIN)
 		GameEvent.Kind.LOSE:
 			JuiceService.haptic(60)
 			GameManager.fail_level()
-			_show_overlay("Game Over")
+			_show_result(ResultScreen.Mode.LOSE)
 
 
 func _into_stack(card_id: int, stack_index: int) -> void:
@@ -288,20 +290,24 @@ func _on_setting_changed(key: String, value: bool) -> void:
 			stack.apply_palette(value)
 
 
-func _show_overlay(text: String) -> void:
-	_overlay_label.text = "%s\n\n(tap to continue)" % text
-	_overlay.visible = true
+## Shows the win/lose result screen (S1-020). The screen owns no game state — it
+## emits intent signals; this controller advances/retries via [method start_level].
+func _show_result(result_mode: ResultScreen.Mode) -> void:
+	if is_instance_valid(_result_screen):
+		_result_screen.queue_free()
+	_result_screen = ResultScreen.new()
+	_result_screen.name = "ResultScreen"
+	_result_screen.retry_pressed.connect(_dismiss_result)
+	_result_screen.next_pressed.connect(_dismiss_result)
+	_result_screen.home_pressed.connect(_dismiss_result)
+	_overlay_layer.add_child(_result_screen)   # _ready adds the dim underneath
+	_result_screen.setup(result_mode)           # content is built above the dim
 
 
-func _dismiss_overlay() -> void:
-	_overlay.visible = false
+func _dismiss_result() -> void:
+	if is_instance_valid(_result_screen):
+		_result_screen.queue_free()
+		_result_screen = null
+	# WIN already advanced GameManager.current_level (complete_level); LOSE left it.
+	# So this both advances on a win and retries on a loss.
 	start_level(GameManager.current_level)
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not _overlay.visible:
-		return
-	var pressed: bool = (event is InputEventMouseButton and event.pressed) \
-		or (event is InputEventScreenTouch and event.pressed)
-	if pressed:
-		_dismiss_overlay()
