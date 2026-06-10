@@ -140,7 +140,12 @@ func _arm_tutorial(n: int) -> void:
 		return
 
 	var productive: bool = open_targets.has(results.get(tid, -1))
-	_tutorial_state = TutorialState.new()
+	# Reuse the session state across re-arms (reset the counter) rather than
+	# allocating a fresh one each restart (EC10).
+	if _tutorial_state == null:
+		_tutorial_state = TutorialState.new()
+	else:
+		_tutorial_state.reset()
 	_coach = CoachOverlay.new()
 	_coach.name = "CoachOverlay"
 	_coach.configure(_tutorial_state, SaveService.data, SaveService)

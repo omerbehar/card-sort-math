@@ -236,7 +236,16 @@ func test_returning_player_should_not_show_on_level_1() -> void:
 
 
 # AC12 (re-arm): a fresh TutorialState starts with a zero non-route counter, so
-# each start_level(1) re-arm resets the session count (main.gd makes a new state).
+# each start_level(1) re-arm resets the session count (main.gd reuses + resets it).
 func test_fresh_tutorial_state_resets_counter() -> void:
 	var st := TutorialState.new()
+	assert_int(st.n_nonroute).is_equal(0)
+
+
+# AC12 (re-arm): reset() zeroes an accumulated counter (the path main.gd uses on
+# restart instead of reallocating).
+func test_tutorial_state_reset_zeroes_counter() -> void:
+	var st := TutorialState.new()
+	st.n_nonroute = 2
+	st.reset()
 	assert_int(st.n_nonroute).is_equal(0)

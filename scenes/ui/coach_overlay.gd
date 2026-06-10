@@ -190,7 +190,7 @@ func arm(card: Card, productive: bool) -> void:
 ## Called by [code]main.gd[/code] after each committed tap (non-empty event list).
 ## Classifies the tap and handles completion / counter increment.
 ##
-## [param events] must be the non-empty [Array][GameEvent]] from
+## [param events] must be the non-empty [code]Array[GameEvent][/code] from
 ## [method BoardModel.tap_card].
 func on_committed_tap(events: Array[GameEvent]) -> void:
 	if state != State.COACHING:
