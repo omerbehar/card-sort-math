@@ -30,7 +30,6 @@ signal next_pressed
 signal home_pressed
 
 const _VIEWPORT_W: float = 390.0
-const _VIEWPORT_H: float = 844.0
 
 # Palette (approximates the reference mocks).
 const _DIM := Color(0.04, 0.05, 0.09, 0.88)
@@ -40,7 +39,6 @@ const _GREEN := Color(0.30, 0.78, 0.34)
 const _GREEN_DEEP := Color(0.20, 0.58, 0.24)
 const _CARD_BG := Color(0.97, 0.94, 0.87)
 const _HEADER_BLUE := Color(0.27, 0.52, 0.95)
-const _HEADER_BLUE_DEEP := Color(0.18, 0.38, 0.78)
 const _RED := Color(0.90, 0.27, 0.27)
 const _RED_DEEP := Color(0.72, 0.18, 0.18)
 const _INK := Color(0.12, 0.14, 0.22)
@@ -90,19 +88,14 @@ func _build_win() -> void:
 	if _motion_ok():
 		_add_confetti()
 
-	_add_title("WELL DONE!", _GOLD, 150.0)
+	_title(_tr("result_win_title"), _GOLD, 150.0)
 
 	# Hero star — celebration only (NOT a 1-3 rating; that is the M2 star_rating).
 	# A large translucent star behind the crisp one fakes a soft glow.
-	var glow := _make_label("★", 220, Color(_GOLD.r, _GOLD.g, _GOLD.b, 0.22))
-	glow.size = Vector2(_VIEWPORT_W, 300.0)
-	glow.position = Vector2(0.0, 270.0)
-	add_child(glow)
-
-	var star := _make_label("★", 140, _GOLD)
-	star.size = Vector2(_VIEWPORT_W, 220.0)
-	star.position = Vector2(0.0, 310.0)
-	add_child(star)
+	UiFactory.label(self, "★", Vector2(0.0, 270.0), Vector2(_VIEWPORT_W, 300.0),
+		220, Color(_GOLD.r, _GOLD.g, _GOLD.b, 0.22))
+	var star := UiFactory.label(self, "★", Vector2(0.0, 310.0),
+		Vector2(_VIEWPORT_W, 220.0), 140, _GOLD)
 	if _motion_ok():
 		_pop(star)
 
@@ -111,15 +104,14 @@ func _build_win() -> void:
 	# [M4] Reserved: reward chips (coins / gems) row (hidden until economy ships).
 	_reward_chips = _reserve_row(Vector2(0.0, 575.0), "RewardChipsPlaceholder")
 
-	# Primary action: claim the win and advance.
-	var claim := _make_button("TAP TO CLAIM", _GREEN, _GREEN_DEEP, Color.WHITE)
-	claim.size = Vector2(300.0, 66.0)
-	claim.position = Vector2((_VIEWPORT_W - 300.0) * 0.5, 640.0)
-	claim.pressed.connect(func() -> void: next_pressed.emit())
-	add_child(claim)
+	# Primary action: claim the win and advance. Bottom-anchored so it survives
+	# aspect 'expand' on non-base devices instead of floating mid-screen.
+	var claim := _action_button(_tr("result_claim"), _GREEN, _GREEN_DEEP,
+		func() -> void: next_pressed.emit())
+	_anchor_bottom(claim, 204.0, 66.0, 300.0)
 
 	# [M3] Reserved: tournament / live-ops strip (hidden until live-ops ships).
-	_tournament_strip = _reserve_row(Vector2(0.0, _VIEWPORT_H - 90.0), "TournamentPlaceholder")
+	_tournament_strip = _reserve_bottom_row(90.0, "TournamentPlaceholder")
 
 
 # ---------------------------------------------------------------------------
@@ -145,28 +137,18 @@ func _build_lose() -> void:
 	header.size = Vector2(pw, 64.0)
 	add_child(header)
 
-	var title := _make_label("GAME OVER", 30, Color.WHITE)
-	title.size = Vector2(pw, 64.0)
-	title.position = Vector2(px, py)
-	add_child(title)
+	UiFactory.label(self, _tr("result_lose_title"), Vector2(px, py),
+		Vector2(pw, 64.0), 30, Color.WHITE)
 
 	# Close (X) at the panel's top-right corner → home.
-	var close := _make_button("✕", _RED, _RED_DEEP, Color.WHITE)
+	var close := _action_button("✕", _RED, _RED_DEEP, func() -> void: home_pressed.emit())
 	close.size = Vector2(46.0, 46.0)
 	close.position = Vector2(px + pw - 30.0, py - 18.0)
-	close.pressed.connect(func() -> void: home_pressed.emit())
-	add_child(close)
 
 	# Icon card + subtext.
-	var icon := _make_label("🃏", 60, _INK)
-	icon.size = Vector2(pw, 96.0)
-	icon.position = Vector2(px, py + 78.0)
-	add_child(icon)
-
-	var sub := _make_label("The discard row filled up.", 18, Color(0.32, 0.30, 0.36))
-	sub.size = Vector2(pw, 28.0)
-	sub.position = Vector2(px, py + 178.0)
-	add_child(sub)
+	UiFactory.label(self, "🃏", Vector2(px, py + 78.0), Vector2(pw, 96.0), 60, _INK)
+	UiFactory.label(self, _tr("result_lose_reason"), Vector2(px, py + 178.0),
+		Vector2(pw, 28.0), 18, Color(0.32, 0.30, 0.36))
 
 	# [M4] Reserved: REVIVE (rewarded ad) and PLAY ON (soft currency). Hidden until
 	# ads/economy exist AND ComplianceService gating is wired (ADR-0005).
@@ -174,40 +156,36 @@ func _build_lose() -> void:
 	_play_on_button = _reserve_row(Vector2(px + 180.0, py + 220.0), "PlayOnPlaceholder")
 
 	# Primary action available today: retry the level.
-	var retry := _make_button("RETRY", _GOLD, _GOLD_DEEP, Color.WHITE)
+	var retry := _action_button(_tr("result_retry"), _GOLD, _GOLD_DEEP,
+		func() -> void: retry_pressed.emit())
 	retry.size = Vector2(pw - 48.0, 60.0)
 	retry.position = Vector2(px + 24.0, py + 220.0)
-	retry.pressed.connect(func() -> void: retry_pressed.emit())
-	add_child(retry)
 
 	# [M4] Reserved: SPECIAL OFFER IAP banner (hidden until IAP ships; ADR-0005).
-	_special_offer = _reserve_row(Vector2(0.0, _VIEWPORT_H - 120.0), "SpecialOfferPlaceholder")
+	_special_offer = _reserve_bottom_row(120.0, "SpecialOfferPlaceholder")
 
 
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
 
-func _add_title(text: String, color: Color, y: float) -> void:
-	var title := _make_label(text, 52, color)
-	title.size = Vector2(_VIEWPORT_W, 72.0)
-	title.position = Vector2(0.0, y)
+func _title(text: String, color: Color, y: float) -> void:
+	# Reuses the shared UiFactory label, then thickens the outline for the big
+	# celebratory headline.
+	var title := UiFactory.label(self, text, Vector2(0.0, y),
+		Vector2(_VIEWPORT_W, 72.0), 52, color)
 	title.add_theme_constant_override("outline_size", 12)
 	title.add_theme_color_override("font_outline_color", _INK)
-	add_child(title)
 
 
-func _make_label(text: String, font_size: int, color: Color) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", color)
-	label.add_theme_constant_override("outline_size", 4)
-	label.add_theme_color_override("font_outline_color", _INK)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return label
+## Creates a primary action [Button], wires its press, and adds it to the screen.
+## Callers position/size the returned node. Centralises the button creation +
+## signal wiring so every action button behaves identically.
+func _action_button(text: String, bg: Color, deep: Color, on_press: Callable) -> Button:
+	var button := _make_button(text, bg, deep, Color.WHITE)
+	button.pressed.connect(on_press)
+	add_child(button)
+	return button
 
 
 func _make_button(text: String, bg: Color, deep: Color, fg: Color) -> Button:
@@ -217,13 +195,14 @@ func _make_button(text: String, bg: Color, deep: Color, fg: Color) -> Button:
 	button.add_theme_color_override("font_color", fg)
 	button.add_theme_color_override("font_hover_color", fg)
 	button.add_theme_color_override("font_pressed_color", fg)
+	# StyleBoxFlat (rather than UiFactory's nine-patch art) gives the bright, flat,
+	# rounded button look the reference mocks use.
 	var sb := _round_box(bg, 16)
 	sb.border_width_bottom = 5             # chunky "3D" bottom edge
 	sb.border_color = deep
 	button.add_theme_stylebox_override("normal", sb)
 	button.add_theme_stylebox_override("hover", sb)
-	var pressed := _round_box(deep, 16)    # flatten on press
-	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("pressed", _round_box(deep, 16))
 	return button
 
 
@@ -289,6 +268,19 @@ func _add_confetti() -> void:
 	add_child(p)
 
 
+# Anchors a control to the bottom-centre so it tracks the screen edge under the
+# 'expand' aspect on non-base devices instead of floating at a fixed pixel Y.
+func _anchor_bottom(c: Control, from_bottom: float, height: float, width: float) -> void:
+	c.anchor_left = 0.5
+	c.anchor_right = 0.5
+	c.anchor_top = 1.0
+	c.anchor_bottom = 1.0
+	c.offset_left = -width * 0.5
+	c.offset_right = width * 0.5
+	c.offset_top = -from_bottom
+	c.offset_bottom = -from_bottom + height
+
+
 ## A hidden, zero-content placeholder anchor for a future (milestone-gated) row.
 ## Kept in the tree by name so the owning milestone can find and populate it.
 func _reserve_row(pos: Vector2, node_name: String) -> Control:
@@ -301,9 +293,31 @@ func _reserve_row(pos: Vector2, node_name: String) -> Control:
 	return slot
 
 
+# As _reserve_row, but bottom-anchored (the strip-style placeholders live against
+# the screen's bottom edge).
+func _reserve_bottom_row(from_bottom: float, node_name: String) -> Control:
+	var slot := _reserve_row(Vector2.ZERO, node_name)
+	_anchor_bottom(slot, from_bottom, from_bottom, _VIEWPORT_W)
+	return slot
+
+
 func _motion_ok() -> bool:
-	# Respect the reduced-motion accessibility setting (ui-code rule). Resolve the
-	# autoload via its tree path (not the global identifier) so dev harnesses that
-	# load this script standalone still compile.
-	var settings := get_node_or_null(^"/root/SettingsService")
-	return not (settings != null and settings.get_value("reduced_motion"))
+	# Reuse the project's canonical motion seam (JuiceService.is_motion_enabled),
+	# resolved via its tree path so dev harnesses that load this script standalone
+	# still compile. Motion is allowed when the service is unavailable.
+	var juice := get_node_or_null(^"/root/JuiceService")
+	return juice == null or juice.is_motion_enabled()
+
+
+# Localization stub (mirrors CoachOverlay._tr). Replace this call site when a real
+# l10n system lands; keeps user-facing strings out of inline literals.
+func _tr(key: String) -> String:
+	match key:
+		"result_win_title": return "WELL DONE!"
+		"result_claim": return "TAP TO CLAIM"
+		"result_lose_title": return "GAME OVER"
+		"result_lose_reason": return "The discard row filled up."
+		"result_retry": return "RETRY"
+		_:
+			push_warning("ResultScreen: unknown localization key '%s'" % key)
+			return key

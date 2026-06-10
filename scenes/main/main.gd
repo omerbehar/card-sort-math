@@ -36,8 +36,6 @@ var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
 var _discard_cards: Array = []  # per slot: card_id, or -1 when empty
 var _input_locked: bool = false
 
-@onready var _overlay: Control = $Overlay/Root
-@onready var _overlay_label: Label = $Overlay/Root/Label
 @onready var _overlay_layer: CanvasLayer = $Overlay
 
 
@@ -90,7 +88,6 @@ func start_level(n: int) -> void:
 		cards.clear()
 	for i in _discard_cards.size():
 		_discard_cards[i] = -1
-	_overlay.visible = false
 	_input_locked = false
 
 	_floor.spawn(_config)
@@ -175,6 +172,10 @@ func _on_card_tapped(card_id: int) -> void:
 		_coach.on_committed_tap(events)
 	_input_locked = true
 	await _play_events(events)
+	# If that tap ended the board (WIN/LOSE shows the result screen), skip the
+	# post-tap bookkeeping — it would run against a finished board.
+	if is_instance_valid(_result_screen):
+		return
 	_floor.refresh_exposure(_model)
 	_update_discard_warning()
 	_input_locked = false
@@ -306,6 +307,9 @@ func _show_result(result_mode: ResultScreen.Mode) -> void:
 
 func _dismiss_result() -> void:
 	if is_instance_valid(_result_screen):
+		# Hide this frame (queue_free is deferred) so the dim doesn't briefly cover
+		# the freshly rebuilt board.
+		_result_screen.visible = false
 		_result_screen.queue_free()
 		_result_screen = null
 	# WIN already advanced GameManager.current_level (complete_level); LOSE left it.
