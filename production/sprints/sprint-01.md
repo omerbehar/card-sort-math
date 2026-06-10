@@ -42,7 +42,7 @@ has settings, and the core loop has audio + juice + a first-time tutorial.
 
 | ID | Task | Agent/Owner | Est. Days | Dependencies | Acceptance Criteria | Status |
 |----|------|-------------|-----------|-------------|--------------------|--------|
-| S1-020 | Win/lose result screen (stars placeholder, retry/next) | ui-programmer | 1 | S1-002 | Appears on WIN/LOSE event; routes to next/retry | Not Started |
+| S1-020 | Win/lose result screen (stars placeholder, retry/next) | ui-programmer | 1 | S1-002 | Appears on WIN/LOSE event; routes to next/retry | **Done** (2026-06-10): `ResultScreen` WIN ("WELL DONE!"+hero star+claim) / LOSE (modal+retry) per ref mocks; routes via `start_level`. Monetisation/meta (revive/coins/IAP offer, reward chips, star rating, tournament) are hidden placeholders → M2/M3/M4. 7 interaction tests; full suite 159 green. Visual polish (confetti/star art) + monetisation wiring deferred |
 | S1-021 | Basic efficiency score (fewer discards → higher) — model only | systems-designer | 1 | None | Pure function in `core/`/`data`, unit-tested; no UI required | Not Started |
 
 ## Carryover from Sprint 0
