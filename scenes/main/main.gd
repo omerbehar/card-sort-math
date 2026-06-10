@@ -24,6 +24,11 @@ var _hud: Hud
 var _hud_layer: CanvasLayer
 var _pause_menu: PauseMenu
 
+## Tutorial overlay; null when not active (seen or not Level 1).
+var _coach: CoachOverlay = null
+## Mutable session counter for the tutorial coach; reset on each start_level(1).
+var _tutorial_state: TutorialState = null
+
 # Visual bookkeeping kept in lockstep with the model by replaying events in order.
 var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
 var _discard_cards: Array = []  # per slot: card_id, or -1 when empty
