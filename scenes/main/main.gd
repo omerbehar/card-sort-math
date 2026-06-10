@@ -98,6 +98,55 @@ func start_level(n: int) -> void:
 	if _hud != null:
 		_hud.refresh()
 
+	_arm_tutorial(n)
+
+
+## Arms the first-time tutorial coach on level [param n] if the player has not
+## seen it (S1-010). Picks one productive (or fallback) card at spawn, spawns the
+## [CoachOverlay] on the HUD layer, and feeds it committed taps via
+## [method _on_card_tapped]. On a fresh restart the prior coach is freed first
+## (EC10); when no card is exposed the coach is not shown and the flag is left
+## unset (R9 / AC_E0). See [code]design/gdd/first-time-tutorial.md[/code] §3.
+func _arm_tutorial(n: int) -> void:
+	# Free any prior coach so a rapid restart never double-overlays (EC10).
+	if is_instance_valid(_coach):
+		_coach.queue_free()
+		_coach = null
+
+	if not TutorialLogic.should_show(SaveService.data.tutorial_seen, n):
+		return
+
+	# Build the pure inputs for pick_target (no BoardModel reference leaks in).
+	var exposed: Array[int] = _model.exposed_cards()
+	var results: Dictionary = {}
+	for c: int in exposed:
+		results[c] = _model.result_of(c)
+	var open_targets: Array[int] = []
+	for i in BoardModel.STACK_COUNT:
+		if _model.stack_count(i) < BoardModel.STACK_CAPACITY:
+			var t: int = _model.stack_target(i)
+			if t >= 0 and not open_targets.has(t):
+				open_targets.append(t)
+
+	var tid: int = TutorialLogic.pick_target(exposed, results, open_targets)
+	if tid == -1:
+		# E = ∅ (or no exposed card): do not spawn, do not set the flag (R9).
+		return
+
+	var productive: bool = open_targets.has(results.get(tid, -1))
+	_tutorial_state = TutorialState.new()
+	_coach = CoachOverlay.new()
+	_coach.name = "CoachOverlay"
+	_coach.configure(_tutorial_state, SaveService.data, SaveService)
+	_hud_layer.add_child(_coach)
+	var card: Card = _floor.get_card(tid)
+	if card == null:
+		# Defensive: target not on the floor — release the coach without arming.
+		_coach.queue_free()
+		_coach = null
+		return
+	_coach.arm(card, productive)
+
 
 ## True while an event sequence is animating and taps are ignored. Exposed for
 ## tooling/integration drivers that need to wait for the board to go idle.
@@ -114,6 +163,9 @@ func _on_card_tapped(card_id: int) -> void:
 	var events := _model.tap_card(card_id)
 	if events.is_empty():
 		return
+	# Feed the committed tap to the tutorial coach (S1-010) before animating.
+	if is_instance_valid(_coach):
+		_coach.on_committed_tap(events)
 	_input_locked = true
 	await _play_events(events)
 	_floor.refresh_exposure(_model)
