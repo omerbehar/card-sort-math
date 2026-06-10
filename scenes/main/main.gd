@@ -307,10 +307,9 @@ func _show_result(result_mode: ResultScreen.Mode) -> void:
 
 func _dismiss_result() -> void:
 	if is_instance_valid(_result_screen):
-		# Hide this frame (queue_free is deferred) so the dim doesn't briefly cover
-		# the freshly rebuilt board.
-		_result_screen.visible = false
-		_result_screen.queue_free()
+		# Animated self-dismiss (PopupBase.close); its backdrop keeps blocking board
+		# input while it fades out over the freshly rebuilt board.
+		_result_screen.close()
 		_result_screen = null
 	# WIN already advanced GameManager.current_level (complete_level); LOSE left it.
 	# So this both advances on a win and retries on a loss.

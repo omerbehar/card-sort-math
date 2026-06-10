@@ -1,11 +1,11 @@
 class_name ResultScreen
-extends Control
+extends PopupBase
 ## Win / lose result screen shown when the board reaches WIN or LOSE (S1-020).
 ##
-## View only (ADR-0001): it renders the outcome and emits intent signals; it owns
-## no game state and never advances the level itself — [code]main.gd[/code] listens
-## and calls [code]start_level[/code]. Built programmatically (no .tscn instancing)
-## for the same reliability reasons as [CoachOverlay].
+## A [PopupBase] subclass (ADR-0006): the base owns the modal chassis (backdrop,
+## input capture, open/close animation, lifecycle); this class only builds the
+## win/lose content into [method body] and emits intent signals. View only
+## (ADR-0001) — it owns no game state; [code]main.gd[/code] advances/retries.
 ##
 ## Visual direction follows the win ("WELL DONE!" + hero star + claim) and lose
 ## ("CONTINUE?"-style modal + retry) reference mocks. The monetised elements in
@@ -32,7 +32,6 @@ signal home_pressed
 const _VIEWPORT_W: float = 390.0
 
 # Palette (approximates the reference mocks).
-const _DIM := Color(0.04, 0.05, 0.09, 0.88)
 const _GOLD := Color(1.0, 0.80, 0.12)
 const _GOLD_DEEP := Color(0.85, 0.58, 0.05)
 const _GREEN := Color(0.30, 0.78, 0.34)
@@ -55,29 +54,15 @@ var _special_offer: Control = null     # M4 IAP
 var _tournament_strip: Control = null  # M3 live-ops
 
 
-func _ready() -> void:
-	# Full-rect and opaque to input: block taps from reaching the board beneath.
-	anchor_right = 1.0
-	anchor_bottom = 1.0
-	mouse_filter = Control.MOUSE_FILTER_STOP
-
-	var dim := ColorRect.new()
-	dim.name = "Dim"
-	dim.color = _DIM
-	dim.anchor_right = 1.0
-	dim.anchor_bottom = 1.0
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(dim)
-
-
-## Builds the layout for [param result_mode]. Call once after instancing and after
-## adding to the tree (so the dim from [method _ready] sits underneath).
+## Builds the layout for [param result_mode] into the pop-up body and plays the
+## open animation. Call once after instancing and after adding to the tree.
 func setup(result_mode: Mode) -> void:
 	mode = result_mode
 	if mode == Mode.WIN:
 		_build_win()
 	else:
 		_build_lose()
+	play_open()
 
 
 # ---------------------------------------------------------------------------
@@ -92,12 +77,10 @@ func _build_win() -> void:
 
 	# Hero star — celebration only (NOT a 1-3 rating; that is the M2 star_rating).
 	# A large translucent star behind the crisp one fakes a soft glow.
-	UiFactory.label(self, "★", Vector2(0.0, 270.0), Vector2(_VIEWPORT_W, 300.0),
+	UiFactory.label(body(), "★", Vector2(0.0, 270.0), Vector2(_VIEWPORT_W, 300.0),
 		220, Color(_GOLD.r, _GOLD.g, _GOLD.b, 0.22))
-	var star := UiFactory.label(self, "★", Vector2(0.0, 310.0),
-		Vector2(_VIEWPORT_W, 220.0), 140, _GOLD)
-	if _motion_ok():
-		_pop(star)
+	UiFactory.label(body(), "★", Vector2(0.0, 310.0), Vector2(_VIEWPORT_W, 220.0),
+		140, _GOLD)
 
 	# [M2] Reserved: 1-3 star efficiency rating row (hidden until scoring ships).
 	_star_rating = _reserve_row(Vector2(0.0, 530.0), "StarRatingPlaceholder")
@@ -129,15 +112,15 @@ func _build_lose() -> void:
 	card.name = "Panel"
 	card.position = Vector2(px, py)
 	card.size = Vector2(pw, ph)
-	add_child(card)
+	body().add_child(card)
 
 	# Coloured header strip (rounded top only).
 	var header := _panel(_HEADER_BLUE, 22, 22, 0, 0, false)
 	header.position = Vector2(px, py)
 	header.size = Vector2(pw, 64.0)
-	add_child(header)
+	body().add_child(header)
 
-	UiFactory.label(self, _tr("result_lose_title"), Vector2(px, py),
+	UiFactory.label(body(), _tr("result_lose_title"), Vector2(px, py),
 		Vector2(pw, 64.0), 30, Color.WHITE)
 
 	# Close (X) at the panel's top-right corner → home.
@@ -146,8 +129,8 @@ func _build_lose() -> void:
 	close.position = Vector2(px + pw - 30.0, py - 18.0)
 
 	# Icon card + subtext.
-	UiFactory.label(self, "🃏", Vector2(px, py + 78.0), Vector2(pw, 96.0), 60, _INK)
-	UiFactory.label(self, _tr("result_lose_reason"), Vector2(px, py + 178.0),
+	UiFactory.label(body(), "🃏", Vector2(px, py + 78.0), Vector2(pw, 96.0), 60, _INK)
+	UiFactory.label(body(), _tr("result_lose_reason"), Vector2(px, py + 178.0),
 		Vector2(pw, 28.0), 18, Color(0.32, 0.30, 0.36))
 
 	# [M4] Reserved: REVIVE (rewarded ad) and PLAY ON (soft currency). Hidden until
@@ -166,25 +149,24 @@ func _build_lose() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Builders
+# Builders (content goes into body(); the base owns the backdrop)
 # ---------------------------------------------------------------------------
 
 func _title(text: String, color: Color, y: float) -> void:
 	# Reuses the shared UiFactory label, then thickens the outline for the big
 	# celebratory headline.
-	var title := UiFactory.label(self, text, Vector2(0.0, y),
+	var title := UiFactory.label(body(), text, Vector2(0.0, y),
 		Vector2(_VIEWPORT_W, 72.0), 52, color)
 	title.add_theme_constant_override("outline_size", 12)
 	title.add_theme_color_override("font_outline_color", _INK)
 
 
-## Creates a primary action [Button], wires its press, and adds it to the screen.
-## Callers position/size the returned node. Centralises the button creation +
-## signal wiring so every action button behaves identically.
+## Creates a primary action [Button], wires its press, and adds it to the body.
+## Callers position/size the returned node. Centralises button creation + wiring.
 func _action_button(text: String, bg: Color, deep: Color, on_press: Callable) -> Button:
 	var button := _make_button(text, bg, deep, Color.WHITE)
 	button.pressed.connect(on_press)
-	add_child(button)
+	body().add_child(button)
 	return button
 
 
@@ -230,15 +212,6 @@ func _round_box(bg: Color, radius: int) -> StyleBoxFlat:
 	return sb
 
 
-# A short scale "pop" so the hero star lands with a bit of life.
-func _pop(node: Control) -> void:
-	node.pivot_offset = node.size * 0.5
-	node.scale = Vector2(0.5, 0.5)
-	var t := create_tween()
-	t.tween_property(node, "scale", Vector2(1.12, 1.12), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_property(node, "scale", Vector2.ONE, 0.10)
-
-
 # A one-shot multicolour confetti burst from the top of the screen.
 func _add_confetti() -> void:
 	var p := CPUParticles2D.new()
@@ -264,8 +237,7 @@ func _add_confetti() -> void:
 	ramp.set_color(1, Color(0.30, 0.70, 1.0))
 	ramp.add_point(0.33, Color(1.0, 0.85, 0.20))
 	ramp.add_point(0.66, Color(0.40, 0.85, 0.45))
-	p.color_initial_ramp = ramp
-	add_child(p)
+	body().add_child(p)
 
 
 # Anchors a control to the bottom-centre so it tracks the screen edge under the
@@ -289,7 +261,7 @@ func _reserve_row(pos: Vector2, node_name: String) -> Control:
 	slot.position = pos
 	slot.visible = false
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(slot)
+	body().add_child(slot)
 	return slot
 
 
@@ -299,14 +271,6 @@ func _reserve_bottom_row(from_bottom: float, node_name: String) -> Control:
 	var slot := _reserve_row(Vector2.ZERO, node_name)
 	_anchor_bottom(slot, from_bottom, from_bottom, _VIEWPORT_W)
 	return slot
-
-
-func _motion_ok() -> bool:
-	# Reuse the project's canonical motion seam (JuiceService.is_motion_enabled),
-	# resolved via its tree path so dev harnesses that load this script standalone
-	# still compile. Motion is allowed when the service is unavailable.
-	var juice := get_node_or_null(^"/root/JuiceService")
-	return juice == null or juice.is_motion_enabled()
 
 
 # Localization stub (mirrors CoachOverlay._tr). Replace this call site when a real
