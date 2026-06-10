@@ -1,5 +1,5 @@
 class_name PauseMenu
-extends Control
+extends PopupBase
 ## Modal pause menu, bound to [SettingsService]. Styled after the project's
 ## reference mock: a header strip with a red close button, a row of round audio
 ## toggles (sound / music / haptics), pill-switch rows for the accessibility
@@ -59,8 +59,11 @@ var _buttons: Dictionary = {}
 func _ready() -> void:
 	if _settings == null:
 		_settings = SettingsService
-	anchor_right = 1.0
-	anchor_bottom = 1.0
+	# Pop-up chassis (ADR-0006): tap-outside resumes; main.gd owns the tree-pause.
+	dismiss_on_backdrop = true
+	backdrop_color = Color(0.0, 0.0, 0.0, 0.55)
+	super()
+	backdrop_pressed.connect(_resume)
 	_build()
 	_settings.changed.connect(_on_setting_changed)
 
@@ -74,12 +77,10 @@ func configure(settings: Object) -> void:
 # --- Construction -----------------------------------------------------------
 
 func _build() -> void:
-	_build_backdrop()
-
-	# Panel card + header strip.
-	UiFactory.nine_patch(self, "kenney/rect_blue.png", _PANEL_POS, _PANEL_SIZE, 24)
-	UiFactory.nine_patch(self, "kenney/rect_blue.png", _PANEL_POS, Vector2(_PANEL_SIZE.x, _HEADER_H), 22, _HEADER_TINT)
-	UiFactory.label(self, "PAUSE", _PANEL_POS, Vector2(_PANEL_SIZE.x, _HEADER_H), 26, Color.WHITE)
+	# Panel card + header strip (backdrop is provided by PopupBase).
+	UiFactory.nine_patch(body(), "kenney/rect_blue.png", _PANEL_POS, _PANEL_SIZE, 24)
+	UiFactory.nine_patch(body(), "kenney/rect_blue.png", _PANEL_POS, Vector2(_PANEL_SIZE.x, _HEADER_H), 22, _HEADER_TINT)
+	UiFactory.label(body(), "PAUSE", _PANEL_POS, Vector2(_PANEL_SIZE.x, _HEADER_H), 26, Color.WHITE)
 
 	# Red close button straddling the header's top-right.
 	var close := _bare_button(_PANEL_POS + Vector2(_PANEL_SIZE.x - 50, 8), Vector2(44, 44))
@@ -90,23 +91,6 @@ func _build() -> void:
 	_build_audio_toggles()
 	_build_switches()
 	_build_actions()
-
-
-func _build_backdrop() -> void:
-	var backdrop := Button.new()
-	backdrop.flat = true
-	backdrop.anchor_right = 1.0
-	backdrop.anchor_bottom = 1.0
-	backdrop.modulate = Color(0, 0, 0, 0.55)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	var bg := ColorRect.new()
-	bg.color = Color.BLACK
-	bg.anchor_right = 1.0
-	bg.anchor_bottom = 1.0
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	backdrop.add_child(bg)
-	backdrop.pressed.connect(_resume)
-	add_child(backdrop)
 
 
 func _build_audio_toggles() -> void:
@@ -184,7 +168,7 @@ func _bare_button(pos: Vector2, size: Vector2) -> Button:
 	btn.position = pos
 	btn.size = size
 	btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(btn)
+	body().add_child(btn)
 	return btn
 
 
@@ -231,9 +215,9 @@ func _position_knob(key: String) -> void:
 
 func _resume() -> void:
 	resumed.emit()
-	queue_free()
+	close()
 
 
 func _go_home() -> void:
 	home_pressed.emit()
-	queue_free()
+	close()

@@ -24,6 +24,9 @@ extends Control
 
 ## Emitted after the close animation, immediately before the node is freed.
 signal closed
+## Emitted when the backdrop is tapped (only when [member dismiss_on_backdrop]).
+## Subclasses connect this to their own dismiss (e.g. resume).
+signal backdrop_pressed
 
 const _OPEN_T: float = 0.16
 const _CLOSE_T: float = 0.12
@@ -32,6 +35,8 @@ const _CLOSE_T: float = 0.12
 @export var backdrop_color: Color = Color(0.04, 0.05, 0.09, 0.88)
 ## When true, [method close] unpauses the scene tree (the pop-up paused it).
 @export var pauses_tree: bool = false
+## When true, tapping the backdrop emits [signal backdrop_pressed] (tap-outside).
+@export var dismiss_on_backdrop: bool = false
 
 var _body: Control = null
 var _closing: bool = false
@@ -44,12 +49,23 @@ func _ready() -> void:
 	anchor_bottom = 1.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-	var backdrop := ColorRect.new()
+	# A flat Button serves as the backdrop: it always absorbs taps (modal), and when
+	# dismiss_on_backdrop is set, a tap emits backdrop_pressed (tap-outside-to-close).
+	var backdrop := Button.new()
 	backdrop.name = "Backdrop"
-	backdrop.color = backdrop_color
+	backdrop.flat = true
 	backdrop.anchor_right = 1.0
 	backdrop.anchor_bottom = 1.0
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	var dim := ColorRect.new()
+	dim.name = "Dim"
+	dim.color = backdrop_color
+	dim.anchor_right = 1.0
+	dim.anchor_bottom = 1.0
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(dim)
+	if dismiss_on_backdrop:
+		backdrop.pressed.connect(func() -> void: backdrop_pressed.emit())
 	add_child(backdrop)
 
 	_body = Control.new()
