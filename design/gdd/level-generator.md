@@ -227,11 +227,75 @@ data-driven, not hardcoded.
 
 ## Dependencies
 
-[To be designed]
+**This system depends on:**
+
+| System | Hard/Soft | Interface |
+|--------|-----------|-----------|
+| `Layouts` (`core/`) | Hard | `SLOT_COUNTS[layout_id]` (→ queue length) + per-slot `{pos, layer}` geometry |
+| `LevelConfig` / `CardData` (`data/`) | Hard | the output types it constructs (`LevelConfig` + `CardData.create`) |
+| `LevelData` (autoload) | Hard | `is_solvable` (the invariant gate) + `STACK_COUNT=4` / `STACK_CAPACITY=3`; and the `get_level` dispatch (authored vs. generated — see below) |
+| `Exposure` (`core/`) | Soft (invariant) | tappability derives from `pos`/`layer` only, so any slot assignment stays reachable — the generator must not assume otherwise |
+| **Difficulty schedule** resource (`assets/data/difficulty_schedule.tres`) | Hard | the `level index N → GeneratorParams` mapping (bands/curves); data-driven, no hardcoded values |
+| ADR-0003 (solvability) · ADR-0001 (pure/node-free) · ADR-0004 (typed + gdUnit4) | Hard | architectural constraints the generator is built within |
+
+**Systems that depend on this:**
+
+| System | Direction | Nature |
+|--------|-----------|--------|
+| `LevelData.get_level(n)` | Depends on this | generates a solvable level for any `n` beyond the authored range |
+| Scoring / stars (S2-011) | Depends on this | scores play on generated levels (no direct coupling — levels just feed the board) |
+| Operation worlds (M2, future) | Depends on this | each world supplies its own schedule + result domain and reuses the same generator |
+| Daily challenge (M3, future) | Depends on this | reuses deterministic seeding for a shared, reproducible level |
+
+**New components/conventions introduced** (registry + ADR candidates):
+- `GeneratorParams` — the input record (seed + difficulty params).
+- `_has_valid_operand_pair(R, max_operand)` and `_fisher_yates_shuffle(arr, rng)` — pure `core/` helpers.
+- `difficulty_schedule.tres` — the data-driven `N → params` config.
+- **`level_id = 0` convention** = "generated, not authored" — **needs coordination with
+  `LevelData.get_level`** (currently 1-based authored IDs). → captured in the **S2-002
+  ADR (ADR-0007)**.
+
+**Reverse references to maintain (bidirectional):**
+- `design/systems-index.md` — add a **Level Generator** row (M2 / Content engine). *(added with this GDD)*
+- `design/gdd/level-and-solvability.md` — note that levels past the authored set are now generator-produced (still bound by the same invariant).
+- `autoloads/level_data.gd` doc comment — document the authored-vs-generated dispatch and `level_id = 0`.
+- **ADR-0007** (S2-002) — the construction algorithm, determinism, and the `level_id` dispatch decision.
 
 ## Tuning Knobs
 
-[To be designed]
+All values live in `assets/data/difficulty_schedule.tres` (data-driven per the
+gameplay rules — no hardcoded tuning) so a designer can retune via remote config
+without an app update.
+
+| Knob | Category | Default / Safe range | Affects · what breaks at the extremes |
+|------|----------|---------------------|----------------------------------------|
+| `R_max` per band | Curve | 12 → 30 (cap 30) | Result magnitude / cognitive load. Too high → rote recall, not mental math (breaks "calm, sharper-not-strained"); too low → trivial. |
+| `R_min` | Curve | 2 (raise to 4–5 late) | Floors triviality. `R_min = 2` allows the "1+1" degenerate (low variety). |
+| `D` (distinct results) per band | Curve | 4 → 6, **always ≤ L** | Working-memory load (targets to track). `D > STACK_COUNT(4)` → hidden targets appear only after a clear; `D = 1` → trivial. |
+| `max_operand` | Curve | tied to `R_max` | Operand magnitude within a result; narrows/loosens the valid pair set (`span`). Too small → empty candidate pool (error). |
+| `layout_cycle` | Gate | `[0, 2, 1, 2]` (late game) | Structural pacing / "new look." Any permutation of `{0,1,2}`. Drives the breather sawtooth (12-card layout ~every 4 levels). |
+| `max_repeats_per_result` | Curve | 0 → 2 | Strategic depth (buried same-value cards). > 2 → too many buried cards of one type → perceived unfairness. |
+| `knob_stagger_window` | Gate | 4 (range 3–6) | Anti-spike: at most one knob steps per window. Smaller → spikes; the rule is the core fairness guard. |
+| Band `level_start` / `level_end` | Gate | per the 5 bands | Session-length pacing; band edges are remote-config tunable. |
+| **Win-rate target** per band | Guardrail | 65–80% first-attempt | Below ~60% → too hard (slow the slope / slide the step); above 80% → no challenge. |
+| Min interesting `D` per layout | Guardrail | ≥2 (L0), ≥3 (L1/L2) | Prevents the trivial all-one-result board. |
+
+**The 5 bands** (starting points for playtest calibration):
+
+| Band | Levels | Layout | `D` | `R_max` | Feel |
+|------|--------|--------|-----|---------|------|
+| Gentle | 1–12 | 0 (12) | 4 | 12 | all 4 targets visible; small sums; zero memory load |
+| Rising | 13–28 | 2 (15) | 4→5 | →16 | first hidden target; slightly bigger sums |
+| Flowing | 29–52 | 1 (18) | 5→6 | →20 | full 3-layer depth; memory engaged |
+| Cruising | 53–84 | cycle | 5–6 | →~23 | layout rotation; variety is the reward |
+| Endless | 85+ | cycle | 5–6 | cap 30 | magnitude plateau; novelty from variety, not bigger sums |
+
+**Variety axes** (all seed-derived, no extra knobs) keep same-band levels fresh:
+result-set selection (`C(R_max−R_min, D)` combinations — hundreds to ~376k),
+queue-order shuffle (which targets start visible), operand-pair variety, and which
+result gets repeated. **Note:** operations (subtraction, ×, ÷) are **worlds**, not an
+endless-mode knob — each world ships its own schedule from a lower `R_max`; never mix
+operations within one generated level.
 
 ## Acceptance Criteria
 
