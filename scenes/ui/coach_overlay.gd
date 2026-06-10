@@ -50,11 +50,9 @@ const _BANNER_H: float = 48.0
 ## Viewport width (portrait).
 const _VIEWPORT_W: float = 390.0
 
-## Y-threshold for the card "top band" flip (matches main.gd FLOOR_ORIGIN.y = 300).
-## Cards with global_position.y < this threshold get the arrow flipped to point up
-## from below (§3 R4). The GDD notation is Layouts.FLOOR_ORIGIN but that constant
-## lives in main.gd; the numeric value (300) is authoritative.
-const _FLOOR_ORIGIN_Y: float = 300.0
+# Card "top band" flip threshold = Layouts.FLOOR_ORIGIN.y (§3 R4). Cards above it
+# get the arrow flipped to point up from below. Read from the shared Layouts
+# constant so it can never drift from where the view actually places the floor.
 
 # ---------------------------------------------------------------------------
 # State enum (§3 Lifecycle)
@@ -197,6 +195,11 @@ func arm(card: Card, productive: bool) -> void:
 func on_committed_tap(events: Array[GameEvent]) -> void:
 	if state != State.COACHING:
 		return
+	# A completion is already queued for when the grace window elapses. The first
+	# completing tap wins; ignore later taps so a ROUTE is never overwritten by a
+	# subsequent LOSE / safety-valve result (GDD §4 — ROUTE is the winning outcome).
+	if not _deferred_completion.is_empty():
+		return
 
 	var result: Dictionary = TutorialLogic.should_complete(
 		events, _state_obj.n_nonroute, TutorialLogic.TUTORIAL_MAX_TAPS)
@@ -238,11 +241,10 @@ func _complete(result: Dictionary) -> void:
 		_confirm_label.modulate.a = 0.0
 		_banner.modulate.a = 0.0
 
+		# A fade is already motion-safe (only the looping pulse/bob are gated by
+		# reduced_motion), so the confirm toast fades in the same way either way.
 		var confirm_tween := self.create_tween()
-		if _is_reduced_motion():
-			confirm_tween.tween_property(_confirm_label, "modulate:a", 1.0, MESSAGE_FADE_IN)
-		else:
-			confirm_tween.tween_property(_confirm_label, "modulate:a", 1.0, MESSAGE_FADE_IN)
+		confirm_tween.tween_property(_confirm_label, "modulate:a", 1.0, MESSAGE_FADE_IN)
 		confirm_tween.tween_interval(CONFIRM_DWELL)
 		confirm_tween.tween_property(self, "modulate:a", 0.0, FADE_OUT)
 		confirm_tween.tween_callback(_finish)
@@ -396,8 +398,8 @@ func _position_ring(card_rect: Rect2) -> void:
 
 func _position_arrow(card_rect: Rect2) -> void:
 	# Arrow points down from above by default (arrowhead faces the card from above).
-	# When the card is in the top band (y < FLOOR_ORIGIN.y = 300), flip to point up.
-	var flip: bool = card_rect.position.y < _FLOOR_ORIGIN_Y
+	# When the card is in the top band (y < Layouts.FLOOR_ORIGIN.y), flip to point up.
+	var flip: bool = card_rect.position.y < Layouts.FLOOR_ORIGIN.y
 	_arrow.text = "^" if flip else "v"
 	_arrow.size = Vector2(HIGHLIGHT_ARROW_SIZE * 2.0, HIGHLIGHT_ARROW_SIZE * 1.5)
 
@@ -469,6 +471,9 @@ func _tr(key: String) -> String:
 
 
 func _is_reduced_motion() -> bool:
-	if SettingsService != null:
-		return SettingsService.get_value("reduced_motion")
+	# Read the injected save (the configure() DI seam), not the global
+	# SettingsService — keeps the overlay testable and honours any per-session
+	# override. Both point at the same Settings instance at runtime.
+	if _save_data != null:
+		return _save_data.settings.reduced_motion
 	return false

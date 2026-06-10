@@ -13,6 +13,11 @@ extends RefCounted
 const CARD_W: float = 72.0
 const CARD_H: float = 96.0
 
+## Screen-space origin of the floor pile (top-left). The view positions the
+## floor here; the tutorial coach uses its Y as the arrow "top band" flip
+## threshold. Single source of truth shared by the view and overlays.
+const FLOOR_ORIGIN: Vector2 = Vector2(0.0, 300.0)
+
 ## Number of placements in each preset, by layout id. Kept here so [LevelData]
 ## can assert a level's [member LevelConfig.card_pool] matches its layout.
 const SLOT_COUNTS: Array[int] = [12, 18, 15]

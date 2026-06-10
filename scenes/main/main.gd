@@ -9,7 +9,7 @@ const CARD_FLY: float = 0.28
 const STACK_XS: Array[float] = [14.0, 108.0, 202.0, 296.0]
 const STACK_Y: float = 112.0
 const DISCARD_ORIGIN: Vector2 = Vector2(7, 250)
-const FLOOR_ORIGIN: Vector2 = Vector2(0.0, 300.0)
+const FLOOR_ORIGIN: Vector2 = Layouts.FLOOR_ORIGIN
 const DISCARD_WARN_AT: int = 4
 # Offset from a stack's origin to its centre, where the clear burst spawns.
 const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
@@ -133,18 +133,18 @@ func _arm_tutorial(n: int) -> void:
 		# E = ∅ (or no exposed card): do not spawn, do not set the flag (R9).
 		return
 
+	# Resolve and validate the target card BEFORE building the overlay, so the
+	# defensive null path never spawns a one-frame overlay or leaves stale state.
+	var card: Card = _floor.get_card(tid)
+	if card == null:
+		return
+
 	var productive: bool = open_targets.has(results.get(tid, -1))
 	_tutorial_state = TutorialState.new()
 	_coach = CoachOverlay.new()
 	_coach.name = "CoachOverlay"
 	_coach.configure(_tutorial_state, SaveService.data, SaveService)
 	_hud_layer.add_child(_coach)
-	var card: Card = _floor.get_card(tid)
-	if card == null:
-		# Defensive: target not on the floor — release the coach without arming.
-		_coach.queue_free()
-		_coach = null
-		return
 	_coach.arm(card, productive)
 
 

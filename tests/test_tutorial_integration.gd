@@ -30,8 +30,6 @@ extends GdUnitTestSuite
 const _GRACE_WAIT_MS: int = 700      # > (MESSAGE_FADE_IN + INPUT_GRACE) = 550 ms
 const _DWELL_WAIT_MS: int = 2100     # > (FADE_IN + CONFIRM_DWELL + FADE_OUT) = 1750 ms
 
-var _saved_data: SaveData
-
 
 # --- Test doubles for the save service -------------------------------------
 
@@ -69,14 +67,6 @@ func _make_coaching(save: SaveData, service: Object) -> CoachOverlay:
 	return coach
 
 
-func _save_state() -> void:
-	_saved_data = SaveService.data
-
-
-func _restore_state() -> void:
-	SaveService.data = _saved_data
-
-
 # --- AC8a: root is MOUSE_FILTER_IGNORE at spawn -----------------------------
 
 func test_overlay_root_is_mouse_filter_ignore_at_spawn() -> void:
@@ -107,6 +97,32 @@ func test_route_during_grace_is_deferred_then_completes() -> void:
 	assert_int(coach.state).is_equal(CoachOverlay.State.COACHING)
 	# After the grace window elapses, the deferred completion fires.
 	await await_millis(_GRACE_WAIT_MS)
+	assert_bool(coach.confirm_shown).is_true()
+	assert_bool(save.tutorial_seen).is_true()
+
+
+# --- Regression: a ROUTE deferred during grace is NOT downgraded by a later
+# LOSE within the same window (the first completing tap wins; GDD §4). -------
+
+func test_deferred_route_not_downgraded_by_later_lose_in_grace() -> void:
+	var save := _fresh_save()
+	var coach := _make_coaching(save, SpySave.new())
+
+	var seen: Array = [false, false]   # [emitted, routed]
+	coach.completed.connect(func(routed: bool) -> void:
+		seen[0] = true
+		seen[1] = routed)
+
+	# Within grace: first a ROUTE (deferred, routed:true), then a LOSE.
+	coach.on_committed_tap([GameEvent.route(0, 0)])
+	coach.on_committed_tap([GameEvent.lose()])
+	assert_bool(coach.confirm_shown).is_false()   # still suppressed during grace
+
+	await await_millis(_GRACE_WAIT_MS)
+
+	# The ROUTE must win: routed == true, confirm shown — not downgraded to LOSE.
+	assert_bool(seen[0]).is_true()
+	assert_bool(seen[1]).is_true()
 	assert_bool(coach.confirm_shown).is_true()
 	assert_bool(save.tutorial_seen).is_true()
 
