@@ -122,11 +122,108 @@ loop, no rejection sampling):
 
 ## Formulas
 
-[To be designed]
+### 1. Queue length (from layout)
+`L = Layouts.SLOT_COUNTS[layout_id] / 3`
+
+| Var | Type | Range | Description |
+|-----|------|-------|-------------|
+| `layout_id` | int | {0,1,2} | layout preset |
+| `L` | int | {4,6,5} | target-queue length = stack-clears in the level |
+
+Always integer: `SLOT_COUNTS = [12,18,15]`, all divisible by `STACK_CAPACITY = 3`.
+
+### 2. Card count per result (the solvability identity)
+`cards(R) = STACK_CAPACITY × queue_count(R) = 3 × queue_count(R)`
+`total_cards = Σ_R cards(R) = 3 × L = slot_count`
+
+This *is* ADR-0003 (`is_solvable`), satisfied by construction (Core Rule 6). Output:
+`total_cards` always equals the layout's slot count exactly — no padding/trim.
+
+### 3. Operand selection (per card)
+For a card with result `R` and within-result index `i` (0-based over its
+`3·queue_count(R)` cards):
+```
+a_min(R) = max(1, R − max_operand)
+a_max(R) = min(max_operand, R − 1)
+span(R)  = a_max(R) − a_min(R) + 1
+operand_a = a_min(R) + (i mod span(R))
+operand_b = R − operand_a
+```
+| Var | Type | Range | Description |
+|-----|------|-------|-------------|
+| `R` | int | `[R_min, R_max]` | the card's result |
+| `max_operand` | int | `1 … R_max` | per-operand cap |
+| `a_min, a_max` | int | `1 … R−1` | valid first-operand window |
+| `span(R)` | int | `1 … R−1` | # valid first operands |
+| `i` | int | `0 … 3·k−1` | within-result index (round-robin over pairs) |
+| `operand_a, operand_b` | int | `[1, max_operand]` | the printed addends; `a+b = R` always |
+
+**Output range:** both operands in `[1, max_operand]`; result always exactly `R`.
+**Worked example** (`R=7, max_operand=5`): `a_min=2, a_max=5, span=4` → cards read
+`2+5, 3+4, 4+3, 5+2`, then wrap. **Degenerate:** `R=2` → `span=1` → always "1 + 1"
+(valid, low-variety; raise `R_min` to avoid).
+
+### 4. Valid-result predicate (candidate filter)
+`has_valid_pair(R, max_operand) = (max(1, R−max_operand) ≤ min(max_operand, R−1))`
+
+A result is a candidate only if this holds (else no legal addition pair fits the
+magnitude cap).
+
+### 5. Distinct-result clamp
+`D_eff = clamp(D, 1, min(L, count(candidates)))` — warn the caller when `D_eff < D`.
+
+### 6. Difficulty curve — `R_max(N)` (the schedule's magnitude ramp)
+Piecewise, gently-sloped, soft-capped (level index `N`, 1-based):
+```
+R_max(N) =
+  N ≤ 12 : 12                                   (Gentle — fixed)
+  N ≤ 28 : 12 + ⌊(N−12)/4⌋                       (Rising → 16)
+  N ≤ 52 : 16 + ⌊(N−28)/6⌋                       (Flowing → 20)
+  N ≤ 84 : 20 + ⌊(N−52)/10⌋                      (Cruising → ~23)
+  N > 84 : min(23 + ⌊(N−84)/20⌋, 30)            (Endless — soft cap 30)
+```
+| Var | Type | Range | Description |
+|-----|------|-------|-------------|
+| `N` | int | ≥ 1 | level index |
+| `R_max(N)` | int | `12 … 30` | result ceiling for that level |
+
+**Output range:** monotonic non-decreasing, 12→30, plateau at 30 (no wall — variety
+past 30 comes from result-set / operand / layout permutation, not bigger sums).
+**Constraint:** per-level deltas are capped (`ΔR_max ≤ 2`, `ΔD ≤ 1`) and staggered so
+no two knobs step on the same level (see §Tuning Knobs). All coefficients are
+data-driven, not hardcoded.
 
 ## Edge Cases
 
-[To be designed]
+- **If `D > L`** (more distinct results requested than queue slots): clamp
+  `D_eff = min(D, L)` and warn the caller. The level generates with fewer distinct
+  results; nothing breaks.
+- **If the candidate pool (valid results in range) is smaller than `D_eff`**: clamp
+  `D_eff` down to the pool size and warn.
+- **If the candidate pool is empty** (e.g. `R_min=R_max` with no legal operand pair
+  under `max_operand`): **hard error** — `push_error` with a diagnostic, return
+  `null`. The caller (LevelData) must surface incoherent params; the generator never
+  invents a level.
+- **If `span(R) == 1`** (only one legal pair, e.g. `R=2` → "1+1"): emit the single
+  pair for every card of that result. Valid but low-variety — raise `R_min` (≥ 3) to
+  avoid in non-trivial bands.
+- **If `allow_queue_repeats == false` but `D_eff < L`** (can't fill `L` distinct slots
+  from fewer values): promote to `allow_queue_repeats = true` and warn. The level is
+  still correct; the caller should raise `D` or `R_max` to supply more candidates.
+- **If `L = 4` and `D = 1`** (degenerate: every card the same result): valid by the
+  invariant but trivial. Not a generator bug — guard via a **minimum interesting `D`
+  per layout** in the schedule (suggest `D ≥ 2` for layout 0; `D ≥ 3` for layouts 1/2).
+- **If the debug `is_solvable` self-check fails in `VALIDATE`**: this is a **generator
+  bug**, not a bad param — surface it (assert/crash in debug), never retry and never
+  suppress. By construction it cannot happen; if it does, Core Rules 5–6 are broken.
+- **If the same `(seed, params)` is generated twice**: the output is byte-identical
+  (single seeded RNG, fixed draw order). This is a guarantee, not a hazard — it
+  underpins reproducible levels and the determinism test.
+- **Schedule-level spike windows (tuning, not generator faults)** — flagged for
+  playtest: the `D 4→5` + layout change near level 20, and the first 18-card layout at
+  level ~29, are the highest perceived-difficulty steps. The stagger rule (no two
+  knobs on one level) and capped deltas mitigate them; if win-rate drops below ~60%
+  there, slide the `D` step later or slow the `R_max` slope (data-driven, no code).
 
 ## Dependencies
 
