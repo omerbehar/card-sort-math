@@ -36,7 +36,7 @@ has settings, and the core loop has audio + juice + a first-time tutorial.
 | ID | Task | Agent/Owner | Est. Days | Dependencies | Acceptance Criteria | Status |
 |----|------|-------------|-----------|-------------|--------------------|--------|
 | S1-010 | **First-time tutorial**: guided Level 1 (coach the tap, explain stacks/discard), shown once (flag in save) | ux-designer + ui-programmer | 2 | S1-001 | New player sees coaching; completing once sets flag; skippable | **Done** (2026-06-09): TutorialLogic/TutorialState (core), CoachOverlay (view), main.gd wiring, SaveData.tutorial_seen. 34 tutorial tests (23 unit + 11 integration); full suite 152 green. Visual ACs (reduced-motion / colorblind / font-scale) pending manual QA |
-| S1-011 | Settings UI screen wired to S1-003 model | ui-programmer | 1 | S1-003 | All toggles reflect & mutate persisted settings; UI owns no game state | **In Review** (built as a **pause menu** per design ref: `PauseMenu` w/ round audio toggles + pill switches + Home/Continue, pauses tree; bound to SettingsService. Adds **colorblind mode** — `colorblind` setting + `StackPalette` Okabe-Ito swap, live board recolour. 11 interaction/palette tests green + rendered evidence; device feel pending) |
+| S1-011 | Settings UI screen wired to S1-003 model | ui-programmer | 1 | S1-003 | All toggles reflect & mutate persisted settings; UI owns no game state | **Done** (merged; M1 close-out 2026-06-10): `PauseMenu` (round audio toggles + pill switches + Home/Continue, bound to SettingsService) + **colorblind mode** (`StackPalette` Okabe-Ito, live recolour). Retrofitted onto `PopupBase` (ADR-0006). 11 interaction/palette tests green + rendered evidence; device-feel sign-off → early M2 |
 
 ### Nice to Have (Cut First)
 
