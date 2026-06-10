@@ -52,7 +52,7 @@ func _ready() -> void:
 
 	var dim := ColorRect.new()
 	dim.name = "Dim"
-	dim.color = Color(0.05, 0.06, 0.10, 0.78)
+	dim.color = Color(0.04, 0.05, 0.09, 0.86)
 	dim.anchor_right = 1.0
 	dim.anchor_bottom = 1.0
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
