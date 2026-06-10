@@ -237,6 +237,9 @@ func _add_confetti() -> void:
 	ramp.set_color(1, Color(0.30, 0.70, 1.0))
 	ramp.add_point(0.33, Color(1.0, 0.85, 0.20))
 	ramp.add_point(0.66, Color(0.40, 0.85, 0.45))
+	# Per-particle random colour (varied confetti). color_initial_ramp — NOT
+	# color_ramp, which would animate each particle's colour over its lifetime.
+	p.color_initial_ramp = ramp
 	body().add_child(p)
 
 
