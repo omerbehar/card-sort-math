@@ -43,12 +43,13 @@ func start_level(level: int) -> void:
 	level_started.emit(level)
 
 
-## Records a win on the current level, advances [member current_level] to the next
-## authored level (if any), and persists the new resume point.
+## Records a win on the current level, advances [member current_level] to the
+## next level, and persists the new resume point. Progression is endless — levels
+## beyond the authored set are procedurally generated (ADR-0007), so there is no
+## level-count cap here.
 func complete_level() -> void:
 	level_completed.emit(current_level)
-	if current_level < LevelData.level_count():
-		current_level += 1
+	current_level += 1
 	_persist_progress()
 
 

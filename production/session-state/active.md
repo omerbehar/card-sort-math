@@ -1,8 +1,10 @@
 # Active Design Session
 
-Task: S1-010 First-Time Tutorial — DONE (implemented, reviewed, verified)
-Status: BLOCKING test evidence green (151 suite; 33 tutorial tests). ADVISORY
-visual ACs (AC15-17) + in-scene manual walkthrough pending lead/device sign-off.
-Evidence: production/qa/evidence/s1-010-tutorial.md
-Branch: claude/project-status-udaOL
-Next: open PR for the S1-010 batch, or pick the next sprint item (S1-020 / S1-021).
+Task: level-generator GDD (S2-001) — COMPLETE
+Status: Designed; all 8 sections + Open Questions; CD-GDD-ALIGN gate addressed
+(recoverability guard). Pending independent /design-review (fresh session).
+File: design/gdd/level-generator.md
+Registry: design/registry/entities.yaml not present — candidates noted in GDD
+(GeneratorParams, _has_valid_operand_pair, _fisher_yates_shuffle, difficulty_schedule,
+level_id=0 convention).
+Next: /design-review design/gdd/level-generator.md (fresh session) → then S2-002 (ADR-0007).
