@@ -13,8 +13,12 @@ name: Mobile Build
 #   IOS_CERTIFICATE_PASSWORD      password for that .p12
 #   IOS_PROVISION_PROFILE_BASE64  base64 of your .mobileprovision
 #   IOS_TEAM_ID                   your 10-char Apple Team ID
-#   IOS_EXPORT_METHOD             development | ad-hoc | app-store (default: development)
+#   IOS_EXPORT_METHOD             development | ad-hoc | app-store (default: app-store)
 #   KEYCHAIN_PASSWORD             any string (unlocks the temp CI keychain)
+# Optional — auto-upload the build to TestFlight (App Store Connect API key):
+#   ASC_KEY_ID                    App Store Connect API Key ID
+#   ASC_ISSUER_ID                 App Store Connect API Issuer ID
+#   ASC_API_KEY_BASE64            base64 of the AuthKey_XXXX.p8 key file
 # Without them the iOS job still runs and verifies the project compiles.
 
 on:
@@ -177,7 +181,7 @@ jobs:
           TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           METHOD: ${{ secrets.IOS_EXPORT_METHOD }}
         run: |
-          METHOD="${METHOD:-development}"
+          METHOD="${METHOD:-app-store}"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -214,3 +218,31 @@ jobs:
           name: CardSortMath-ios-ipa
           path: build/ios/ipa/*.ipa
           if-no-files-found: warn
+
+      - name: Detect App Store Connect API key (for TestFlight)
+        id: asc
+        env:
+          ASC_KEY: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ] && [ -n "$ASC_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::TestFlight upload skipped — set ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_BASE64 to auto-upload."
+          fi
+
+      - name: Upload to TestFlight
+        if: steps.asc.outputs.enabled == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          # altool looks for the key at ~/.appstoreconnect/private_keys/AuthKey_<id>.p8
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          echo "Uploading $IPA to TestFlight…"
+          xcrun altool --upload-app -f "$IPA" --type ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
