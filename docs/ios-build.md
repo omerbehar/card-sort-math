@@ -5,6 +5,32 @@
 > iOS-export-*configured* (`export_presets.cfg`, app icon, mobile/portrait
 > renderer); the steps below finish the job on a Mac.
 
+## No Mac? Build on a cloud Mac (GitHub Actions)
+
+`.github/workflows/mobile-build.yml` runs an **iOS job on a macOS cloud runner** —
+no Mac of your own required. From the **Actions** tab → *Mobile Build* → *Run
+workflow* (or push a `v*` tag). It always:
+
+- generates the Xcode project with Godot, and
+- compiles an **unsigned Simulator build** (proves it builds), uploading the
+  Xcode project as an artifact.
+
+To get an **installable signed `.ipa`** (TestFlight / device), enrol in the Apple
+Developer Program and add these repo **secrets** (Settings → Secrets → Actions):
+
+| Secret | What |
+|---|---|
+| `IOS_CERTIFICATE_BASE64` | base64 of your distribution cert `.p12` |
+| `IOS_CERTIFICATE_PASSWORD` | the `.p12` password |
+| `IOS_PROVISION_PROFILE_BASE64` | base64 of your `.mobileprovision` |
+| `IOS_TEAM_ID` | your 10-char Apple Team ID |
+| `IOS_EXPORT_METHOD` | `development` / `ad-hoc` / `app-store` |
+| `KEYCHAIN_PASSWORD` | any string (unlocks the CI keychain) |
+
+With those set, the job archives + exports a signed `.ipa` and uploads it as an
+artifact. (Codemagic is an alternative that manages the certs/profiles for you in
+its UI — see the comparison the team discussed.)
+
 ## What's already set up (committed)
 
 - `export_presets.cfg` — an **iOS** export preset:

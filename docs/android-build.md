@@ -5,6 +5,14 @@
 > + a debug keystore + the Android SDK's signing tools (no full Android Studio, no
 > NDK, no Gradle for the one-click APK path).
 
+## Build in the cloud (GitHub Actions)
+
+`.github/workflows/mobile-build.yml` has an **Android job** that does everything
+below on a free Ubuntu runner and uploads an installable **APK** artifact. Trigger
+it from the **Actions** tab → *Mobile Build* → *Run workflow* (or push a `v*`
+tag), then download `CardSortMath-android-apk` and `adb install` it — no local
+setup, no Apple account, nothing to pay.
+
 ## What's already set up (committed)
 
 - `export_presets.cfg` → **Android** preset (`preset.1`):
