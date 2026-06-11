@@ -8,7 +8,7 @@
 ## No Mac? Build on a cloud Mac (GitHub Actions)
 
 `.github/workflows/mobile-build.yml` runs an **iOS job on a macOS cloud runner** —
-no Mac of your own required. From the **Actions** tab → *Mobile Build* → *Run
+no Mac of your own required. From the **Actions** tab → *iOS Build* → *Run
 workflow* (or push a `v*` tag). It always:
 
 - generates the Xcode project with Godot, and

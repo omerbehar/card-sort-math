@@ -1,9 +1,10 @@
-name: Mobile Build
+name: iOS Build
 
-# Builds installable mobile artifacts on cloud runners.
-#   - Android: free Ubuntu runner -> signed (debug) APK artifact. Works today.
-#   - iOS: macOS runner -> Godot Xcode project + an unsigned Simulator compile
-#     (smoke test) every run; a signed .ipa when the Apple secrets below exist.
+# Builds the iOS app on a macOS cloud runner: Godot generates the Xcode project +
+# an unsigned Simulator compile (smoke test) every run; a signed .ipa (and an
+# optional TestFlight upload) when the Apple secrets below exist.
+# (Android job removed for now — the Android export preset still lives in
+#  export_presets.cfg if/when we re-add it.)
 #
 # Triggered manually (Actions tab -> Run workflow) or on a version tag, to avoid
 # spending macOS minutes on every commit.
@@ -30,81 +31,10 @@ permissions:
   contents: read
 
 env:
-  GODOT_VERSION: "4.6"
+  # setup-godot wants a full X.Y.Z semver (it maps 4.6.0 -> the 4.6-stable release).
+  GODOT_VERSION: "4.6.0"
 
 jobs:
-  android:
-    name: Android APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install platform-tools + build-tools
-        run: sdkmanager "platform-tools" "build-tools;34.0.0"
-
-      - name: Set up Godot ${{ env.GODOT_VERSION }} (+ export templates)
-        uses: chickensoft-games/setup-godot@v2
-        with:
-          version: ${{ env.GODOT_VERSION }}
-          use-dotnet: false
-          include-templates: true
-
-      - name: Generate debug keystore
-        run: |
-          mkdir -p "$HOME/.android"
-          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
-            -keystore "$HOME/.android/debug.keystore" -storepass android \
-            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
-
-      - name: Configure Godot Android editor settings
-        run: |
-          mkdir -p "$HOME/.config/godot"
-          # Godot reads the SDK / keystore paths from Editor Settings, not env vars.
-          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "${ANDROID_SDK_ROOT}"
-          export/android/java_sdk_path = "${JAVA_HOME}"
-          export/android/debug_keystore = "${HOME}/.android/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          EOF
-          # Some 4.x builds use a minor-versioned filename.
-          cp "$HOME/.config/godot/editor_settings-4.tres" \
-             "$HOME/.config/godot/editor_settings-${GODOT_VERSION}.tres"
-
-      - name: Import project
-        run: godot --headless --import
-
-      - name: Set Android versionCode from run number
-        run: |
-          # Play Store requires a strictly increasing integer versionCode per upload.
-          sed -i 's#version/code=[0-9]*#version/code=${{ github.run_number }}#' export_presets.cfg
-          grep 'version/code' export_presets.cfg
-
-      - name: Export debug APK
-        run: |
-          mkdir -p build/android
-          godot --headless --export-debug "Android" build/android/CardSortMath.apk
-          ls -lh build/android
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CardSortMath-android-apk
-          path: build/android/CardSortMath.apk
-          if-no-files-found: error
-
   ios:
     name: iOS (Xcode project + signed IPA when configured)
     runs-on: macos-14
