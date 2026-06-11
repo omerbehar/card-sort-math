@@ -62,9 +62,15 @@ jobs:
       - name: Export iOS Xcode project
         run: |
           mkdir -p build/ios
-          # Godot generates the Xcode project even though it can't build the .ipa itself.
-          godot --headless --export-debug "iOS" build/ios/CardSortMath.ipa || true
-          echo "--- build/ios ---"; ls -R build/ios
+          # Godot generates the Xcode project even though it can't build the .ipa
+          # itself (it warns about that, which is expected). Headless exit codes
+          # are flaky, so we don't gate on them — we gate on the .xcodeproj below.
+          godot --headless --export-debug "iOS" build/ios/CardSortMath.ipa 2>&1 | tee /tmp/ios_export.log || true
+          echo "--- build/ios ---"; ls -R build/ios || true
+          if ! find build/ios -name "*.xcodeproj" | grep -q .; then
+            echo "::error::iOS export produced no Xcode project — see the Godot output above."
+            exit 1
+          fi
 
       - name: Detect Xcode project + scheme
         id: xc
