@@ -23,7 +23,7 @@
 | Math Exercises | [`math-exercises.md`](gdd/math-exercises.md) | Implemented (addition only) | `data/card_data.gd` |
 | First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Implemented (S1-010, 2026-06-09; 34 tutorial tests green) | `core/tutorial_logic.gd`, `core/tutorial_state.gd`, `scenes/ui/coach_overlay.gd`, `scenes/main/main.gd` (wiring), `SaveData.tutorial_seen` |
 | Save & Settings | [`save-service.md`](gdd/save-service.md) | Approved + 3 P0 follow-ups implemented (atomic write, load_failed, ComplianceService) 2026-06-09 | `core/save_data.gd`, `autoloads/save_service.gd`, `autoloads/compliance_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
-| Level Generator | [`level-generator.md`](gdd/level-generator.md) | **Approved** (S2-001 designed; S2-002 ADR-0007; independent `/design-review` NEEDS REVISION → 12 items resolved, accepted 2026-06-11) | `core/level_generator.gd` + `assets/data/difficulty_schedule.tres` (planned, S2-003) |
+| Level Generator | [`level-generator.md`](gdd/level-generator.md) | **Implemented** (S2-001..004, 2026-06-11; 42 generator tests green, live in `LevelData.get_level`) | `core/level_generator.gd`, `core/difficulty_schedule.gd`, `core/recoverability_simulator.gd`, `core/operand_picker.gd`, `core/solvability.gd`, `assets/data/difficulty_schedule.tres`, wired in `autoloads/level_data.gd` |
 
 ## Dependency graph
 

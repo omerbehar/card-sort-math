@@ -14,7 +14,7 @@ goal: "Endless, difficulty-scaled procedural level generator that satisfies the 
 start: "2026-06-11"
 end: "2026-06-24"
 generated: "2026-06-10"
-updated: "2026-06-11"  # S2-003b done (201 tests green); S2-004 next
+updated: "2026-06-11"  # S2-004 done — generator live, endless progression (207 tests green). All M2 must-haves complete.
 
 stories:
   - id: "S2-001"
@@ -57,11 +57,11 @@ stories:
     name: "Wire generator into LevelData/GameManager"
     file: "autoloads/level_data.gd"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1
     blocker: ""
-    completed: ""
+    completed: "2026-06-11"
   - id: "S2-010"
     name: "Scoring/stars quick-design"
     file: "design/quick-specs/scoring-stars.md"
