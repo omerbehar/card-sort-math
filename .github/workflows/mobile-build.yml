@@ -37,10 +37,15 @@ env:
 jobs:
   ios:
     name: iOS (Xcode project + signed IPA when configured)
-    runs-on: macos-14
+    # macos-15 ships Xcode 16; Godot 4.6's iOS template needs the Xcode-16 Swift
+    # runtime (Xcode 15.4 fails to link swift_Builtin_float).
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
 
       - name: Set up Godot ${{ env.GODOT_VERSION }} (+ export templates)
         uses: chickensoft-games/setup-godot@v2
@@ -65,7 +70,9 @@ jobs:
           # Godot generates the Xcode project even though it can't build the .ipa
           # itself (it warns about that, which is expected). Headless exit codes
           # are flaky, so we don't gate on them — we gate on the .xcodeproj below.
-          godot --headless --export-debug "iOS" build/ios/CardSortMath.ipa 2>&1 | tee /tmp/ios_export.log || true
+          # Release export so the Release archive links the release Godot library
+          # (mixing --export-debug with a Release archive links the debug template).
+          godot --headless --export-release "iOS" build/ios/CardSortMath.ipa 2>&1 | tee /tmp/ios_export.log || true
           echo "--- build/ios ---"; ls -R build/ios || true
           if ! find build/ios -name "*.xcodeproj" | grep -q .; then
             echo "::error::iOS export produced no Xcode project — see the Godot output above."
@@ -87,7 +94,7 @@ jobs:
         run: |
           xcodebuild -project "${{ steps.xc.outputs.proj }}" \
             -scheme "${{ steps.xc.outputs.scheme }}" \
-            -sdk iphonesimulator -configuration Debug \
+            -sdk iphonesimulator -configuration Release \
             CODE_SIGNING_ALLOWED=NO build | tail -30
 
       - name: Detect whether Apple signing secrets are present
