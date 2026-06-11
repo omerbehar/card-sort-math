@@ -14,7 +14,7 @@ goal: "Endless, difficulty-scaled procedural level generator that satisfies the 
 start: "2026-06-11"
 end: "2026-06-24"
 generated: "2026-06-10"
-updated: "2026-06-11"
+updated: "2026-06-11"  # S2-003a done (188 tests green)
 
 stories:
   - id: "S2-001"
@@ -39,16 +39,16 @@ stories:
     name: "Generator core — by construction + solvability property test"
     file: "core/level_generator.gd"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "gameplay-programmer + gdscript-specialist"
     estimate_days: 2
     blocker: ""
-    completed: ""
+    completed: "2026-06-11"
   - id: "S2-003b"
     name: "Generator core — difficulty knobs + determinism"
     file: "core/level_generator.gd"
     priority: must-have
-    status: backlog
+    status: ready-for-dev
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
