@@ -1,9 +1,14 @@
 # Level Generator
 
-> **Status**: In Design
+> **Status**: Designed — all 8 sections complete, CD gate addressed (S2-001); pending independent `/design-review`
 > **Author**: omer.behar + agents (S2-001)
 > **Last Updated**: 2026-06-10
 > **Implements Pillar**: Content engine — endless, difficulty-scaled, always-solvable levels
+> **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (addressed) 2026-06-10 — the
+> "fair to play, not just provably solvable" gap is closed by the recoverability guard
+> (Core Rule 10, the knife's-edge edge case, `min_recovery_margin`, AC-32); the
+> visible→hidden-target on-ramp and the perceived-recycling-at-depth notes are in Open
+> Questions for the M2 playtest.
 
 ## Overview
 
@@ -91,11 +96,28 @@ mistake" — generated levels must feel fair to *play*, not just be provably sol
    "generated, not authored" marker). A debug `assert(LevelData.is_solvable(...))` is a
    self-check only — by construction it cannot fail; if it ever does, that's a
    generator bug, not a bad param (surface it, never retry).
+10. **Recoverability guard (fair to play, not just provably solvable).** Solvability
+    (Rules 5–6) guarantees a *perfect-play* solution exists; it does **not** bound how
+    much slack a *fallible* player has before the discard row fills. The engine's
+    `DISCARD_SLOTS` buffer + the PULL mechanic are the recovery mechanism; the generator
+    must not deal a board that forces a reasonable player into the discard cap. It bounds
+    "forcedness" primarily **by construction** — exposure-independence (Rule 8) means no
+    covered-card lock; `D ≤ STACK_COUNT` in early bands keeps every target visible; and
+    `max_repeats_per_result ≤ 2` limits buried same-value cards. As a backstop, a
+    constructed level is checked for a minimum **recovery margin** (`min_recovery_margin`,
+    §Tuning Knobs); a board that fails is re-seeded — the *one* permitted, bounded re-roll
+    (a small fixed attempt cap), distinct from solvability which never needs one.
+    Determinism is preserved: the re-roll is seed-derived, so the same `(seed, params)`
+    always lands on the same final level. *(The exact recoverability metric and
+    `min_recovery_margin` value are flagged to ADR-0007 + the game-designer — see Open
+    Questions.)*
 
 ### States and Transitions
 
-The generator is a pure function with a forward-only internal pipeline (no retry
-loop, no rejection sampling):
+The generator is a pure function with an essentially forward-only pipeline: no
+rejection sampling for solvability (it is by construction), and the only loop is the
+bounded, deterministic recoverability re-seed of Rule 10 (a backstop that should rarely
+fire):
 
 | State | Entry | Exit | Work |
 |-------|-------|------|------|
@@ -104,7 +126,7 @@ loop, no rejection sampling):
 | `BUILD_QUEUE` | after PICK_RESULTS | always | construct the length-`L` target queue (Rule 5) |
 | `BUILD_POOL` | after BUILD_QUEUE | always | emit `3k` cards per result + operands (Rules 6–7) |
 | `ASSIGN_SLOTS` | after BUILD_POOL | always | deterministic slot/layer assignment (Rule 8) |
-| `VALIDATE` | after ASSIGN_SLOTS | pass→`DONE`, fail→`ERROR` | debug `is_solvable` assert (Rule 9) |
+| `VALIDATE` | after ASSIGN_SLOTS | solvable + recoverable → `DONE`; recoverability-fail → re-seed (bounded, Rule 10); solvability-fail → `ERROR` | debug `is_solvable` assert (Rule 9) + recovery-margin check (Rule 10) |
 | `DONE` | validation passes | — | return `LevelConfig` |
 | `ERROR` | empty candidate pool / incoherent params | — | `push_error`, return `null`; caller handles |
 
@@ -219,6 +241,13 @@ data-driven, not hardcoded.
 - **If the same `(seed, params)` is generated twice**: the output is byte-identical
   (single seeded RNG, fixed draw order). This is a guarantee, not a hazard — it
   underpins reproducible levels and the determinism test.
+- **If a constructed board is a knife's-edge** (< `min_recovery_margin` discard
+  headroom under a "route-greedily but make one suboptimal tap" simulation, despite
+  being provably solvable): re-seed deterministically and rebuild — the single permitted
+  recoverability re-roll (Rule 10), capped at a small fixed number of attempts. If the
+  cap is hit (should be vanishingly rare given the construction bounds), fall back to the
+  most-recoverable candidate and warn. This protects "recover from a reasonable mistake"
+  without touching the solvability guarantee.
 - **Schedule-level spike windows (tuning, not generator faults)** — flagged for
   playtest: the `D 4→5` + layout change near level 20, and the first 18-card layout at
   level ~29, are the highest perceived-difficulty steps. The stagger rule (no two
@@ -279,6 +308,7 @@ without an app update.
 | Band `level_start` / `level_end` | Gate | per the 5 bands | Session-length pacing; band edges are remote-config tunable. |
 | **Win-rate target** per band | Guardrail | 65–80% first-attempt | Below ~60% → too hard (slow the slope / slide the step); above 80% → no challenge. |
 | Min interesting `D` per layout | Guardrail | ≥2 (L0), ≥3 (L1/L2) | Prevents the trivial all-one-result board. |
+| `min_recovery_margin` | Guardrail | 1–2 discard slots (of `DISCARD_SLOTS=5`) | **Fair-to-play floor** (Core Rule 10): minimum headroom a fallible player has before the discard cap. Higher = more forgiving; 0 = knife's-edge allowed (do not ship). Exact metric → ADR-0007 / playtest. |
 
 **The 5 bands** (starting points for playtest calibration):
 
@@ -347,6 +377,9 @@ sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (play
 - **AC-30 [B]** `get_level(50)` twice → field-identical.
 - **AC-31 [B]** A generated level feeds `BoardModel.from_config` cleanly and a tap on an exposed card returns a non-empty event list (playable end-to-end).
 
+**Group 7 — Recoverability (fair-to-play, Core Rule 10)**
+- **AC-32 [B]** GIVEN the seed sweep (AC-01 params), WHEN each generated level is played by a "route-greedily but make exactly one suboptimal/forced tap" simulated player, THEN the player still reaches WIN (never LOSE) — i.e. every level retains ≥ `min_recovery_margin` discard headroom. *(The simulation definition is pinned in ADR-0007; until then this AC is the spec.)*
+
 ## Open Questions
 
 - **Warning surface** — adopt a `GeneratorResult { config, warnings: Array[String] }`
@@ -368,3 +401,15 @@ sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (play
 - **Procedural layouts (later)** — should the generator eventually produce its own
   layouts (positions/layers) rather than only choosing among authored presets? Out of
   scope for S2-003; revisit if authored-layout variety becomes the bottleneck.
+- **Recoverability metric (CD gate must-fix)** — the exact "k-mistake recoverability"
+  simulation and the `min_recovery_margin` value need defining with the game-designer
+  and the discard/PULL rules. → **ADR-0007** + M2 playtest. The construction bounds
+  (exposure-independence, `D ≤ STACK_COUNT` early, `max_repeats ≤ 2`) are the first line;
+  the re-seed backstop and AC-32 are the safety net.
+- **Visible→hidden target on-ramp (CD soft note)** — the first hidden target (~level 20,
+  Rising band) is a *new cognitive mode* (working-memory hold), not just a bigger number;
+  the stagger rule doesn't soften a category change. Consider telegraphing / delaying the
+  first hidden target. Owner: game-designer, M2 playtest.
+- **Perceived recycling at depth (CD soft note)** — past ~level 300 freshness rests
+  entirely on combinatorial variety; the Player Fantasy fears "recycled-feeling" boards.
+  Add a perceived-recycling metric to the M2 playtest. Owner: game-designer.
