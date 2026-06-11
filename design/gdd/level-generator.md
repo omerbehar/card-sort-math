@@ -390,9 +390,18 @@ without an app update.
 |------|--------|--------|-----|---------|---------|------|
 | Gentle | 1–12 | 0 (12) | 4 | 2 | 10→12 | all 4 targets visible; onboarding flat 1–5, then two small steps (11 @ N6, 12 @ N8) so growth is felt early |
 | Rising | 13–28 | 2 (15) | 4, **→5 @ N=21** | 3 | →16 | layout 2 stable from N=13; first hidden target deferred to N=21 (8 stable-layout levels first) |
-| Flowing | 29–52 | 1 (18) | 5→6 | 3 | →20 | full 3-layer depth; memory engaged |
-| Cruising | 53–84 | cycle | 5–6 | 4 | →~23 | layout rotation; variety is the reward |
-| Endless | 85+ | cycle | 5–6 | 5 | cap 30 | magnitude plateau (intentional); long-tail progression owned by meta-progression, novelty from variety |
+| Flowing | 29–52 | 1 (18) | 5 | 3 | →20 | full 3-layer depth; memory engaged |
+| Cruising | 53–84 | cycle (held 4 levels) | 5 | 4 | →~23 | layout rotation; variety is the reward |
+| Endless | 85+ | cycle (held 4 levels) | 5 | 5 | cap 30 | magnitude plateau (intentional); long-tail progression owned by meta-progression, novelty from variety |
+
+**Schedule simplifications (S2-003b, remote-config tunable, revisit at playtest):** (1) `D`
+is capped at **5** (one step, 4→5 @ N=21) rather than reaching 6 — a `D=6` would exceed the
+queue length of the 12-card layout (`L=4`) on the cycled late-game levels and clamp/churn; 5
+still gives layout-1 boards a hidden target. (2) The late-game `layout_cycle` `[0,2,1,2]` holds
+each layout for **4 levels** (the "breather ~every 4 levels" reading), which keeps the strict
+per-level stagger (AC-26) intact everywhere — every non-layout knob step is placed on a
+layout-stable level. Both live in `difficulty_schedule.tres` and can be retuned without a code
+change.
 
 **Stagger pin (determinism-critical for AC-26):** the `D 4→5` step is fixed at **level 21**,
 never at a band boundary. This keeps it off N=29 (where layout steps 2→1) so no two knobs

@@ -7,43 +7,91 @@ extends RefCounted
 ##
 ## Solvability (ADR-0003) is structural, never sampled: the target queue is built
 ## first, then exactly [code]3 x queue_count(R)[/code] cards are dealt for each
-## result R. Usage:
+## result R. When [member GeneratorParams.min_recovery_margin] > 0, a constructed
+## board is also checked for "fair to play" recoverability (GDD Core Rule 10) and
+## deterministically re-seeded on failure. Usage:
 ## [codeblock]
 ## var params := GeneratorParams.create(0, 4, 3, 12, 6, 42)
 ## var result := LevelGenerator.generate(params)
 ## if not result.is_error():
 ##     BoardModel.from_config(result.config)
 ## [/codeblock]
-##
-## Out of scope for this story (S2-003a): the difficulty schedule (S2-003b), the
-## Rule 10 recoverability re-seed (S2-003b), and [LevelData] dispatch (S2-004).
 
 ## Cards per stack clear — the queue-to-pool multiplier (ADR-0003).
 const STACK_CAPACITY: int = 3
 
+## Prime offset that deterministically re-seeds each recoverability attempt.
+const RESEED_STRIDE: int = 7919
+
 
 ## Generates a solvable [LevelConfig] from [param params]. On incoherent params
-## (bad [code]layout_id[/code]/[code]max_operand[/code], or no legal result)
 ## the returned [GeneratorResult] has a [code]null[/code] config and a warning.
-static func generate(params: GeneratorParams) -> GeneratorResult:
+## [param recovery_fn] (optional) is an injected
+## [code]func(config, margin) -> bool[/code] recoverability predicate — defaults
+## to [RecoverabilitySimulator]; injectable so the re-seed/fallback path is
+## deterministically testable (AC-34).
+static func generate(params: GeneratorParams, recovery_fn: Callable = Callable()) -> GeneratorResult:
 	var result := GeneratorResult.new()
+	var margin: int = params.min_recovery_margin
+	var attempts: int = 1 if margin <= 0 else maxi(1, params.recovery_attempt_cap)
+	var fallback: LevelConfig = null
+	var fallback_warnings: Array[String] = []
+
+	for attempt in range(attempts):
+		var effective_seed: int = params.seed + attempt * RESEED_STRIDE
+		var built := _build_level(params, effective_seed)
+		var config: LevelConfig = built.config
+
+		if config == null:
+			# Hard error (bad params / empty pool) — seed-independent, fail fast.
+			result.warnings = built.warnings
+			return result
+
+		if margin <= 0:
+			result.warnings = built.warnings
+			result.config = config
+			return result
+
+		if fallback == null:
+			fallback = config
+			fallback_warnings = built.warnings
+
+		var recoverable: bool = (
+			recovery_fn.call(config, margin) if recovery_fn.is_valid()
+			else RecoverabilitySimulator.is_recoverable(config, margin))
+		if recoverable:
+			result.warnings = built.warnings
+			result.config = config
+			return result
+
+	# Cap exhausted — keep the first solvable candidate (GDD Rule 10 fallback).
+	result.warnings = fallback_warnings
+	result.warn("recoverability cap (%d attempts) exhausted; using fallback level" % attempts)
+	result.config = fallback
+	return result
+
+
+# Builds one solvable level from [param effective_seed]. Returns
+# { config: LevelConfig or null, warnings: Array[String] }.
+static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictionary:
+	var warnings: Array[String] = []
 
 	# INIT — validate params before any allocation (GDD Core Rule 4 guard, Edge Cases).
 	if params.layout_id < 0 or params.layout_id >= Layouts.SLOT_COUNTS.size():
 		push_error("LevelGenerator: layout_id %d out of range" % params.layout_id)
-		result.warn("layout_id %d out of range {0,1,2}" % params.layout_id)
-		return result
+		warnings.append("layout_id %d out of range {0,1,2}" % params.layout_id)
+		return {config = null, warnings = warnings}
 	if params.max_operand < 1:
 		push_error("LevelGenerator: max_operand must be >= 1 (got %d)" % params.max_operand)
-		result.warn("max_operand %d < 1" % params.max_operand)
-		return result
+		warnings.append("max_operand %d < 1" % params.max_operand)
+		return {config = null, warnings = warnings}
 	if params.distinct_results < 1:
 		push_error("LevelGenerator: distinct_results must be >= 1")
-		result.warn("distinct_results %d < 1" % params.distinct_results)
-		return result
+		warnings.append("distinct_results %d < 1" % params.distinct_results)
+		return {config = null, warnings = warnings}
 
 	var rng := RandomNumberGenerator.new()
-	rng.seed = params.seed
+	rng.seed = effective_seed
 
 	var slot_count: int = Layouts.SLOT_COUNTS[params.layout_id]
 	var queue_length: int = slot_count / STACK_CAPACITY
@@ -58,12 +106,12 @@ static func generate(params: GeneratorParams) -> GeneratorResult:
 	if candidates.is_empty():
 		push_error("LevelGenerator: no valid result in [%d, %d] under max_operand %d"
 			% [params.result_min, params.result_max, params.max_operand])
-		result.warn("empty candidate pool")
-		return result
+		warnings.append("empty candidate pool")
+		return {config = null, warnings = warnings}
 
 	var distinct: int = clampi(params.distinct_results, 1, mini(queue_length, candidates.size()))
 	if distinct < params.distinct_results:
-		result.warn("distinct_results clamped from %d to %d" % [params.distinct_results, distinct])
+		warnings.append("distinct_results clamped from %d to %d" % [params.distinct_results, distinct])
 
 	_shuffle_int(candidates, rng)
 	var chosen: Array[int] = candidates.slice(0, distinct)
@@ -72,7 +120,7 @@ static func generate(params: GeneratorParams) -> GeneratorResult:
 	var allow_repeats: bool = params.allow_queue_repeats
 	if not allow_repeats and distinct < queue_length:
 		allow_repeats = true
-		result.warn("allow_queue_repeats promoted to true (distinct %d < queue length %d)"
+		warnings.append("allow_queue_repeats promoted to true (distinct %d < queue length %d)"
 			% [distinct, queue_length])
 
 	var queue: Array[int] = chosen.duplicate()
@@ -107,7 +155,8 @@ static func generate(params: GeneratorParams) -> GeneratorResult:
 	# function of slot assignment, never of result draw order.
 	pool.sort_custom(func(a: CardData, b: CardData) -> bool: return a.layout_slot < b.layout_slot)
 
-	# ASSEMBLE — fresh arrays (no aliasing of working buffers).
+	# ASSEMBLE — fresh arrays (no aliasing of working buffers). Provenance stamps
+	# the BASE seed so re-running generate(params) reproduces the same final level.
 	var config := LevelConfig.new()
 	config.level_id = LevelConfig.GENERATED_ID
 	config.layout_id = params.layout_id
@@ -118,11 +167,9 @@ static func generate(params: GeneratorParams) -> GeneratorResult:
 	config.level_index = params.level_index
 
 	# VALIDATE — debug self-check; by construction it cannot fail.
-	# S2-003b: the Rule 10 recoverability check / re-seed slots in here.
 	assert(Solvability.is_solvable(config), "LevelGenerator produced an unsolvable level (construction bug)")
 
-	result.config = config
-	return result
+	return {config = config, warnings = warnings}
 
 
 ## In-place seeded Fisher-Yates over [param arr]. The ONLY shuffle the generator

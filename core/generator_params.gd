@@ -18,6 +18,11 @@ var seed: int = 0
 var world_id: int = 0
 var level_index: int = 0
 
+# Recoverability (Core Rule 10 / AC-32). 0 disables the check (the default, so
+# S2-003a callers are unaffected); the difficulty schedule sets it to 1.
+var min_recovery_margin: int = 0
+var recovery_attempt_cap: int = 8
+
 
 ## Convenience factory. Field names mirror the GDD's `D` / `R_min` / `R_max`.
 static func create(
