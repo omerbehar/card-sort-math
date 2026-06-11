@@ -14,18 +14,18 @@ goal: "Endless, difficulty-scaled procedural level generator that satisfies the 
 start: "2026-06-11"
 end: "2026-06-24"
 generated: "2026-06-10"
-updated: "2026-06-11"  # S2-003a done (188 tests green)
+updated: "2026-06-11"  # S2-003b done (201 tests green); S2-004 next
 
 stories:
   - id: "S2-001"
     name: "Level-generator GDD"
     file: "design/gdd/level-generator.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "game-designer + systems-designer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-11"
   - id: "S2-002"
     name: "Generator ADR (+ re-plan checkpoint)"
     file: "docs/architecture/ADR-0007-level-generator.md"
@@ -45,19 +45,19 @@ stories:
     blocker: ""
     completed: "2026-06-11"
   - id: "S2-003b"
-    name: "Generator core — difficulty knobs + determinism"
+    name: "Generator core — difficulty knobs + determinism + recoverability"
     file: "core/level_generator.gd"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-11"
   - id: "S2-004"
     name: "Wire generator into LevelData/GameManager"
     file: "autoloads/level_data.gd"
     priority: must-have
-    status: backlog
+    status: ready-for-dev
     owner: "gameplay-programmer"
     estimate_days: 1
     blocker: ""
