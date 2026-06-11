@@ -14,7 +14,7 @@ goal: "Endless, difficulty-scaled procedural level generator that satisfies the 
 start: "2026-06-11"
 end: "2026-06-24"
 generated: "2026-06-10"
-updated: "2026-06-10"
+updated: "2026-06-11"
 
 stories:
   - id: "S2-001"
@@ -30,11 +30,11 @@ stories:
     name: "Generator ADR (+ re-plan checkpoint)"
     file: "docs/architecture/ADR-0007-level-generator.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "technical-director + systems-designer"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-11"
   - id: "S2-003a"
     name: "Generator core — by construction + solvability property test"
     file: "core/level_generator.gd"
