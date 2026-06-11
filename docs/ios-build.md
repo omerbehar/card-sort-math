@@ -86,7 +86,10 @@ its UI — see the comparison the team discussed.)
 
 - Replace `ios/icon_1024.png` with final 1024×1024 **opaque** artwork (no alpha,
   no rounded corners — Apple rejects transparency on the store icon).
-- Bump `application/short_version` / `application/version` per release.
+- Bump `application/short_version` (marketing version) per release. The **build
+  number** (`application/version` / `CFBundleVersion`) is **auto-set from the CI
+  run number** by `mobile-build.yml`, so TestFlight uploads never collide — no
+  manual bump needed for builds.
 - Fill the privacy usage strings in the preset only for capabilities you actually
   use (none today — no camera/mic/photos).
 - Provide a launch screen / storyboard (the preset uses Godot's default launch

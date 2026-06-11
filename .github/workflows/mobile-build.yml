@@ -86,6 +86,12 @@ jobs:
       - name: Import project
         run: godot --headless --import
 
+      - name: Set Android versionCode from run number
+        run: |
+          # Play Store requires a strictly increasing integer versionCode per upload.
+          sed -i 's#version/code=[0-9]*#version/code=${{ github.run_number }}#' export_presets.cfg
+          grep 'version/code' export_presets.cfg
+
       - name: Export debug APK
         run: |
           mkdir -p build/android
@@ -115,6 +121,13 @@ jobs:
 
       - name: Import project
         run: godot --headless --import
+
+      - name: Set iOS build number from run number
+        run: |
+          # TestFlight requires a unique CFBundleVersion per upload; the marketing
+          # version (short_version) stays as authored. macOS sed needs -i''.
+          sed -i '' 's/application\/version="[^"]*"/application\/version="${{ github.run_number }}"/' export_presets.cfg
+          grep 'application/version' export_presets.cfg
 
       - name: Export iOS Xcode project
         run: |
