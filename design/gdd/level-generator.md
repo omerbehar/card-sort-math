@@ -299,8 +299,72 @@ operations within one generated level.
 
 ## Acceptance Criteria
 
-[To be designed]
+**Resolutions baked in** (from the QA review): warnings surface via a
+`GeneratorResult { config, warnings: Array[String] }` wrapper (recorded in ADR-0007);
+the stagger rule is **strict per-level**; AC-13 tests operand *coverage*, not an exact
+sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (playtest).
+
+**Group 1 — Solvability & determinism**
+- **AC-01 [B]** GIVEN 100 seeds (0–99) + valid params, WHEN each is generated, THEN `is_solvable` is `true` for all 100 (the headline property test).
+- **AC-02 [B]** Same property loop across all 3 layouts (300 calls) → all solvable.
+- **AC-03 [B]** Same `(seed, params)` twice → field-identical `LevelConfig` (queue + every card's fields).
+- **AC-04 [B]** Seeds 7 vs 8, else identical → at least one queue entry or card result differs.
+
+**Group 2 — Structure / counts**
+- **AC-05 [B]** `card_pool.size()` == `SLOT_COUNTS[layout_id]` (12/18/15).
+- **AC-06 [B]** `target_queue.size()` == slot_count/3 (4/6/5).
+- **AC-07 [B]** For every result R: `#cards(R) == 3 × queue_count(R)` (the identity, checked independently of `is_solvable`).
+- **AC-08 [B]** `layout_slot` values are a permutation of `range(slot_count)` (each slot exactly once).
+- **AC-09 [B]** `config.level_id == 0` (generated marker).
+
+**Group 3 — Operands**
+- **AC-10 [B]** Every card: `result == operand_a + operand_b`.
+- **AC-11 [B]** Every card: `operand_a, operand_b ∈ [1, max_operand]`.
+- **AC-12 [B]** Every card's `result ∈ [R_min, R_max]`.
+- **AC-13 [B]** For a result R with `span(R) ≥ 2`, the pool contains ≥2 distinct `operand_a` for R (operand variety; coverage form).
+- **AC-14 [B]** Forcing `R=2` (`span=1`) → every such card is "1 + 1".
+
+**Group 4 — Clamps & edge cases**
+- **AC-15 [B]** `D=10 > L=4` → exactly 4 distinct results + a warning in `result.warnings`.
+- **AC-16 [B]** Candidate pool < D → `D_eff = min(L, #candidates)`, warning, config solvable.
+- **AC-17 [B]** Empty candidate pool (`R_min=R_max=10, max_operand=4`) → returns `null` + `push_error` (push_error assertion advisory if gdUnit4 cannot spy it).
+- **AC-18 [B]** `allow_queue_repeats=false` with `D_eff < L` → queue length L, solvable, promotion warning.
+- **AC-19 [B]** A harness that breaks Rules 5–6 (4k cards) → the VALIDATE assert fires; no config returned, no retry (advisory if asserts are stripped in CI).
+- **AC-20 [A]** `D=1` → solvable, queue all one result, 12 same-result cards (degenerate but valid).
+
+**Group 5 — Difficulty schedule**
+- **AC-21 [B]** `R_max(N)` at N∈{1,12,13,28,29,52,53,84,85,200} == {12,12,12,16,16,20,20,23,23,28}.
+- **AC-22 [B]** `R_max(N)` non-decreasing over N=1…200.
+- **AC-23 [B]** `R_max(N) ≤ 30` for N=85…1000 (soft cap).
+- **AC-24 [B]** `ΔR_max(N,N+1) ∈ {0,1,2}` over N=1…200.
+- **AC-25 [B]** `ΔD(N,N+1) ∈ {0,1}` over N=1…200.
+- **AC-26 [B]** **Stagger (strict per-level):** at every N, the set of changed knobs among `{R_max, D, layout_id, R_min, max_operand}` has size ≤ 1.
+- **AC-27 [A]** Playtest levels 18–22 & 27–31: first-attempt win-rate 55–80% (human).
+
+**Group 6 — Integration (`LevelData.get_level`)**
+- **AC-28 [B]** Authored levels 1–3 unchanged (regression guard).
+- **AC-29 [B]** `get_level(4)` (past authored) → non-null, `level_id==0`, solvable.
+- **AC-30 [B]** `get_level(50)` twice → field-identical.
+- **AC-31 [B]** A generated level feeds `BoardModel.from_config` cleanly and a tap on an exposed card returns a non-empty event list (playable end-to-end).
 
 ## Open Questions
 
-[To be designed]
+- **Warning surface** — adopt a `GeneratorResult { config, warnings: Array[String] }`
+  wrapper (vs. `push_warning`)? Leaning yes (testable, no global side-effects). →
+  **decide in ADR-0007 (S2-002)**.
+- **`level_id = 0` dispatch** — exact `LevelData.get_level(n)` logic for
+  authored-vs-generated, and the seed derivation from `n` (e.g. `seed = n`, or a
+  hashed/world-salted seed). → **ADR-0007**.
+- **Stagger semantics** — resolved here as *strict per-level* (≤1 knob change per
+  level); `knob_stagger_window` then governs minimum spacing between steps within a
+  band. Confirm this reading holds when the schedule data is authored. → **ADR-0007 /
+  schedule data**.
+- **More authored layouts (Phase 2)** — open-endedness currently cycles 3 layouts
+  `[0,2,1,2]`. Adding layout variants (a `depth_layers` knob, new slot counts) would
+  deepen late-game variety; data-driven, no code change. Owner: level-designer, post-M2.
+- **Difficulty calibration** — band edges, `R_max` slope, and win-rate targets
+  (65–80%) are starting points; real values come from playtest data (AC-27). Owner:
+  game-designer, during M2 playtest.
+- **Procedural layouts (later)** — should the generator eventually produce its own
+  layouts (positions/layers) rather than only choosing among authored presets? Out of
+  scope for S2-003; revisit if authored-layout variety becomes the bottleneck.
