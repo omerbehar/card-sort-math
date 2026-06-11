@@ -1,10 +1,13 @@
 # ADR-0007: Level Generator — construction, determinism, dispatch & recoverability
 
 ## Status
-Proposed
+Proposed (hardened 2026-06-11 after the independent `/design-review` of the GDD — added the
+`level_id = -1` sentinel guard, typed `DifficultyScheduleData`, injected recovery predicate,
+and the four determinism contracts: `rng.seed=`, global-RNG ban, canonical `card_pool` sort,
+no-alias array assignment.)
 
 ## Date
-2026-06-10
+2026-06-10 (rev. 2026-06-11)
 
 ## Engine Compatibility
 
@@ -66,6 +69,7 @@ seed = world_id * WORLD_STRIDE + level_index        # WORLD_STRIDE = 1_000_000
 - `LevelData.get_level(n)` returns the **authored** config for `n ≤ level_count()`, else calls the generator.
 - The difficulty schedule lives in `assets/data/difficulty_schedule.tres`. **`LevelData` (the autoload) is the only layer that calls `load()`**; it hands the raw resource data to a **pure `core/difficulty_schedule.gd`** that computes `GeneratorParams` from the level index (the `R_max(N)` curve, clamps, stagger — all unit-testable headlessly per ADR-0004). The generator itself **never** calls `load()`/`ResourceLoader`.
 - Generated configs are marked by a named constant **`LevelConfig.GENERATED_ID = 0`** with a `LevelConfig.is_generated()` accessor (no code compares the literal `0`). **Provenance is carried on `LevelConfig`** — `seed`, `world_id`, `level_index` fields — so M3 daily-challenge / "share this seed" is a data lookup, not a schema change. (`LevelConfig` is built at runtime and is **not** persisted in `SaveData`, so adding fields incurs no save migration.)
+- **Sentinel-collision guard (design-review fix):** `LevelConfig.level_id`'s field default must be **`-1`** ("unset"), *not* `0` — otherwise a bare `LevelConfig.new()` or an editor-created `.tres` would default to `0` and read as generated. Authored levels set positive ids (`_build_level` uses `index + 1`); generated levels set `GENERATED_ID = 0`; `-1` means "neither / not initialised". A regression test asserts `is_generated() == false` for authored levels 1–3 (GDD AC-28). Provenance fields should be `@export_storage`/runtime-only so they are not baked into any future authored `.tres`.
 
 ### 5. Recoverability (fair-to-play backstop, GDD Core Rule 10)
 "Forcedness" is bounded primarily by construction (exposure-independence; `D ≤ STACK_COUNT` in early bands; `max_repeats_per_result ≤ 2`). As a backstop, a constructed level is checked by a **pure `core/` simulation that reuses `BoardModel`** (a `RefCounted`: `from_config` → greedy `tap_card` route + one forced/suboptimal tap → `is_won`/`is_lost`) — no scene tree, no animation, events consumed only as data. A board leaving `< min_recovery_margin` free discard slots is **re-seeded deterministically** (`retry_seed = base_seed + attempt × 7919`, a small fixed attempt cap; on cap, keep the most-recoverable candidate + warn). The **mechanism** is Accepted; the **metric value** (`min_recovery_margin`, the exact sim) is **data-driven/TBD**, finalized with the game-designer at M2 playtest — so this ADR survives tuning without being superseded.
@@ -91,10 +95,13 @@ core/difficulty_schedule.gd (PURE) ── GeneratorParams ──▶ core/level_g
 ### Key Interfaces
 - `LevelGenerator.generate(params: GeneratorParams, seed: int) -> GeneratorResult` (pure, `core/`).
 - `GeneratorParams` (RefCounted): `layout_id, D, R_min, R_max, max_operand, allow_queue_repeats`.
-- `GeneratorResult` (RefCounted): `config: LevelConfig` (null on hard error), `warnings: Array[String]`.
-- `DifficultySchedule.params_for(level_index: int, schedule_data) -> GeneratorParams` (pure, `core/`).
-- `LevelConfig`: `const GENERATED_ID := 0`, `func is_generated() -> bool`, `seed/world_id/level_index` provenance fields.
-- Recoverability: `LevelGenerator._is_recoverable(config, min_margin) -> bool` (pure, reuses `BoardModel`).
+- `GeneratorResult` (RefCounted): `config: LevelConfig = null` (typed-nullable; `null` on hard error — callers must check before `BoardModel.from_config`), `warnings: Array[String]`.
+- `DifficultySchedule.params_for(level_index: int, schedule_data: DifficultyScheduleData) -> GeneratorParams` (pure, `core/`). `DifficultyScheduleData extends Resource` (a `RefCounted`) — the parameter is **never** typed as `Node`/autoload, so `core/` stays node-free. Band/index fields are `int` (integer floor division in the `R_max(N)` curve).
+- `LevelConfig`: `const GENERATED_ID := 0`, `var level_id := -1` (unset sentinel), `func is_generated() -> bool { return level_id == GENERATED_ID }`, `seed/world_id/level_index` provenance fields.
+- `pick_operands(result, index, max_operand) -> Vector2i` (pure, `core/`): the **single** operand splitter shared by the generator and the authored `LevelData` path — retires `LevelData._split_operands` (whose unbounded formula could violate AC-11). Authored path passes `max_operand = result − 1`.
+- Recoverability: `LevelGenerator.generate` takes an **injected** recovery predicate `is_recoverable: Callable` (default `RecoverabilitySimulator.run`) so the sim is deterministic in tests and the cap-exhaustion fallback (AC-34) is exercisable. The check is *necessary, not sufficient* — AC-27 human playtest is the real fairness gate.
+
+**Determinism contracts (design-review):** (1) re-seed uses `rng.seed = …` (full reset), **never** `rng.state =` (which jumps mid-stream and breaks reproducibility); (2) only the caller's seeded `RandomNumberGenerator` is used — `Array.shuffle()`/`pick_random()` (global RNG) are **banned in `core/`**, enforced by a project rule; (3) `card_pool` is sorted by `layout_slot` before being stored on the `LevelConfig`, so array order is a pure function of slot assignment, not RNG draw order (load-bearing for `is_solvable` iteration and the greedy recoverability sim); (4) `LevelConfig.target_queue`/`card_pool` are assigned **fresh** arrays (not the generator's working buffers) to avoid aliasing.
 
 ## Alternatives Considered
 
