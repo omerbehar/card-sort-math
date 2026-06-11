@@ -1,8 +1,8 @@
 # Level Generator
 
-> **Status**: Designed + revised — all 8 sections complete; CD gate addressed (S2-001);
+> **Status**: **Approved** (2026-06-11) — all 8 sections complete; CD gate addressed (S2-001);
 > 4 Open Questions pinned by ADR-0007 (S2-002); independent `/design-review` (NEEDS REVISION)
-> addressed 2026-06-11 — 7 Gate-A + 5 Gate-B items applied
+> addressed — 7 Gate-A + 5 Gate-B items applied and accepted (see `reviews/level-generator-review-log.md`)
 > **Author**: omer.behar + agents (S2-001, S2-002, design-review revision)
 > **Last Updated**: 2026-06-11
 > **Implements Pillar**: Content engine — endless, difficulty-scaled, always-solvable levels
