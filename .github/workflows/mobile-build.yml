@@ -1,0 +1,261 @@
+name: Mobile Build
+
+# Builds installable mobile artifacts on cloud runners.
+#   - Android: free Ubuntu runner -> signed (debug) APK artifact. Works today.
+#   - iOS: macOS runner -> Godot Xcode project + an unsigned Simulator compile
+#     (smoke test) every run; a signed .ipa when the Apple secrets below exist.
+#
+# Triggered manually (Actions tab -> Run workflow) or on a version tag, to avoid
+# spending macOS minutes on every commit.
+#
+# Required repo secrets for a SIGNED iOS build (Settings -> Secrets -> Actions):
+#   IOS_CERTIFICATE_BASE64        base64 of your Apple distribution cert (.p12)
+#   IOS_CERTIFICATE_PASSWORD      password for that .p12
+#   IOS_PROVISION_PROFILE_BASE64  base64 of your .mobileprovision
+#   IOS_TEAM_ID                   your 10-char Apple Team ID
+#   IOS_EXPORT_METHOD             development | ad-hoc | app-store (default: app-store)
+#   KEYCHAIN_PASSWORD             any string (unlocks the temp CI keychain)
+# Optional — auto-upload the build to TestFlight (App Store Connect API key):
+#   ASC_KEY_ID                    App Store Connect API Key ID
+#   ASC_ISSUER_ID                 App Store Connect API Issuer ID
+#   ASC_API_KEY_BASE64            base64 of the AuthKey_XXXX.p8 key file
+# Without them the iOS job still runs and verifies the project compiles.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.6"
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform-tools + build-tools
+        run: sdkmanager "platform-tools" "build-tools;34.0.0"
+
+      - name: Set up Godot ${{ env.GODOT_VERSION }} (+ export templates)
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: true
+
+      - name: Generate debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
+            -keystore "$HOME/.android/debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+
+      - name: Configure Godot Android editor settings
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          # Godot reads the SDK / keystore paths from Editor Settings, not env vars.
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "${ANDROID_SDK_ROOT}"
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          export/android/debug_keystore = "${HOME}/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          # Some 4.x builds use a minor-versioned filename.
+          cp "$HOME/.config/godot/editor_settings-4.tres" \
+             "$HOME/.config/godot/editor_settings-${GODOT_VERSION}.tres"
+
+      - name: Import project
+        run: godot --headless --import
+
+      - name: Set Android versionCode from run number
+        run: |
+          # Play Store requires a strictly increasing integer versionCode per upload.
+          sed -i 's#version/code=[0-9]*#version/code=${{ github.run_number }}#' export_presets.cfg
+          grep 'version/code' export_presets.cfg
+
+      - name: Export debug APK
+        run: |
+          mkdir -p build/android
+          godot --headless --export-debug "Android" build/android/CardSortMath.apk
+          ls -lh build/android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CardSortMath-android-apk
+          path: build/android/CardSortMath.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS (Xcode project + signed IPA when configured)
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Godot ${{ env.GODOT_VERSION }} (+ export templates)
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          use-dotnet: false
+          include-templates: true
+
+      - name: Import project
+        run: godot --headless --import
+
+      - name: Set iOS build number from run number
+        run: |
+          # TestFlight requires a unique CFBundleVersion per upload; the marketing
+          # version (short_version) stays as authored. macOS sed needs -i''.
+          sed -i '' 's/application\/version="[^"]*"/application\/version="${{ github.run_number }}"/' export_presets.cfg
+          grep 'application/version' export_presets.cfg
+
+      - name: Export iOS Xcode project
+        run: |
+          mkdir -p build/ios
+          # Godot generates the Xcode project even though it can't build the .ipa itself.
+          godot --headless --export-debug "iOS" build/ios/CardSortMath.ipa || true
+          echo "--- build/ios ---"; ls -R build/ios
+
+      - name: Detect Xcode project + scheme
+        id: xc
+        run: |
+          PROJ=$(find build/ios -maxdepth 2 -name "*.xcodeproj" | head -1)
+          if [ -z "$PROJ" ]; then echo "No .xcodeproj produced"; exit 1; fi
+          SCHEME=$(xcodebuild -list -project "$PROJ" -json \
+            | python3 -c "import sys,json;print(json.load(sys.stdin)['project']['schemes'][0])")
+          echo "proj=$PROJ" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          echo "Project: $PROJ  Scheme: $SCHEME"
+
+      - name: Compile for Simulator (unsigned smoke test)
+        run: |
+          xcodebuild -project "${{ steps.xc.outputs.proj }}" \
+            -scheme "${{ steps.xc.outputs.scheme }}" \
+            -sdk iphonesimulator -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO build | tail -30
+
+      - name: Detect whether Apple signing secrets are present
+        id: signing
+        env:
+          CERT: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          PROFILE: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+        run: |
+          if [ -n "$CERT" ] && [ -n "$PROFILE" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::iOS signing secrets not set — skipping signed IPA. Add IOS_CERTIFICATE_BASE64 + IOS_PROVISION_PROFILE_BASE64 to produce an installable build."
+          fi
+
+      - name: Import signing certificate + provisioning profile
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          CERT: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERT_PW: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PW: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PW" -A \
+            -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" "$KEYCHAIN"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROFILE" | base64 --decode \
+            > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
+
+      - name: Archive + export signed IPA
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          METHOD: ${{ secrets.IOS_EXPORT_METHOD }}
+        run: |
+          METHOD="${METHOD:-app-store}"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>${METHOD}</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>stripSwiftSymbols</key><true/>
+            <key>compileBitcode</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -project "${{ steps.xc.outputs.proj }}" \
+            -scheme "${{ steps.xc.outputs.scheme }}" \
+            -configuration Release -sdk iphoneos \
+            -archivePath "$RUNNER_TEMP/CardSortMath.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" archive
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/CardSortMath.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath build/ios/ipa
+          ls -lh build/ios/ipa
+
+      - name: Upload iOS Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: CardSortMath-ios-xcodeproj
+          path: build/ios
+          if-no-files-found: warn
+
+      - name: Upload signed IPA
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CardSortMath-ios-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: warn
+
+      - name: Detect App Store Connect API key (for TestFlight)
+        id: asc
+        env:
+          ASC_KEY: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ] && [ -n "$ASC_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::TestFlight upload skipped — set ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_BASE64 to auto-upload."
+          fi
+
+      - name: Upload to TestFlight
+        if: steps.asc.outputs.enabled == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          # altool looks for the key at ~/.appstoreconnect/private_keys/AuthKey_<id>.p8
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          echo "Uploading $IPA to TestFlight…"
+          xcrun altool --upload-app -f "$IPA" --type ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
