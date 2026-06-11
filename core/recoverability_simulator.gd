@@ -31,9 +31,15 @@ static func run(config: LevelConfig, mistake_turn: int = -1) -> Dictionary:
 			break
 
 		var card_id: int = -1
-		if not mistake_done and turn == turn_of_mistake:
+		# The one mistake: at/after the target turn, the first time a discardable
+		# card is available, take it. Deferring (rather than firing blindly at the
+		# target turn) ensures the mistake actually happens — otherwise a turn
+		# where every exposed card routes would silently consume it (no-op),
+		# weakening the check.
+		if not mistake_done and turn >= turn_of_mistake:
 			card_id = _lowest_discarding_card(board, exposed)
-			mistake_done = true
+			if card_id != -1:
+				mistake_done = true
 		if card_id == -1:
 			card_id = _greedy_card(board, exposed)
 

@@ -24,9 +24,11 @@ static func pick(result: int, index: int, max_operand: int) -> Vector2i:
 	var a_max: int = mini(max_operand, result - 1)
 	var span: int = a_max - a_min + 1
 	# span >= 1 holds whenever the result passed the candidate filter
-	# (has_valid_pair); guard anyway so a misuse never divides by zero.
+	# (has_valid_pair); guard anyway so a misuse never divides by zero. Clamp the
+	# fallback into [1, max_operand] so it can never return an out-of-bounds operand.
 	if span < 1:
-		return Vector2i(1, result - 1)
+		var a_fallback: int = clampi(result - max_operand, 1, max_operand)
+		return Vector2i(a_fallback, result - a_fallback)
 	var a: int = a_min + (index % span)
 	return Vector2i(a, result - a)
 

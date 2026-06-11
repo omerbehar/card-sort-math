@@ -32,18 +32,16 @@ static func params_for(
 ## The result ceiling R_max(N) — piecewise base + floor((N - anchor)/step_every),
 ## capped, monotonic non-decreasing (GDD Formula 6).
 static func r_max_for(n: int, data: DifficultyScheduleData) -> int:
+	var last: int = data.rmax_seg_max_level.size() - 1
 	for i in range(data.rmax_seg_max_level.size()):
-		if n <= data.rmax_seg_max_level[i]:
+		# The last segment's max_level is open-ended (INT_MAX), so this always hits.
+		if n <= data.rmax_seg_max_level[i] or i == last:
 			var step_every: int = data.rmax_seg_step_every[i]
 			if step_every <= 0:
 				return data.rmax_seg_base[i]
 			var steps: int = (n - data.rmax_seg_anchor[i]) / step_every  # int floor (n>=anchor)
 			return mini(data.rmax_seg_base[i] + steps, data.rmax_seg_cap[i])
-	# Past the last segment boundary: clamp to the final segment's value.
-	var last: int = data.rmax_seg_base.size() - 1
-	return mini(data.rmax_seg_base[last]
-		+ (n - data.rmax_seg_anchor[last]) / maxi(1, data.rmax_seg_step_every[last]),
-		data.rmax_seg_cap[last])
+	return data.rmax_seg_base[last]  # unreachable; satisfies the typed return
 
 
 ## Distinct results D(N) — base plus one step per crossed step level.
@@ -59,7 +57,10 @@ static func r_min_for(n: int, data: DifficultyScheduleData) -> int:
 ## Per-operand magnitude cap max_operand(N) — the last step value reached.
 static func max_operand_for(n: int, data: DifficultyScheduleData) -> int:
 	var value: int = data.maxop_base
-	for i in range(data.maxop_step_levels.size()):
+	# Parallel arrays — iterate the shorter length so a mismatched (bad) resource
+	# degrades gracefully instead of throwing an out-of-range index.
+	var count: int = mini(data.maxop_step_levels.size(), data.maxop_step_values.size())
+	for i in range(count):
 		if n >= data.maxop_step_levels[i]:
 			value = data.maxop_step_values[i]
 	return value

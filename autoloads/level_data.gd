@@ -53,16 +53,16 @@ func level_count() -> int:
 
 ## Returns the [LevelConfig] for 1-based [param n]: an authored level for
 ## [code]n <= level_count()[/code], otherwise a deterministically generated one
-## (ADR-0007). Configs are built once and cached by [param n].
+## (ADR-0007). Only the (bounded) authored levels are cached; generated levels are
+## rebuilt on demand — they are deterministic and cheap, and caching them would
+## grow unbounded over an endless session.
 func get_level(n: int) -> LevelConfig:
 	var key: int = maxi(n, 1)
+	if key > level_count():
+		return _build_generated_level(key)
 	if _cache.has(key):
 		return _cache[key]
-	var config: LevelConfig
-	if key <= level_count():
-		config = _build_authored_level(key - 1)
-	else:
-		config = _build_generated_level(key)
+	var config := _build_authored_level(key - 1)
 	_cache[key] = config
 	return config
 
