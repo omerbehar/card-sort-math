@@ -12,6 +12,10 @@ func _init() -> void:
 	if err != OK or img.get_width() < 1024:
 		# Fallback: upscale the imported texture.
 		var tex: Texture2D = load("res://icon.svg")
+		if tex == null:
+			push_error("gen_ios_icon: could not rasterize or load res://icon.svg; aborting.")
+			quit(1)
+			return
 		img = tex.get_image()
 		img.resize(1024, 1024, Image.INTERPOLATE_LANCZOS)
 

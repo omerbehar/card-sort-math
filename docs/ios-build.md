@@ -34,7 +34,10 @@ its UI — see the comparison the team discussed.)
 ## What's already set up (committed)
 
 - `export_presets.cfg` — an **iOS** export preset:
-  - Bundle id `com.omerbehar.cardsortmath` *(change to your own reverse-DNS id)*
+  - Bundle id `Com.omerbehar.cardsortmath` — **case-sensitive**, and it must match
+    the App ID, the provisioning profile, and the App Store Connect record exactly
+    (the capital `C` matches the issued profile). *(Change to your own reverse-DNS
+    id if you fork this — keep the case identical everywhere.)*
   - Portrait-only, iPhone device family, **min iOS 14.0** (Godot 4.6 uses Metal,
     which requires iOS 14+)
   - App Store icon → `ios/icon_1024.png`
