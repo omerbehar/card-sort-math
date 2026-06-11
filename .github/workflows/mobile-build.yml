@@ -30,7 +30,8 @@ permissions:
   contents: read
 
 env:
-  GODOT_VERSION: "4.6"
+  # setup-godot wants a full X.Y.Z semver (it maps 4.6.0 -> the 4.6-stable release).
+  GODOT_VERSION: "4.6.0"
 
 jobs:
   android:
@@ -79,9 +80,11 @@ jobs:
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          # Some 4.x builds use a minor-versioned filename.
+          # Godot reads editor_settings-4.tres or -4.6.tres depending on build —
+          # write both (the engine's settings file uses major.minor, not the
+          # X.Y.Z action version).
           cp "$HOME/.config/godot/editor_settings-4.tres" \
-             "$HOME/.config/godot/editor_settings-${GODOT_VERSION}.tres"
+             "$HOME/.config/godot/editor_settings-4.6.tres"
 
       - name: Import project
         run: godot --headless --import
