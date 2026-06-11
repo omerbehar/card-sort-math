@@ -1,8 +1,8 @@
 # Level Generator
 
-> **Status**: Designed — all 8 sections complete, CD gate addressed (S2-001); pending independent `/design-review`
-> **Author**: omer.behar + agents (S2-001)
-> **Last Updated**: 2026-06-10
+> **Status**: Designed — all 8 sections complete, CD gate addressed (S2-001); 4 Open Questions pinned by ADR-0007 (S2-002); pending independent `/design-review`
+> **Author**: omer.behar + agents (S2-001, S2-002)
+> **Last Updated**: 2026-06-11
 > **Implements Pillar**: Content engine — endless, difficulty-scaled, always-solvable levels
 > **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (addressed) 2026-06-10 — the
 > "fair to play, not just provably solvable" gap is closed by the recoverability guard
@@ -61,9 +61,11 @@ mistake" — generated levels must feel fair to *play*, not just be provably sol
 ### Core Rules
 
 1. **Pure & deterministic.** The generator is a node-free `core/` function
-   (ADR-0001): `generate(params) -> LevelConfig`. The same `(seed, params)` always
-   yields an identical `LevelConfig` — a single seeded `RandomNumberGenerator` is the
-   only randomness, consumed in a fixed step order.
+   (ADR-0001): `generate(params) -> GeneratorResult` (the result wraps the
+   `LevelConfig` and a `warnings: Array[String]` — see §Open Questions / ADR-0007).
+   The same `(seed, params)` always yields an identical `LevelConfig` — a single
+   seeded `RandomNumberGenerator` is the only randomness, consumed in a fixed step
+   order.
 2. **Params, not level index.** The generator's input is a `GeneratorParams` record:
    `seed`, `layout_id`, `D` (distinct results), `R_min`/`R_max` (result range),
    `max_operand`, `allow_queue_repeats`. The **difficulty schedule** (§Tuning Knobs)
@@ -92,8 +94,9 @@ mistake" — generated levels must feel fair to *play*, not just be provably sol
    assign each card a `layout_slot` + `layout_layer` from the layout geometry.
    Exposure (tappability) derives from position/layer only — independent of which
    result lands where — so every assignment stays reachable (no covered-card lock).
-9. **Assemble & self-check.** Return a `LevelConfig` with `level_id = 0` (the
-   "generated, not authored" marker). A debug `assert(LevelData.is_solvable(...))` is a
+9. **Assemble & self-check.** Return a `LevelConfig` with `level_id =
+   LevelConfig.GENERATED_ID` (= 0, the "generated, not authored" marker; queryable
+   via `is_generated()`) plus provenance (`seed`, `world_id`, `level_index`). A debug `assert(LevelData.is_solvable(...))` is a
    self-check only — by construction it cannot fail; if it ever does, that's a
    generator bug, not a bad param (surface it, never retry).
 10. **Recoverability guard (fair to play, not just provably solvable).** Solvability
@@ -277,17 +280,18 @@ data-driven, not hardcoded.
 | Daily challenge (M3, future) | Depends on this | reuses deterministic seeding for a shared, reproducible level |
 
 **New components/conventions introduced** (registry + ADR candidates):
-- `GeneratorParams` — the input record (seed + difficulty params).
+- `GeneratorParams` — the input record (seed + difficulty params), a `RefCounted`.
+- `GeneratorResult { config, warnings: Array[String] }` — the output wrapper, a `RefCounted`.
 - `_has_valid_operand_pair(R, max_operand)` and `_fisher_yates_shuffle(arr, rng)` — pure `core/` helpers.
-- `difficulty_schedule.tres` — the data-driven `N → params` config.
-- **`level_id = 0` convention** = "generated, not authored" — **needs coordination with
-  `LevelData.get_level`** (currently 1-based authored IDs). → captured in the **S2-002
-  ADR (ADR-0007)**.
+- `core/difficulty_schedule.gd` — pure `N → params` mapper reading `assets/data/difficulty_schedule.tres`.
+- **`LevelConfig.GENERATED_ID` (= 0) + `is_generated()`** = "generated, not authored",
+  with provenance fields (`seed`, `world_id`, `level_index`) on the `LevelConfig`.
+  Coordinates with `LevelData.get_level` (1-based authored IDs). → pinned in **ADR-0007**.
 
 **Reverse references to maintain (bidirectional):**
 - `design/systems-index.md` — add a **Level Generator** row (M2 / Content engine). *(added with this GDD)*
 - `design/gdd/level-and-solvability.md` — note that levels past the authored set are now generator-produced (still bound by the same invariant).
-- `autoloads/level_data.gd` doc comment — document the authored-vs-generated dispatch and `level_id = 0`.
+- `autoloads/level_data.gd` doc comment — document the authored-vs-generated dispatch and `LevelConfig.GENERATED_ID` / `is_generated()`.
 - **ADR-0007** (S2-002) — the construction algorithm, determinism, and the `level_id` dispatch decision.
 
 ## Tuning Knobs
@@ -345,7 +349,7 @@ sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (play
 - **AC-06 [B]** `target_queue.size()` == slot_count/3 (4/6/5).
 - **AC-07 [B]** For every result R: `#cards(R) == 3 × queue_count(R)` (the identity, checked independently of `is_solvable`).
 - **AC-08 [B]** `layout_slot` values are a permutation of `range(slot_count)` (each slot exactly once).
-- **AC-09 [B]** `config.level_id == 0` (generated marker).
+- **AC-09 [B]** `config.is_generated()` is `true` and `config.level_id == LevelConfig.GENERATED_ID` (= 0).
 
 **Group 3 — Operands**
 - **AC-10 [B]** Every card: `result == operand_a + operand_b`.
@@ -373,25 +377,30 @@ sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (play
 
 **Group 6 — Integration (`LevelData.get_level`)**
 - **AC-28 [B]** Authored levels 1–3 unchanged (regression guard).
-- **AC-29 [B]** `get_level(4)` (past authored) → non-null, `level_id==0`, solvable.
+- **AC-29 [B]** `get_level(4)` (past authored) → non-null, `is_generated()`, solvable.
 - **AC-30 [B]** `get_level(50)` twice → field-identical.
 - **AC-31 [B]** A generated level feeds `BoardModel.from_config` cleanly and a tap on an exposed card returns a non-empty event list (playable end-to-end).
 
 **Group 7 — Recoverability (fair-to-play, Core Rule 10)**
-- **AC-32 [B]** GIVEN the seed sweep (AC-01 params), WHEN each generated level is played by a "route-greedily but make exactly one suboptimal/forced tap" simulated player, THEN the player still reaches WIN (never LOSE) — i.e. every level retains ≥ `min_recovery_margin` discard headroom. *(The simulation definition is pinned in ADR-0007; until then this AC is the spec.)*
+- **AC-32 [B]** GIVEN the seed sweep (AC-01 params), WHEN each generated level is played by a "route-greedily but make exactly one suboptimal/forced tap" simulated player, THEN the player still reaches WIN (never LOSE) — i.e. every level retains ≥ `min_recovery_margin` discard headroom. *(The simulation — pure greedy + 1-mistake reusing `BoardModel`, deterministic re-seed on fail — is pinned in ADR-0007; `min_recovery_margin` value is TBD pending M2 playtest.)*
 
 ## Open Questions
 
-- **Warning surface** — adopt a `GeneratorResult { config, warnings: Array[String] }`
-  wrapper (vs. `push_warning`)? Leaning yes (testable, no global side-effects). →
-  **decide in ADR-0007 (S2-002)**.
-- **`level_id = 0` dispatch** — exact `LevelData.get_level(n)` logic for
-  authored-vs-generated, and the seed derivation from `n` (e.g. `seed = n`, or a
-  hashed/world-salted seed). → **ADR-0007**.
-- **Stagger semantics** — resolved here as *strict per-level* (≤1 knob change per
-  level); `knob_stagger_window` then governs minimum spacing between steps within a
-  band. Confirm this reading holds when the schedule data is authored. → **ADR-0007 /
-  schedule data**.
+- **Warning surface** — **RESOLVED (ADR-0007):** adopt a
+  `GeneratorResult { config, warnings: Array[String] }` wrapper (a `RefCounted`),
+  not `push_warning` — testable and free of global side-effects.
+- **Generated-marker & seed dispatch** — **RESOLVED (ADR-0007):** the generated
+  marker is `LevelConfig.GENERATED_ID` (= 0) via `is_generated()`, with provenance
+  fields (`seed`, `world_id`, `level_index`) carried on the `LevelConfig`. The seed
+  is an explicit integer `world_id * WORLD_STRIDE + level_index` (`WORLD_STRIDE =
+  1_000_000`) — **not** `hash()`, which is implementation-defined and unstable
+  across Godot versions/platforms. `LevelData.get_level(n)` returns the authored
+  level for `n` in range, else generates one seeded by that formula.
+- **Stagger semantics** — **RESOLVED (ADR-0007):** *strict per-level* (≤1 knob
+  change per level); `knob_stagger_window` governs minimum spacing between steps
+  within a band. The `N → params` mapping is computed by the pure
+  `core/difficulty_schedule.gd` from `assets/data/difficulty_schedule.tres`
+  (the generator never `load()`s the resource itself).
 - **More authored layouts (Phase 2)** — open-endedness currently cycles 3 layouts
   `[0,2,1,2]`. Adding layout variants (a `depth_layers` knob, new slot counts) would
   deepen late-game variety; data-driven, no code change. Owner: level-designer, post-M2.
@@ -401,11 +410,14 @@ sequence. `[B]` = BLOCKING (automated logic/integration); `[A]` = ADVISORY (play
 - **Procedural layouts (later)** — should the generator eventually produce its own
   layouts (positions/layers) rather than only choosing among authored presets? Out of
   scope for S2-003; revisit if authored-layout variety becomes the bottleneck.
-- **Recoverability metric (CD gate must-fix)** — the exact "k-mistake recoverability"
-  simulation and the `min_recovery_margin` value need defining with the game-designer
-  and the discard/PULL rules. → **ADR-0007** + M2 playtest. The construction bounds
-  (exposure-independence, `D ≤ STACK_COUNT` early, `max_repeats ≤ 2`) are the first line;
-  the re-seed backstop and AC-32 are the safety net.
+- **Recoverability metric** — **RESOLVED (ADR-0007), value TBD:** the metric is a
+  pure greedy + 1-mistake simulation that reuses `BoardModel` (route greedily, force
+  exactly one suboptimal/forced tap, require WIN). A failing board is re-seeded
+  deterministically (`base_seed + attempt × 7919`) and rebuilt — the one permitted,
+  bounded re-roll (Rule 10). The `min_recovery_margin` *value* remains data-driven
+  and TBD pending M2 playtest. The construction bounds (exposure-independence,
+  `D ≤ STACK_COUNT` early, `max_repeats ≤ 2`) are the first line; the re-seed backstop
+  and AC-32 are the safety net.
 - **Visible→hidden target on-ramp (CD soft note)** — the first hidden target (~level 20,
   Rising band) is a *new cognitive mode* (working-memory hold), not just a bigger number;
   the stagger rule doesn't soften a category change. Consider telegraphing / delaying the
