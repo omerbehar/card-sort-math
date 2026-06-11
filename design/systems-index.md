@@ -23,6 +23,7 @@
 | Math Exercises | [`math-exercises.md`](gdd/math-exercises.md) | Implemented (addition only) | `data/card_data.gd` |
 | First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Implemented (S1-010, 2026-06-09; 34 tutorial tests green) | `core/tutorial_logic.gd`, `core/tutorial_state.gd`, `scenes/ui/coach_overlay.gd`, `scenes/main/main.gd` (wiring), `SaveData.tutorial_seen` |
 | Save & Settings | [`save-service.md`](gdd/save-service.md) | Approved + 3 P0 follow-ups implemented (atomic write, load_failed, ComplianceService) 2026-06-09 | `core/save_data.gd`, `autoloads/save_service.gd`, `autoloads/compliance_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
+| Level Generator | [`level-generator.md`](gdd/level-generator.md) | Designed (S2-001, 2026-06-10; CD gate addressed) — pending `/design-review` | `core/level_generator.gd` + `assets/data/difficulty_schedule.tres` (planned, S2-003) |
 
 ## Dependency graph
 
@@ -36,10 +37,11 @@ Save + BoardModel + Settings + Level 1 content ──read by──▶ First-Time
 
 ## Not yet designed (see `docs/GAME_PLAN.md`)
 
-Audio, level generator, economy/currencies, boosters, monetization (IAP/ads),
-analytics, meta/progression. These are roadmap items; GDDs should be authored
-(via `/design-system`) before implementation. (Save/profile, settings, and the
-first-time tutorial are now documented — see the systems table above.)
+Audio, economy/currencies, boosters, monetization (IAP/ads), analytics,
+meta/progression, scoring/stars, operation worlds. These are roadmap items; GDDs
+should be authored (via `/design-system`) before implementation. (Save/profile,
+settings, the first-time tutorial, and the **level generator** (M2) are now
+documented — see the systems table above.)
 
 ## Architecture decisions
 
