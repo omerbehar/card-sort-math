@@ -68,12 +68,15 @@ func test_complete_level_advances_and_persists_to_disk() -> void:
 	assert_int(reader.data.current_level).is_equal(2)
 
 
-func test_complete_level_does_not_advance_past_last_level() -> void:
+func test_complete_level_advances_past_authored_set_endlessly() -> void:
+	# Progression is endless (S2-004): levels beyond the authored set are
+	# generated, so completing the last authored level advances into generated
+	# territory rather than capping.
 	var last: int = LevelData.level_count()
 	var gm = auto_free(GM_SCRIPT.new())
 	gm.configure(_make_save(last))
 	gm.complete_level()
-	assert_int(gm.current_level).is_equal(last)
+	assert_int(gm.current_level).is_equal(last + 1)
 
 
 func test_complete_level_emits_completed_with_finished_level() -> void:

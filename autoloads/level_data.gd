@@ -1,14 +1,22 @@
 extends Node
-## Autoload: authored level definitions + solvability checking.
+## Autoload: authored level definitions + generated-level dispatch (ADR-0007).
 ##
-## Holds persistent, level-design data only (no scene-tree references). Each
-## level is built from a layout preset (see [Layouts]) plus a list of target
-## results assigned per slot. A level is solvable by construction when the
-## count of cards for every result equals 3 x (its occurrences in the level's
-## target queue) — enforced by [method is_solvable] and unit-tested.
+## Holds persistent, level-design data only (no scene-tree references). Levels
+## 1..[method level_count] are hand-authored; every level beyond is produced by
+## the pure [LevelGenerator], seeded so the same index always yields the same
+## level. This autoload is the ONLY layer that [code]load()[/code]s the difficulty
+## schedule resource — it hands the data to the pure [DifficultySchedule], keeping
+## [code]core/[/code] node-free and resource-free (ADR-0001).
 
 const STACK_COUNT: int = 4
 const STACK_CAPACITY: int = 3
+
+# Generated-level seeding (ADR-0007): seed = WORLD_ID * WORLD_STRIDE + level index.
+# A single addition world for now; WORLD_STRIDE salts future operation worlds so
+# their seed spaces never overlap.
+const WORLD_ID: int = 0
+const WORLD_STRIDE: int = 1_000_000
+const _SCHEDULE_PATH: String = "res://assets/data/difficulty_schedule.tres"
 
 # Per-level: the result printed on each slot's card. Length must equal the
 # layout's slot count. Counts must obey the 3xN solvability invariant.
@@ -35,6 +43,7 @@ const _LEVEL_QUEUES: Array = [
 const _LEVEL_LAYOUTS: Array[int] = [0, 1, 2]
 
 var _cache: Dictionary = {}
+var _schedule: DifficultyScheduleData = null
 
 
 ## Total number of authored levels.
@@ -42,14 +51,19 @@ func level_count() -> int:
 	return _LEVEL_LAYOUTS.size()
 
 
-## Returns the [LevelConfig] for 1-based [param n] (clamped to the authored
-## range). Configs are built once and cached.
+## Returns the [LevelConfig] for 1-based [param n]: an authored level for
+## [code]n <= level_count()[/code], otherwise a deterministically generated one
+## (ADR-0007). Configs are built once and cached by [param n].
 func get_level(n: int) -> LevelConfig:
-	var index: int = clampi(n - 1, 0, level_count() - 1)
-	if _cache.has(index):
-		return _cache[index]
-	var config := _build_level(index)
-	_cache[index] = config
+	var key: int = maxi(n, 1)
+	if _cache.has(key):
+		return _cache[key]
+	var config: LevelConfig
+	if key <= level_count():
+		config = _build_authored_level(key - 1)
+	else:
+		config = _build_generated_level(key)
+	_cache[key] = config
 	return config
 
 
@@ -61,28 +75,14 @@ func next_target(queue: Array[int], draw_index: int) -> int:
 	return queue[draw_index]
 
 
-## A level is solvable when every card result appears in the target queue and
-## the card count for each result equals 3 x (its occurrences in the queue).
+## A level is solvable when every card result appears in the target queue and the
+## card count for each result equals 3 x (its occurrences in the queue). Delegates
+## to the pure [Solvability] check (the same rule the generator self-checks with).
 func is_solvable(config: LevelConfig) -> bool:
-	var queue_counts: Dictionary = {}
-	for target: int in config.target_queue:
-		queue_counts[target] = int(queue_counts.get(target, 0)) + 1
-
-	var card_counts: Dictionary = {}
-	for card: CardData in config.card_pool:
-		card_counts[card.result] = int(card_counts.get(card.result, 0)) + 1
-
-	if card_counts.size() != queue_counts.size():
-		return false
-	for result: int in card_counts:
-		if not queue_counts.has(result):
-			return false
-		if int(card_counts[result]) != STACK_CAPACITY * int(queue_counts[result]):
-			return false
-	return true
+	return Solvability.is_solvable(config)
 
 
-func _build_level(index: int) -> LevelConfig:
+func _build_authored_level(index: int) -> LevelConfig:
 	var config := LevelConfig.new()
 	config.level_id = index + 1
 	config.layout_id = _LEVEL_LAYOUTS[index]
@@ -100,17 +100,35 @@ func _build_level(index: int) -> LevelConfig:
 	for slot in results.size():
 		var result: int = results[slot]
 		var layer: int = placements[slot].layer
-		var operands := _split_operands(result, slot)
+		# Single shared operand splitter (OperandPicker); max_operand = result-1
+		# reproduces the legacy authored split exactly (regression-guarded by AC-28).
+		var operands := OperandPicker.pick(result, slot, result - 1)
 		pool.append(CardData.create(operands.x, operands.y, layer, slot))
 	config.card_pool = pool
 	return config
 
 
-# Picks two positive operands summing to [param result], varied by [param slot]
-# so identical-result cards don't all read the same.
-func _split_operands(result: int, slot: int) -> Vector2i:
-	if result <= 1:
-		return Vector2i(0, maxi(result, 0))
-	var a: int = 1 + (slot % (result - 1))
-	var b: int = result - a
-	return Vector2i(a, b)
+func _build_generated_level(n: int) -> LevelConfig:
+	var seed: int = WORLD_ID * WORLD_STRIDE + n
+	var params := DifficultySchedule.params_for(n, _get_schedule(), seed, WORLD_ID, n)
+	var result := LevelGenerator.generate(params)
+	if result.config == null:
+		# Graceful degradation (engine-code rule): the schedule should never
+		# produce incoherent params, but never hand the game a null level.
+		push_error("LevelData: generator failed for level %d; falling back to last authored level" % n)
+		return _build_authored_level(level_count() - 1)
+	return result.config
+
+
+# Lazily loads the difficulty schedule resource (this is the only loader, ADR-0007).
+# Falls back to the resource defaults if the file is missing.
+func _get_schedule() -> DifficultyScheduleData:
+	if _schedule == null:
+		var loaded := load(_SCHEDULE_PATH)
+		if loaded is DifficultyScheduleData:
+			_schedule = loaded
+		else:
+			push_warning("LevelData: schedule resource missing at %s; using defaults" % _SCHEDULE_PATH)
+			_schedule = DifficultyScheduleData.new()
+	return _schedule
+
