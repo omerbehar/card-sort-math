@@ -7,11 +7,11 @@
 
 ## Build in the cloud (GitHub Actions)
 
-`.github/workflows/mobile-build.yml` has an **Android job** that does everything
-below on a free Ubuntu runner and uploads an installable **APK** artifact. Trigger
-it from the **Actions** tab → *Mobile Build* → *Run workflow* (or push a `v*`
-tag), then download `CardSortMath-android-apk` and `adb install` it — no local
-setup, no Apple account, nothing to pay.
+> **Note:** the Android CI job was removed for now — we're focusing on iOS first
+> (`.github/workflows/mobile-build.yml` is iOS-only). The Android **export preset**
+> still lives in `export_presets.cfg`, so re-adding the job later is just dropping
+> a few steps back into the workflow. Until then, build Android locally with the
+> steps below (or run the one-click export from the Godot editor).
 
 ## What's already set up (committed)
 
