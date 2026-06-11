@@ -1,7 +1,8 @@
 # ADR-0007: Level Generator — construction, determinism, dispatch & recoverability
 
 ## Status
-Proposed (hardened 2026-06-11 after the independent `/design-review` of the GDD — added the
+Accepted (2026-06-11 — GDD approved + design-review hardened; unblocks S2-003a).
+Hardened 2026-06-11 after the independent `/design-review` of the GDD — added the
 `level_id = -1` sentinel guard, typed `DifficultyScheduleData`, injected recovery predicate,
 and the four determinism contracts: `rng.seed=`, global-RNG ban, canonical `card_pool` sort,
 no-alias array assignment.)
