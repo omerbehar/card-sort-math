@@ -14,3 +14,6 @@ tools/*.png
 # macOS
 .DS_Store
 tools/*.png.import
+
+# iOS / native build outputs (generated on the Mac)
+/build/
