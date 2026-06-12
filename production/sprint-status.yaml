@@ -66,7 +66,7 @@ stories:
     name: "Compliance gating + daily caps + gem-to-coin conversion"
     file: "autoloads/wallet_service.gd"
     priority: must-have
-    status: ready-for-dev
+    status: in-progress
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
