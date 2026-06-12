@@ -6,3 +6,5 @@ File: design/gdd/deck-economy.md
 Registry: design/registry/entities.yaml created (18 constants, 3 formulas, 3 data types)
 Systems index: updated with Deck Economy row + dependency graph
 Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring/stars GDD (S2-011)
+
+<!-- QA-PLAN: 2026-06-12 | System: sprint-3 (Deck Economy core) | Plan written: production/qa/qa-plan-sprint-3-2026-06-12.md -->
