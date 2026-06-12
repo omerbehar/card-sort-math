@@ -6,8 +6,10 @@ name: iOS Build
 # (Android job removed for now — the Android export preset still lives in
 #  export_presets.cfg if/when we re-add it.)
 #
-# Triggered manually (Actions tab -> Run workflow) or on a version tag, to avoid
-# spending macOS minutes on every commit.
+# Runs on every push to main, on version tags, and manually (Actions -> Run
+# workflow). macOS runner minutes are free on public repos. Note: with the
+# signing + ASC secrets set, every main push also uploads a new build to
+# TestFlight (build number auto-increments, so no collisions).
 #
 # Required repo secrets for a SIGNED iOS build (Settings -> Secrets -> Actions):
 #   IOS_CERTIFICATE_BASE64        base64 of your Apple distribution cert (.p12)
@@ -25,6 +27,7 @@ name: iOS Build
 on:
   workflow_dispatch:
   push:
+    branches: ["main"]
     tags: ["v*"]
 
 permissions:
