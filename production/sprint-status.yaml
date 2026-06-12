@@ -9,101 +9,110 @@
 #   done           ↔  Complete
 #   blocked        ↔  Blocked
 
-sprint: 2
-goal: "Endless, difficulty-scaled procedural level generator that satisfies the solvability invariant by construction (ADR-0003), wired into the level flow."
-start: "2026-06-11"
-end: "2026-06-24"
-generated: "2026-06-10"
-updated: "2026-06-11"  # S2-004 done — generator live, endless progression (207 tests green). All M2 must-haves complete.
+sprint: 3
+goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn with snapshot rollback, compliance gating, daily caps, gem-to-coin conversion) behind the model/view seam, plus the first booster (Hint), end-to-end. M3 economy foundation. UI/IAP/Ad/Analytics deferred."
+start: "2026-06-12"
+end: "2026-06-25"
+generated: "2026-06-12"
+updated: "2026-06-12"  # /sprint-plan new — PR-SPRINT CONCERNS adjustments adopted.
 
 stories:
-  - id: "S2-001"
-    name: "Level-generator GDD"
-    file: "design/gdd/level-generator.md"
+  - id: "S3-001"
+    name: "EconomyEvent + economy enums (ADR-0008)"
+    file: "core/economy_event.gd"
     priority: must-have
-    status: done
-    owner: "game-designer + systems-designer"
-    estimate_days: 1.5
-    blocker: ""
-    completed: "2026-06-11"
-  - id: "S2-002"
-    name: "Generator ADR (+ re-plan checkpoint)"
-    file: "docs/architecture/ADR-0007-level-generator.md"
-    priority: must-have
-    status: done
-    owner: "technical-director + systems-designer"
+    status: ready-for-dev
+    owner: "gdscript-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-06-11"
-  - id: "S2-003a"
-    name: "Generator core — by construction + solvability property test"
-    file: "core/level_generator.gd"
+    completed: ""
+  - id: "S3-003"
+    name: "TimeProvider seam + explicit-int reshuffle mix() (ADR-0009)"
+    file: "core/time_provider.gd"
     priority: must-have
-    status: done
-    owner: "gameplay-programmer + gdscript-specialist"
-    estimate_days: 2
+    status: ready-for-dev
+    owner: "gdscript-specialist"
+    estimate_days: 0.5
     blocker: ""
-    completed: "2026-06-11"
-  - id: "S2-003b"
-    name: "Generator core — difficulty knobs + determinism + recoverability"
-    file: "core/level_generator.gd"
+    completed: ""
+  - id: "S3-002"
+    name: "WalletData + SaveData v1->v2 migration + EconomyConfig resource"
+    file: "core/wallet_data.gd"
     priority: must-have
-    status: done
+    status: ready-for-dev
+    owner: "gameplay-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: ""
+  - id: "S3-004"
+    name: "WalletService transaction core (atomic spend/earn, snapshot rollback, DI, per-level reset)"
+    file: "autoloads/wallet_service.gd"
+    priority: must-have
+    status: ready-for-dev
+    owner: "gameplay-programmer"
+    estimate_days: 2.0
+    blocker: ""
+    completed: ""
+  - id: "S3-007"
+    name: "Hint booster (hint_score Formula 5 + use_booster + HINT_RESULT)"
+    file: "core/hint_score.gd"
+    priority: must-have
+    status: ready-for-dev
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: "2026-06-11"
-  - id: "S2-004"
-    name: "Wire generator into LevelData/GameManager"
-    file: "autoloads/level_data.gd"
+    completed: ""
+  - id: "S3-005"
+    name: "Compliance gating + daily caps + gem-to-coin conversion"
+    file: "autoloads/wallet_service.gd"
     priority: must-have
-    status: done
+    status: ready-for-dev
     owner: "gameplay-programmer"
-    estimate_days: 1
+    estimate_days: 1.5
     blocker: ""
-    completed: "2026-06-11"
-  - id: "S2-010"
-    name: "Scoring/stars quick-design"
-    file: "design/quick-specs/scoring-stars.md"
+    completed: ""
+  - id: "S3-006"
+    name: "Extra Discard Slot booster (ADR-0010 BoardModel change)"
+    file: "core/board_model.gd"
+    priority: should-have
+    status: backlog
+    owner: "gdscript-specialist + gameplay-programmer"
+    estimate_days: 2.0
+    blocker: ""
+    completed: ""
+  - id: "S3-008"
+    name: "Earn triggers: level-win coins + clean-clear bonus (flat fallback)"
+    file: "autoloads/wallet_service.gd"
+    priority: should-have
+    status: backlog
+    owner: "gameplay-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: ""
+  - id: "S3-009"
+    name: "Reshuffle booster (LevelGenerator.reshuffle helper + use_booster)"
+    file: "core/level_generator.gd"
+    priority: nice-to-have
+    status: backlog
+    owner: "gameplay-programmer"
+    estimate_days: 2.0
+    blocker: ""
+    completed: ""
+  - id: "S3-010"
+    name: "Streak + milestone earn math (TimeProvider-driven)"
+    file: "core/economy_earn.gd"
     priority: nice-to-have
     status: backlog
     owner: "systems-designer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: ""
+  - id: "S3-011"
+    name: "EconomyConfig remote-config-ready loader + local fallback"
+    file: "autoloads/economy_config_loader.gd"
+    priority: nice-to-have
+    status: backlog
+    owner: "tools-programmer"
     estimate_days: 0.5
-    blocker: ""
-    completed: ""
-  - id: "S2-011"
-    name: "Efficiency score (core/, lands S1-021)"
-    file: "core/scoring.gd"
-    priority: nice-to-have
-    status: backlog
-    owner: "systems-designer"
-    estimate_days: 0.5
-    blocker: ""
-    completed: ""
-  - id: "S2-012"
-    name: "Wire stars into ResultScreen"
-    file: "scenes/ui/result_screen.gd"
-    priority: nice-to-have
-    status: backlog
-    owner: "ui-programmer"
-    estimate_days: 1
-    blocker: ""
-    completed: ""
-  - id: "S2-020"
-    name: "Subtraction operation world"
-    file: "data/card_data.gd"
-    priority: nice-to-have
-    status: backlog
-    owner: "game-designer + gameplay-programmer"
-    estimate_days: 2
-    blocker: ""
-    completed: ""
-  - id: "S2-021"
-    name: "Carryover QA sign-offs (M1 advisory)"
-    file: "production/qa/evidence/"
-    priority: nice-to-have
-    status: backlog
-    owner: "qa-lead"
-    estimate_days: 1
     blocker: ""
     completed: ""

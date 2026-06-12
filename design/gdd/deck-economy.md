@@ -172,8 +172,11 @@ as playing without them. The edu value prop survives every spend.
     **Single mechanism (no contradiction):** the effect is to increment a mutable
     `BoardModel._active_discard_slots` by 1 (NOT a one-shot `discard_capacity = 6`) and append
     one empty (`-1`) slot to `_discard` immediately. **Real-codebase refactor:** `board_model.gd`
-    currently uses `const DISCARD_SLOTS = 5` in three loops (init, `_first_empty_discard`,
-    `_pull_matching`); all three must iterate `_active_discard_slots` instead. `BoardModel`
+    currently uses `const DISCARD_SLOTS = 5` in three instance-capacity loops (init,
+    `_first_empty_discard`, `_pull_matching`); all three must iterate `_active_discard_slots`
+    instead. (`core/recoverability_simulator.gd` also reads `DISCARD_SLOTS` in three places — those
+    **stay** on the base constant: generation-time recoverability is judged at base capacity, never
+    the runtime-expanded board. See ADR-0010.) `BoardModel`
     exposes `expand_discard()` (uncapped append); `WalletService` enforces the
     `MAX_DISCARD_SLOTS` cap so `BoardModel` stays free of economy-config knowledge (ADR candidate,
     Open Questions). Resets to `DISCARD_SLOTS = 5` at level end (win, lose, or quit). If the
@@ -951,7 +954,7 @@ _Undo was cut from the design. AC-U01–U07 are withdrawn. No Undo behaviour is 
 
 - **Injectable clock (`TimeProvider`) for determinism — RESOLVED in ADR-0009.** Formula 6 uses `level_start_timestamp`, and daily caps/streaks use the calendar day. `WalletService`/`LevelData` read time through an injectable `core/` `TimeProvider` seam (default wraps `Time`, tests inject a fixed clock), never `Time.get_unix_time_from_system()` directly — keeps AC-R04/R08 deterministic and headless-safe. Ratified by ADR-0009. (This seam survives the Undo removal: Reshuffle determinism + daily caps/streaks still require it.)
 
-- **Extra Discard Slot BoardModel change — RESOLVED in ADR-0010.** `BoardModel` currently uses `const DISCARD_SLOTS = 5` in **three** loops (init, `_first_empty_discard`, `_pull_matching`); all three iterate the mutable `_active_discard_slots`, and `BoardModel` gains an `expand_discard()` method. Mutable field + uncapped `expand_discard()` on `BoardModel`, with `WalletService` enforcing `MAX_DISCARD_SLOTS` (keeps `BoardModel` free of economy-config knowledge). Ratified by ADR-0010.
+- **Extra Discard Slot BoardModel change — RESOLVED in ADR-0010.** `BoardModel` currently uses `const DISCARD_SLOTS = 5` in **three** instance-capacity loops (init, `_first_empty_discard`, `_pull_matching`); all three iterate the mutable `_active_discard_slots`, and `BoardModel` gains an `expand_discard()` method. The **three** additional `DISCARD_SLOTS` reads in `core/recoverability_simulator.gd` (lines 23/47/103) deliberately **stay** on the base constant (generation-time recoverability is evaluated at base capacity). Mutable field + uncapped `expand_discard()` on `BoardModel`, with `WalletService` enforcing `MAX_DISCARD_SLOTS` (keeps `BoardModel` free of economy-config knowledge). Ratified by ADR-0010.
 
 - **Gem drip calibration** — the gem milestone table is provisional. At ~715 lifetime gems for a year-one non-payer, they can buy 7–14 cosmetics or ~238 Hints. If this feels too generous (devalues IAP gem packs), reduce the every-10-levels drip from 5 gems to 3. If too stingy (players feel blocked from cosmetics), increase. Real calibration requires M3 store conversion data. Owner: economy-designer.
 

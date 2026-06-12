@@ -109,10 +109,23 @@ func occupied_discard_count() -> int:
             n += 1
     return n
 ```
-Refactor sites (all three replace `DISCARD_SLOTS` with `_active_discard_slots`):
-- `_init()` discard seeding loop (`for _i in _active_discard_slots`).
-- `_first_empty_discard()` (`for slot in _active_discard_slots`).
-- `_pull_matching()` (`for slot in _active_discard_slots`).
+Refactor sites — the **three instance-capacity reads in `core/board_model.gd`** that govern this
+`BoardModel`'s live discard array (all three replace `DISCARD_SLOTS` with `_active_discard_slots`):
+- `_init()` discard seeding loop (`for _i in _active_discard_slots`) — board_model.gd:61.
+- `_first_empty_discard()` (`for slot in _active_discard_slots`) — board_model.gd:226.
+- `_pull_matching()` (`for slot in _active_discard_slots`) — board_model.gd:198.
+
+**Other `DISCARD_SLOTS` readers — deliberately NOT refactored (correction to the earlier
+"exactly three loops" claim).** `core/recoverability_simulator.gd` also reads
+`BoardModel.DISCARD_SLOTS` at lines 23, 47, and 103 (`min_headroom` seed; `DISCARD_SLOTS −
+occupancy` headroom; the occupancy scan loop). These **must stay on the base `DISCARD_SLOTS`
+constant** — the recoverability simulator runs at *generation time* on a fresh board and must
+prove the level is recoverable at **base capacity** (5), independent of whether a player later
+buys runtime slots. Routing them through `active_discard_slots()` would be a bug (it would let the
+generator assume the player will purchase buffer). So the full picture is **3 instance reads to
+change + 3 simulator reads to leave (with a clarifying comment)**. A grep for `DISCARD_SLOTS`
+across `core/` must return exactly these six sites and no others before the story is considered
+complete.
 
 Economy side (enforced in `WalletService`, **not** `BoardModel`):
 ```
@@ -169,9 +182,13 @@ needed beyond the existing per-level construction.
   precondition check.
 
 ### Risks
-- **A loop missed in the refactor** still reads the constant → capacity desync. *Mitigation:* grep
-  for `DISCARD_SLOTS` usages confirms exactly the three loops; a new test expands to 6/7 and asserts
-  `_first_empty_discard` and `_pull_matching` both see the new slot.
+- **A read site mis-classified** (an instance-capacity loop left on the constant → capacity desync,
+  OR a simulator read wrongly switched to `active_discard_slots()` → the generator assumes bought
+  buffer). *Mitigation:* a `DISCARD_SLOTS` grep across `core/` must return exactly the **six** sites
+  named in the Decision (3 in `board_model.gd` → change; 3 in `recoverability_simulator.gd` → keep
+  base, comment); a new test expands to 6/7 and asserts `_first_empty_discard` and `_pull_matching`
+  see the new slot, AND a generator/recoverability test confirms the simulator still reasons at base
+  capacity after the refactor.
 - **Solvability questioned after expansion.** *Mitigation:* expansion only *adds* buffer capacity;
   it cannot reduce reachability or change the card set / queue, so ADR-0003's invariant is untouched
   (a test asserts `is_solvable` holds after `expand_discard()`).
@@ -197,8 +214,13 @@ needed beyond the existing per-level construction.
    `_pull_matching`). Preserve the `_i` unused-loop-variable prefix in the `_init` seeding loop
    (`for _i in _active_discard_slots`) to keep the linter quiet.
 3. Add `expand_discard()`, `active_discard_slots()`, `occupied_discard_count()`.
-4. Run the full board suite — must be green (inert at 5).
-5. Economy sprint wires the precondition + cap in `WalletService` (this ADR does not modify economy
+4. Add a clarifying comment at the three `recoverability_simulator.gd` reads (lines 23/47/103)
+   stating they intentionally use the base `DISCARD_SLOTS` (generation-time recoverability is
+   evaluated at base capacity, not the runtime-expanded board) — do NOT route them through
+   `active_discard_slots()`.
+5. Run the full board suite **and** the generator/recoverability suite — both must be green (inert
+   at 5).
+6. Economy sprint wires the precondition + cap in `WalletService` (this ADR does not modify economy
    files; it only defines the `BoardModel` surface they call).
 
 ## Validation Criteria
