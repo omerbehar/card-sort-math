@@ -11,7 +11,7 @@ formulas:
     source: design/gdd/deck-economy.md
     description: Scores exposed cards to identify the most productive tap for the Hint booster
     variables: [routes_directly, opens_new_cards, discard_relief, ROUTES_WEIGHT, OPENS_WEIGHT, RELIEF_WEIGHT]
-    output_range: "0–585 (ordinal only; practical upper bound on 18-card board)"
+    output_range: "0–405 (ordinal only; practical upper bound at default weights on 18-card board)"
     referenced_by: []
 
   - name: reshuffle_seed
@@ -69,7 +69,7 @@ constants:
     source: design/gdd/deck-economy.md
     value: 500
     unit: coins
-    description: Daily cap on coin income from REWARDED_AD and DAILY_REWARD sources
+    description: Daily cap on REWARDED_AD coin income ONLY (canonical, Rule 15). Level wins, daily challenge, streak, milestones, and the clean-clear bonus are uncapped; gem-conversion uses DAILY_GEM_CONVERT_CAP.
     referenced_by: []
 
   - name: GEM_TO_COIN_RATE
@@ -153,6 +153,27 @@ constants:
     description: Maximum discard slots including Extra Discard Slot booster expansions; default 5 is DISCARD_SLOTS constant in BoardModel
     referenced_by: []
 
+  - name: CLEAN_CLEAR_BONUS
+    source: design/gdd/deck-economy.md
+    value: 20
+    unit: coins
+    description: Coin bonus for a zero-booster-spend level clear (Formula 1b); mechanizes the "not-spending feels as good as spending" pillar
+    referenced_by: []
+
+  - name: STREAK_RESET_FLOOR
+    source: design/gdd/deck-economy.md
+    value: 3
+    unit: streak_day
+    description: Day the login streak falls back to on a missed day (Rule 16); softens loss-aversion vs. a full reset-to-0
+    referenced_by: []
+
+  - name: SPEND_CONFIRM_THRESHOLD
+    source: design/gdd/deck-economy.md
+    value: 250
+    unit: coins
+    description: Booster spends at or above this coin cost require a one-step confirm dialog (anti-misfire); below it, one-tap
+    referenced_by: []
+
   - name: DAILY_GEM_CONVERT_CAP
     source: design/gdd/deck-economy.md
     value: 50
@@ -173,7 +194,15 @@ items:
   - name: EarnSource
     type: enum
     source: design/gdd/deck-economy.md
-    values: [LEVEL_WIN, DAILY_CHALLENGE, REWARDED_AD, IAP, MILESTONE_GIFT, DAILY_REWARD, SOURCE_ROLLBACK]
+    values: [LEVEL_WIN, DAILY_CHALLENGE, REWARDED_AD, IAP, MILESTONE_GIFT, GEM_CONVERT]
+    description: "Earn-credit provenance. GEM_CONVERT added for gem→coin conversion (AC-GC01). SOURCE_ROLLBACK removed — post-review, a failed transaction restores via pre-spend snapshot assignment (EC-09), not earn(). DAILY_REWARD removed — superseded by DAILY_CHALLENGE."
+    referenced_by: []
+
+  - name: EconomyEvent
+    type: enum
+    source: design/gdd/deck-economy.md
+    values: [CURRENCY_EARNED, CURRENCY_SPENT, SPEND_FAILED, EARN_CAP_REACHED, TRANSACTION_ROLLED_BACK, BOOSTER_ACTIVATED, BOOSTER_PRECONDITION_FAILED, BOOSTER_PURCHASE_FAILED, HINT_RESULT, IAP_BLOCKED]
+    description: "Economy event kind — a SEPARATE core/ type from board GameEvent (different payload/owner). Emitted by WalletService as typed signals; HUD + Analytics subscribe."
     referenced_by: []
 
   - name: EconomyConfig

@@ -1,10 +1,11 @@
 # Deck Economy
 
-> **Status**: Designed (pending independent /design-review)
+> **Status**: Approved (post-/design-review revision accepted 2026-06-12) — ready for programmer handoff
 > **Author**: omer.behar + agents
 > **Last Updated**: 2026-06-12
 > **Implements Pillar**: Meta/Retention — currencies, boosters, spend sinks that power player progression without trivialising the math
-> **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (accepted) 2026-06-12 — cleared for programmer handoff. 4 accepted concerns: streak reset-to-0 loss-aversion risk (watch at M3); "double reward" ad framing (keep quiet/dismissible in UX); Hint routing-info leak (acknowledged as intentional, note added); Reshuffle-into-stuck feels unfair (UX messaging item). No redesigns required.
+> **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (accepted) 2026-06-12 — cleared for programmer handoff. 4 accepted concerns: streak reset loss-aversion risk; "double reward" ad framing (keep quiet/dismissible in UX); Hint routing-info leak (acknowledged as intentional, note added); Reshuffle-into-stuck feels unfair.
+> **Independent /design-review (2026-06-12)**: NEEDS REVISION → revised. Resolutions: efficiency bonus now mechanized (`CLEAN_CLEAR_BONUS`); streak reset softened to a day-3 floor; Extra Discard Slot reframed purchase-ahead-only (no rescue); Reshuffle now guarantees a routable card; canonical `EconomyEvent` type introduced; `ComplianceService` method names corrected to `is_restricted()`; Undo replay approach specified against the real `BoardModel`; Hint ceiling corrected 585→405; streak average corrected 37→39; rollback uses a pre-spend snapshot; `DAILY_COINS_CAP` scope declared (ad-earn only).
 
 ## Overview
 
@@ -20,8 +21,10 @@ and spent on cosmetics, currency conversion, and booster bundles. From the playe
 perspective the economy converts *cleared floors into stored calm*: a growing coin reserve
 that says "you've earned the right to take it easy when you need to." From the
 infrastructure side, every transaction flows through an atomic `WalletService.spend()` that
-checks balance and emits a `GameEvent` before the booster activates; a failed spend never
-partially commits. All IAP and ad-based earn paths are gated through `ComplianceService`
+checks balance and emits an `EconomyEvent` (a separate event type from the board's `GameEvent`
+— see Detailed Design §Economy Events) before the booster activates; a failed spend never
+partially commits, and a mid-transaction error restores the exact pre-spend balance from a
+snapshot (not via `earn()`). All IAP and ad-based earn paths are gated through `ComplianceService`
 (ADR-0005): child users earn coins through play alone and are never shown an IAP surface.
 The hard constraint binding the entire system: **no booster may auto-solve arithmetic or
 reveal a card's result** — math remains the mechanic, every tap is the player's own work.
@@ -46,8 +49,9 @@ toolbox of a craftsperson, not the power-up queue of an action game.
 Critically: all four boosters act on **board state** (layout, history, buffer capacity), never on
 the **equation**. Hint highlights a productive *tap destination*; the player still computes `7 + 6`.
 Undo reverses a *routing* decision; the player still knows the result was 13. Reshuffle changes
-*coverage*; the card values are unchanged. Extra Discard Slot buys *buffer space*; the player
-still matches every result themselves. Because the tools act on arrangement and the player acts on
+*coverage*; the card values are unchanged. Extra Discard Slot buys *buffer space* — purchased
+ahead, while the player still has room, as a deliberate "give me more thinking space" choice,
+not a panic-button when the discard is already full; the player still matches every result themselves. Because the tools act on arrangement and the player acts on
 arithmetic, the two layers never blur. Playing with boosters feels as mathematically substantive
 as playing without them. The edu value prop survives every spend.
 
@@ -80,19 +84,30 @@ as playing without them. The edu value prop survives every spend.
    (see Tuning Knobs). `WalletService` (autoload) wraps all reads and writes.
 
 4. **Every transaction is atomic.** `WalletService.spend(currency, amount) → bool`:
+   - Captures `pre_spend_balance = wallet[currency]` before any mutation.
    - Checks balance ≥ amount; if false, returns false, no mutation.
-   - If true: deducts `amount`, emits `GameEvent.CURRENCY_SPENT`, activates booster.
-   - The booster activation and the deduction happen in the same frame before any yield.
-   - If the booster activation fails (e.g. Undo with no prior tap), the deduction is
-     rolled back (re-credits the amount) and an `ECONOMY_ROLLBACK` event is emitted.
+   - If true: deducts `amount`, emits `EconomyEvent.CURRENCY_SPENT`, activates booster.
+   - The deduction and the board mutation are committed synchronously in the same call stack —
+     before the resulting events are returned to the view layer for animation — so a save at any
+     point reflects a complete transaction (no partial state). (This is implementation atomicity;
+     the *view* animates asynchronously and is not expected to update simultaneously.)
+   - If the booster activation fails (e.g. Undo with no prior tap), no deduction was committed.
+     If a board mutation raises an unexpected error mid-transaction, the balance is restored by
+     **direct assignment** `wallet[currency] = pre_spend_balance` (NOT via `earn()`, which would
+     be silently truncated by the `MAX_BALANCE` clamp near the cap), and an
+     `EconomyEvent.TRANSACTION_ROLLED_BACK` event is emitted.
    `WalletService.earn(currency, amount, source) → void`:
-   - Adds `amount`, clamps to `MAX_BALANCE`, emits `GameEvent.CURRENCY_EARNED`.
+   - Adds `amount`, clamps to `MAX_BALANCE`, emits `EconomyEvent.CURRENCY_EARNED`.
 
 5. **ComplianceService gates every non-play earn path.** Before granting coins from a
-   rewarded ad or gems from IAP, the economy checks
-   `ComplianceService.can_show_ads()` / `can_show_iap()`. If the check fails (child
-   user or consent not granted), the earn does not fire and the UI must not surface the
-   offer. The economy never calls `SaveService.data.age_band` directly.
+   rewarded ad or gems from IAP, the economy checks `not ComplianceService.is_restricted()`
+   (the actual `ComplianceService` API exposes `is_adult()`, `is_restricted()`,
+   `can_collect_personal_data()`, `can_show_targeted_ads()`, `can_use_advertising_id()` — there
+   is no `can_show_ads()`/`can_show_iap()`; `is_restricted()` is the correct gate, and treats
+   the UNKNOWN age band as restricted). `can_show_targeted_ads()` governs ad *personalisation*
+   only, not whether a rewarded ad may be shown, so it is NOT the gate here. If the check fails
+   (child/restricted user), the earn does not fire and the UI must not surface the offer. The
+   economy never calls `SaveService.data.age_band` directly.
 
 6. **Child mode (age_band = CHILD):** Only the play-based coin faucet (level wins + daily
    challenge) is active. No ad-based coins, no IAP. Booster buttons remain visible and
@@ -118,13 +133,28 @@ as playing without them. The edu value prop survives every spend.
    the card's result to confirm and route it. This is deliberate: Hint is a planning aid,
    not an arithmetic aid. Any change that causes the view to display the card's result value
    as part of the hint highlight violates this design intent and must be rejected.
+   *Degenerate-case watch (recommended guard, calibrate at M3):* on a board with a single exposed
+   card and a single open stack, Hint collapses to a complete "tap this" routing solution. The
+   arithmetic is still the player's, but the planning layer vanishes. If M3 data shows Hint
+   purchased disproportionately in these trivial states, add a precondition that suppresses Hint
+   when the productive tap is unambiguous (e.g. ≤1 exposed card). Tracked as a tuning watch, not a
+   launch blocker.
 
-9. **Undo.** Precondition: ≥1 tap has been made this level AND the last action was not a
-   level-start or a cascade (see Edge Cases). Effect: replay the `BoardModel` event log
-   from the initial state to `event_count − 1`, restoring the board to the state before
-   the last voluntary tap. This includes restoring the discard state and any partial stack
-   progress. Stack-clear cascades are a special case: Undo steps back to just before the
-   tap that triggered the clear, not to mid-cascade (atomic at the tap boundary).
+9. **Undo.** Precondition: `tap_history.size() ≥ 1` this level (see Edge Cases).
+   **Implementation note (against the real `BoardModel`):** `core/board_model.gd` is stateless
+   between taps — it has no event log, no `tap_history`, and no `replay_to()`; `tap_card()`
+   returns events and discards them. `BoardModel` is, however, **deterministic** (no RNG is
+   consumed in `tap_card()`), so Undo is implemented by *replay from initial state*: a session
+   coordinator (a new owner outside `BoardModel`, e.g. on `WalletService` or a `GameSession`)
+   keeps `tap_history: Array[int]` (card IDs only) and a reference to the level's `LevelConfig`.
+   On Undo it reconstructs a fresh `BoardModel` from the `LevelConfig` and replays
+   `tap_history[0 .. n−2]`, landing on the state before the last voluntary tap (discard state and
+   partial stack progress restored). Stack-clear cascades are atomic at the tap boundary: Undo
+   steps back to just before the tap that triggered the clear, not to mid-cascade. `BoardModel`
+   gains **no** `replay_to()` method — the replay lives in the coordinator (preserves the
+   stateless-return model). Cost is O(N) per Undo for N taps (negligible for ≤40-tap levels; see
+   Open Questions for the Endless-band profiling spike). **`tap_history` is layout-specific** —
+   see EC-16 (Undo is unavailable immediately after a Reshuffle, which clears the history).
 
 10. **Reshuffle.** Precondition: board is not in a WIN state; level not yet cleared. Effect:
     re-generate the floor layout (slot positions and coverage layers) using a
@@ -133,21 +163,66 @@ as playing without them. The edu value prop survives every spend.
     unchanged. The new layout must pass `LevelData.is_solvable()` (by construction — same
     card counts, same queue). Exposure is reset: all layers reassigned from the new layout.
     The discard row is NOT cleared (cards already discarded stay discarded). The reshuffle
-    count increments; a warning fires if count reaches the cap (see Tuning Knobs).
+    count increments; a warning fires if count reaches the cap (see Tuning Knobs). `tap_history`
+    is **cleared** on Reshuffle (the recorded taps were made against the old layout and cannot be
+    replayed against the new one) — so Undo is unavailable until the player taps again (EC-16).
+    **Routable-card guarantee (fairness).** The reshuffle must produce a layout in which at least
+    one exposed card routes directly (its result matches an open, non-full stack target) OR opens
+    further coverage — i.e. the post-reshuffle board is never *immediately* stuck. Implementation:
+    the slot shuffle is re-rolled with successive `reshuffle_count` seeds until this predicate
+    holds (bounded retry; satisfiable because the board is solvable by invariant). A 250-coin
+    Reshuffle is therefore *always* meaningful — the player never spends to remain stuck. See
+    Formula 6 and EC-05.
 
-11. **Extra Discard Slot.** Precondition: `_active_discard_slots < MAX_DISCARD_SLOTS`
-    (the current discard slot count is below the maximum). Default `MAX_DISCARD_SLOTS = 7`
-    (tuning knob), so the booster can be used twice per level at default settings. Effect:
-    increments `BoardModel._active_discard_slots` by 1 for the remainder of this level,
-    opening one new empty slot immediately. Resets to `DISCARD_SLOTS = 5` at level end
-    (win, lose, or quit). If `_active_discard_slots == MAX_DISCARD_SLOTS`, the booster
-    is blocked — `BOOSTER_PRECONDITION_FAILED` returned without deducting coins.
+11. **Extra Discard Slot (purchase-ahead-only — proactive, not rescue).** Precondition:
+    `_active_discard_slots < MAX_DISCARD_SLOTS` **AND the discard row is not currently full**
+    (`occupied_discard_cards < _active_discard_slots`). The second clause is the design change
+    that removes the rescue use case structurally: you buy thinking-space *while you still have
+    room*, as a deliberate "give me more buffer" choice — you cannot panic-buy it when the
+    discard is already full and you are one tap from LOSE. Default `MAX_DISCARD_SLOTS = 7`
+    (tuning knob), so it can be bought twice per level at default settings, ahead of need.
+    **Single mechanism (no contradiction):** the effect is to increment a mutable
+    `BoardModel._active_discard_slots` by 1 (NOT a one-shot `discard_capacity = 6`) and append
+    one empty (`-1`) slot to `_discard` immediately. **Real-codebase refactor:** `board_model.gd`
+    currently uses `const DISCARD_SLOTS = 5` in three loops (init, `_first_empty_discard`,
+    `_pull_matching`); all three must iterate `_active_discard_slots` instead. `BoardModel`
+    exposes `expand_discard()` (uncapped append); `WalletService` enforces the
+    `MAX_DISCARD_SLOTS` cap so `BoardModel` stays free of economy-config knowledge (ADR candidate,
+    Open Questions). Resets to `DISCARD_SLOTS = 5` at level end (win, lose, or quit). If the
+    precondition fails (at max, or discard full), `BOOSTER_PRECONDITION_FAILED` is returned
+    without deducting coins.
 
 12. **No booster touches arithmetic.** This is the hard constraint. Hint routes the tap;
     the player computes. Undo reverses routing; the player recomputes. Reshuffle reshuffles
     positions; card values are unchanged. Extra Discard widens the buffer; the math
     remains the player's own. Any future booster idea that reveals a result, auto-routes
     a card, or solves an exercise must be rejected.
+
+#### Economy Events (canonical)
+
+Economy events are **a separate type from the board's `GameEvent`** (`core/game_event.gd`,
+whose `Kind` enum and `card_id`/`stack_index`/`discard_slot` payload are board-domain only).
+Cramming currency events into `GameEvent` would carry dead payload and entangle the
+view/model seam. The economy defines `EconomyEvent` (a lightweight `core/` `RefCounted` with its
+own `Kind` enum), emitted by `WalletService` as a typed signal; the HUD and Analytics subscribe
+to that signal. The canonical event names are:
+
+| `EconomyEvent.Kind` | Emitted when | Payload |
+|---------------------|--------------|---------|
+| `CURRENCY_EARNED` | `earn()` credits a balance | `currency`, `amount` (actual credited, post-clamp), `source`, `new_balance` |
+| `CURRENCY_SPENT` | `spend()` deducts a balance | `currency`, `amount`, `new_balance` |
+| `SPEND_FAILED` | `spend()` rejected for insufficient funds | `currency`, `amount`, `balance` |
+| `EARN_CAP_REACHED` | a daily cap blocks (fully or partially) an earn | `source` |
+| `TRANSACTION_ROLLED_BACK` | a mid-transaction error restored the pre-spend balance | `currency`, `amount` |
+| `BOOSTER_ACTIVATED` | a booster successfully activated | `booster_type` |
+| `BOOSTER_PRECONDITION_FAILED` | a booster precondition was unmet (no spend) | `booster_type`, `reason` |
+| `BOOSTER_PURCHASE_FAILED` | a purchase was rejected (e.g. double-tap) | `booster_type`, `reason` |
+| `HINT_RESULT` | a Hint resolved to a target card | `card_id` **only** (no result/operands — see AC-M01a) |
+| `IAP_BLOCKED` | a restricted user's IAP attempt was blocked | `sku`, `reason` |
+
+The Acceptance Criteria use shorthand (`SPENT(...)`, `EARNED(...)`, etc.); these map 1:1 to the
+`EconomyEvent.Kind` names above. The class name (`EconomyEvent` vs. extending `GameEvent`) is
+ratified by the ADR candidate in Open Questions.
 
 #### Earn Rates (provisional — calibrate from playtest)
 
@@ -159,20 +234,45 @@ as playing without them. The edu value prop survives every spend.
     Target: average 2-star performance yields ~55 coins/level, supporting ~750 coins/day
     for an engaged player (9 levels + daily challenge + occasional ad).
 
+    **Clean-clear efficiency bonus (mechanizes the "not-spending feels as good as spending"
+    pillar).** A level cleared with **zero booster spend** awards an additional
+    `CLEAN_CLEAR_BONUS = 20 coins` on top of the star-weighted win coins (see Formula 1b). This
+    is the concrete, testable reward that makes choosing *not* to spend its own positive outcome
+    rather than a mere absence of cost — the reserve grows *faster* when you solve bare-handed.
+    The bonus is forfeited the moment any coin- or gem-cost booster is activated during the
+    level (Undo/Reshuffle/Extra Discard/Hint). It does not stack per-booster (it is binary:
+    clean or not). Tuning knob: `CLEAN_CLEAR_BONUS` (see Tuning Knobs).
+
 14. **Daily challenge coin earn.** **150 coins** for completing the daily challenge (once
     per day; resets at midnight UTC).
 
 15. **Rewarded ad earn.** **60 coins** per completed rewarded ad. Cap: 3 rewarded ads per
     day (max 180 coins/day from ads; cap resets at midnight UTC). A 2× level-reward
     multiplier (doubles the win coins for one level) may substitute for the flat 60 coins
-    as a post-level ad format. Gated by `ComplianceService.can_show_ads()`; zero for
-    CHILD users.
+    as a post-level ad format. Gated by `not ComplianceService.is_restricted()`; zero for
+    CHILD/restricted users.
+
+    **Cap scope (canonical).** `DAILY_COINS_CAP` (default 500, Tuning Knobs) applies to
+    **rewarded-ad coin income only** (`source == REWARDED_AD`). Level wins, the daily challenge,
+    streak bonuses, milestone gifts, and the clean-clear bonus are **uncapped**. Gem→coin
+    conversion is governed by its **own** separate `DAILY_GEM_CONVERT_CAP` (50 gems/day), not by
+    `DAILY_COINS_CAP`. Therefore the ~750 coins/day income headline (Formula 2) is reachable —
+    only the ~180 coins/day ad slice is capped, and the cap binds before the income target. The
+    `MAX_ADS_PER_DAY = 3` count cap and the `DAILY_COINS_CAP` coin cap both apply to ads;
+    whichever binds first stops further ad earn.
 
 16. **Streak bonuses.** Additive on top of the daily challenge coin on a given day:
+    - Day 1: +0 (no streak yet)
     - Days 2–4 of login streak: +25 coins/day
     - Days 5–6: +50 coins/day
-    - Day 7: +100 coins (weekly anchor; streak resets to 1 on the 8th day)
-    A missed day resets the streak counter to 0.
+    - Day 7: +100 coins (weekly anchor)
+    **Reset behavior (canonical, calm-not-frantic):** natural day-8 rollover continues the streak
+    into a new cycle (day 8 = day 1 of the next week, +0). A **missed day** does NOT reset to 0 —
+    it resets to a **floor of day 3** (`STREAK_RESET_FLOOR = 3`, Tuning Knob), so a lapse costs
+    momentum but never wipes the player back to nothing. This deliberately softens loss-aversion:
+    the streak is a gentle retention hook, not an anxiety spike. (Replaces the earlier
+    reset-to-0/reset-to-1 ambiguity; the M3 watch item is now only "does the day-3 floor still
+    feel calm in live data," not a redesign.)
 
 17. **Milestone coin gifts.** Fixed one-time coin packages at level-completion milestones
     (see Tuning Knobs for the milestone table). Not repeatable.
@@ -183,8 +283,12 @@ as playing without them. The edu value prop survives every spend.
     - First 3-star on any new operation world: 10 gems (per world, up to 5 worlds = 50 gems)
     - Daily-challenge 7-day streak maintained: 10 gems (weekly)
     - Major achievement unlocks: 3–10 gems each (~20–30 gems total over full playthrough)
-    Lifetime free-gem estimate for a year-one engaged player: ~715 gems. No daily login gem
-    drip (would devalue IAP small packs). No coin→gem conversion.
+    Lifetime free-gem estimate for a year-one engaged player: ~660 gems (itemized: tutorial 15 +
+    level-milestones ~50 + world-first-3★ 50 + weekly streak ~520 + achievements ~25). No *daily*
+    login gem drip. **Caveat (honest):** the weekly-streak gem (10/week ≈ 1.43/day) is the
+    dominant source (~79%) and is functionally close to a slow daily drip — its calibration vs.
+    IAP gem-pack conversion must be watched at M3 (Open Questions: Gem drip calibration). No
+    coin→gem conversion.
 
 #### Spend Rates (provisional — calibrate from playtest)
 
@@ -230,6 +334,13 @@ as playing without them. The edu value prop survives every spend.
 
     All prices are USD base; localized price points applied at store level.
 
+    **Anchor-SKU note (intentional):** the Premium Bundle ($4.99) is strictly richer than
+    standalone Remove Ads ($3.99) — it adds 150 gems + 1,500 coins for $1 more, so a player who
+    wants ad removal is *meant* to see the Bundle as the obvious upgrade. Remove Ads is retained
+    as a deliberate **anchor** (and for players who only want ad removal at the lowest price), not
+    as a sincere best-value option. Flagged for store-policy review (Open Questions); if anchoring
+    is undesired at launch, reduce the Bundle's gem content to 100 or raise its price to $5.99.
+
 ### States and Transitions
 
 The economy has no complex FSM — it is a set of balance mutations gated by predicates.
@@ -250,18 +361,20 @@ Per-level state (owned by `WalletService` for the duration of a level, cleared o
 | `extra_discard_active` | `false` | Extra Discard Slot booster activation |
 | `reshuffle_count` | `0` | Each Reshuffle use |
 | `undos_used` | `0` | Each Undo use (tracked for analytics and future star penalty) |
+| `tap_history` | `[]` | Appended on each voluntary tap; consumed by Undo replay; **cleared on Reshuffle** (layout-specific) |
+| `boosters_used_this_level` | `0` | Incremented on any booster activation; gates the clean-clear efficiency bonus (`== 0` at win → bonus awarded) |
 
 ### Interactions with Other Systems
 
 | System | Direction | Interface |
 |--------|-----------|-----------|
 | **SaveService** | Writes to | `WalletData` fields serialised in `SaveData.wallet_coins` and `SaveData.wallet_gems`; persisted on every earn/spend via `SaveService.save_game()`. |
-| **BoardModel** | Commands | Undo calls `BoardModel.replay_to(event_index - 1)`; Reshuffle calls `LevelGenerator.generate(reshuffle_params)`; Extra Discard Slot sets `BoardModel.discard_capacity = 6`. |
-| **ComplianceService** | Queries | `can_show_ads()` before ad earn; `can_show_iap()` before IAP surface. |
+| **BoardModel** | Commands | Undo is a *replay-from-initial* in a session coordinator (no `replay_to()` on `BoardModel`): reconstruct from `LevelConfig` + replay `tap_history[0..n−2]`. Reshuffle calls a new `LevelGenerator.reshuffle(config, seed)` helper (NOT `generate()` — see Formula 6). Extra Discard Slot calls `BoardModel.expand_discard()` (increments mutable `_active_discard_slots`, appends a slot). |
+| **ComplianceService** | Queries | `not is_restricted()` before ad earn and before any IAP surface (the API has no `can_show_ads()`/`can_show_iap()`). |
 | **GameManager** | Receives signals from | Level win/lose events trigger coin earn (star-weighted). |
-| **LevelData** / **LevelGenerator** | Calls into | Reshuffle calls the generator with `reshuffle_params` to produce a new layout for the same card set and queue. |
+| **LevelData** / **LevelGenerator** | Calls into | Reshuffle calls a `LevelGenerator.reshuffle(config, seed)` helper that re-permutes slot assignments only (preserving card set + target queue) and enforces the routable-card guarantee. It does NOT call `generate()` (which would rebuild results/queue and violate AC-R01). |
 | **HUD / UI** | Reads from | Wallet balance displayed in HUD via `WalletService.data`; booster button states derive from balance + preconditions. |
-| **Analytics** | Emits to | `CURRENCY_EARNED`, `CURRENCY_SPENT`, `BOOSTER_ACTIVATED`, `ECONOMY_ROLLBACK` events. |
+| **Analytics** | Emits to | `EconomyEvent` signals: `CURRENCY_EARNED`, `CURRENCY_SPENT`, `BOOSTER_ACTIVATED`, `TRANSACTION_ROLLED_BACK`, `EARN_CAP_REACHED` (see §Economy Events). Distinct from board `GameEvent`s. |
 | **IAP Service** (planned) | Receives calls from | On verified purchase, IAP service calls `WalletService.earn(GEMS, amount, SOURCE_IAP)`. |
 | **Ad Service** (planned) | Receives calls from | On completed rewarded ad, Ad service calls `WalletService.earn(COINS, REWARDED_AD_COINS, SOURCE_REWARDED_AD)` — after checking the daily cap. |
 
@@ -282,9 +395,30 @@ The level-win coin reward is defined as:
 | First-win flag | `first_win_today` | bool | {true, false} | True for the first level cleared each calendar day |
 | First-win bonus | `first_win_bonus` | int | 15 | Flat addition; only once per day |
 
-**Output Range:** 40–90 coins per level win under normal play.
+**Output Range:** 40–90 coins per level win under normal play (before the clean-clear bonus).
 **Example:** Player wins a level with 2 stars, not the first win today → `55 + 0 = 55 coins`.
 **Example:** Player wins first level of the day with 3 stars → `75 + 15 = 90 coins`.
+
+---
+
+### 1b. Clean-clear efficiency bonus
+
+Mechanizes the "not-spending feels as good as spending" pillar. Added at level win:
+
+`clean_clear_bonus = CLEAN_CLEAR_BONUS if boosters_used_this_level == 0 else 0`
+
+`total_win_coins = BASE_WIN_COINS[stars] + (first_win_bonus if first_win_today else 0) + clean_clear_bonus`
+
+**Variables:**
+
+| Variable | Symbol | Type | Range | Description |
+|----------|--------|------|-------|-------------|
+| Boosters used | `boosters_used_this_level` | int | ≥ 0 | Count of booster activations this level (per-level state) |
+| Clean-clear bonus | `CLEAN_CLEAR_BONUS` | int | 20 (tuning knob) | Flat coin bonus for a zero-spend clear |
+
+**Output Range:** total_win_coins is 40–110 coins (90 max from Formula 1 + 20 clean bonus).
+**Example:** First win of the day, 3 stars, no boosters used → `75 + 15 + 20 = 110 coins`.
+**Example:** 2-star win using one Undo → `55 + 0 + 0 = 55 coins` (bonus forfeited).
 
 ---
 
@@ -300,11 +434,17 @@ This formula is used to calibrate the economy, not computed at runtime.
 | levels/session | 3 | ~9 min session |
 | avg_coins/level | 55 | 2-star average (before daily bonus) |
 | daily_challenge_coins | 150 | One per day |
-| streak_bonus | 37 | Average over days 1–7 cycle (~25+25+25+50+50+100/7) |
+| streak_bonus | 39 | Average over a 7-day cycle: `(0+25+25+25+50+50+100)/7 = 275/7 ≈ 39.3` (day 1 = 0) |
+| first_win_bonus | 15 | One per calendar day, first level win only (Formula 1) |
+| clean_clear_bonus (modeled) | ~120 | If most of the ~9 daily levels are cleared without boosters: `9 × 20 × (clean-clear rate)`; at an ~67% clean rate ≈ 120 |
 | ads/day | 1.5 | Opt-in rate estimate for adult casual audience |
 | coins_per_ad | 60 | Fixed per completed rewarded ad |
 
-**Design target:** ~750 coins/day for an engaged non-paying adult player.
+**Design target:** ~750 coins/day in *spendable baseline* (excluding the clean-clear bonus, which
+is the reward for NOT spending and so should not be modeled as routine spend income). Baseline:
+`(3×3×55) + 150 + 39 + 15 + (1.5×60) = 495 + 150 + 39 + 15 + 90 = 789` coins/day. The clean-clear
+bonus adds on top for players who solve bare-handed, *widening* the gap between spending and
+saving in favor of saving — exactly the pillar intent.
 At that income, time-to-afford for each booster:
 
 | Booster | Cost | Days of play |
@@ -382,13 +522,19 @@ Where:
 |----------|------|-------|-------------|
 | `r` | int | level result domain | Arithmetic result of this card |
 | `routes_directly` | bool→int | {0, 1} | 1 if this card can directly fill an open stack slot right now |
-| `opens_new_cards` | int | 0 – total_floor_cards | Cards that become exposed by removing this card |
+| `opens_new_cards` | int | 0 – MAX_COVERAGE_DEPTH | Cards that become exposed by removing this card. The theoretical `total_floor_cards` max is geometrically unreachable; the real per-tap max is a small layout constant (~1–4, the generator's layer count) |
 | `discard_relief` | int | 0 – DISCARD_SLOTS | Matching cards in discard that would eventually be freed |
 | `ROUTES_WEIGHT` | int | 200 (tuning knob) | Strongly prefers a directly-routing card |
 | `OPENS_WEIGHT` | int | 10 (tuning knob) | Each newly exposed card adds value |
 | `RELIEF_WEIGHT` | int | 5 (tuning knob) | Each discard card with matching result adds modest value |
 
-**Output Range:** 0 (no useful tap: no routing, no exposure gain) to approximately 200 + (total_floor_cards × 10) + (DISCARD_SLOTS × 5). Practical upper bound ~585 on an 18-card board. Score is purely ordinal — magnitude has no meaning outside comparison.
+**`card_id` definition (determinism):** `card_id` must be the stable `LevelConfig`-assigned card
+identifier (not a scene-instance handle), so the lowest-`card_id` tie-break is deterministic
+across saves, restarts, and reshuffles.
+
+**Output Range:** 0 (no useful tap: no routing, no exposure gain) to `200 + (total_floor_cards × 10) + (DISCARD_SLOTS × 5)`. At default weights on an 18-card board the *theoretical* ceiling is `200 + 18×10 + 5×5 = 405`; the *practical* operating ceiling is far lower (~255) because `opens_new_cards` rarely exceeds the layer count. Score is purely ordinal — magnitude has no meaning outside comparison.
+
+**Weight-interaction note:** Hint's routing preference holds only while `ROUTES_WEIGHT > opens_new_cards × OPENS_WEIGHT`. At default weights (200 / 10) routing dominates unless a card opens ≥ 21 cards (unreachable). At `OPENS_WEIGHT = 30` (max), routing preference flips once `opens_new_cards ≥ 7` (achievable) — tune the two weights as a pair, not independently.
 
 **Example:** Board has 3 exposed cards.
 - Card 2 (result 7): routes_directly=1 (200), opens 2 cards (20), 0 in discard (0) → **score = 220** ← selected
@@ -401,7 +547,11 @@ Winner: Card 2 (220). Hint highlights card 2.
 
 ### 6. Reshuffle seed formula
 
-`reshuffle_seed = hash(str(level_id) + ":" + str(level_start_timestamp) + ":" + str(reshuffle_count))`
+`reshuffle_seed = abs(hash(str(level_id) + ":" + str(level_start_timestamp) + ":" + str(reshuffle_count)))`
+
+`abs()` keeps the seed in `[0, 2^31−1]` (GDScript `hash()` returns a *signed* 32-bit int;
+negative seeds passed to `rng.seed` are not guaranteed uniform). Cross-level hash collisions are
+harmless (different card sets → solvability still holds; at worst a déjà-vu layout).
 
 | Variable | Type | Range | Description |
 |----------|------|-------|-------------|
@@ -410,7 +560,16 @@ Winner: Card 2 (220). Hint highlights card 2.
 | `reshuffle_count` | int | [1, MAX_RESHUFFLES] | Increments per use; guarantees two reshuffles on same level ≠ same layout |
 | `reshuffle_seed` | int | any | GDScript `hash()` result; passed as `rng.seed` to the layout shuffler only |
 
-The reshuffle does NOT call `LevelGenerator.generate()`. It only re-runs the `_fisher_yates_shuffle(slot_indices, reshuffle_rng)` step (Level Generator Core Rule 8). The card pool and target queue are preserved exactly; `is_solvable()` holds by the same structural argument as the original generation.
+The reshuffle does NOT call `LevelGenerator.generate()` (that would rebuild results and the
+target queue, violating AC-R01). A dedicated `LevelGenerator.reshuffle(config, seed)` helper only
+re-runs the `_fisher_yates_shuffle(slot_indices, reshuffle_rng)` step (Level Generator Core Rule
+8) and recomputes coverage. The card pool and target queue are preserved exactly; `is_solvable()`
+holds by the same structural argument as the original generation.
+
+**Routable-card guarantee.** After shuffling, the helper checks the predicate "≥1 exposed card
+routes directly OR opens further coverage." If it fails, it re-rolls with the next
+`reshuffle_count` seed (bounded retry, e.g. ≤8 attempts) until it holds — guaranteed satisfiable
+because the board is solvable. This makes EC-05 "spend-and-still-stuck" impossible.
 
 **Example:** `level_id=42`, `level_start_timestamp=1_718_000_000`, first reshuffle: `hash("42:1718000000:1")`.
 **Example:** Second reshuffle of the same level: `hash("42:1718000000:2")` — different seed, different layout.
@@ -433,6 +592,8 @@ The reshuffle does NOT call `LevelGenerator.generate()`. It only re-runs the `_f
 
 **Output Range:** 25 (1 gem) to 1,250 (50 gems, daily cap).
 **Example:** Player converts 10 gems → 250 coins.
+**Note:** `gems_spent = 0` cannot reach this formula — it is rejected upstream by EC-14 (0-amount
+guard). Conversion-coins count against `DAILY_GEM_CONVERT_CAP` (50 gems), NOT `DAILY_COINS_CAP`.
 
 ---
 
@@ -442,7 +603,7 @@ The reshuffle does NOT call `LevelGenerator.generate()`. It only re-runs the `_f
 
 `MAX_ADS_PER_DAY = 3`
 
-`earn_available = (ads_watched_today < MAX_ADS_PER_DAY) AND ComplianceService.can_show_ads()`
+`earn_available = (ads_watched_today < MAX_ADS_PER_DAY) AND (ad_coins_today < DAILY_COINS_CAP) AND (not ComplianceService.is_restricted())`
 
 **Output:** Boolean; determines whether the rewarded ad button is shown.
 **Example:** Player has watched 2 ads today → button shows. After 3rd ad → button hides until midnight UTC reset.
@@ -455,17 +616,17 @@ The reshuffle does NOT call `LevelGenerator.generate()`. It only re-runs the `_f
 
 - **EC-03 — Undo after a cascade:** If the last tap triggers a compound event sequence (STACK_CLEARED + multiple PULL events): the entire compound sequence is atomically reversed. Undo records only `card_id`, not events. The board lands in the exact state before that tap: card is back on the floor and exposed, stacks at their pre-tap counts, discard in its pre-tap state. Cascades are not partially undone — the tap boundary is atomic.
 
-- **EC-04 — Undo reverses LOSE state:** If the most recent tap triggered `LOSE` (discard full + card was tapped): Undo is still available (`tap_history.size() ≥ 1`). After Undo, `board.is_lost() == false`; board returns to pre-lose state. This is the primary Undo rescue case. 180 coins are deducted.
+- **EC-04 — Undo reverses LOSE state:** If the most recent tap triggered `LOSE` (discard full + card was tapped): Undo is still available (`tap_history.size() ≥ 1`). After Undo, `board.is_lost() == false`; board returns to pre-lose state. Framed as *self-correction* (you reverse a routing decision you regret), not a paywall rescue — and the clean-clear bonus is forfeited, so the no-spend path stays the rewarded one. 180 coins are deducted.
 
-- **EC-05 — Reshuffle when board is stuck (discard full, no legal move):** If all 5 discard slots are full and every exposed card has no matching open stack: this is the primary Reshuffle use case. Precondition `NOT board.is_game_over()` passes (the board is stuck but not yet lost — LOSE triggers on the next attempted tap, not on the state itself). `spend(COINS, 250)` is attempted. On success, new layout is generated; the discard remains intact (5 cards). If no newly exposed card routes directly, the board is still stuck, but the player has more time to evaluate. **No refund if the reshuffled board is also stuck.**
+- **EC-05 — Reshuffle when board is stuck (discard full, no legal move):** If all discard slots are full and every exposed card has no matching open stack: a valid Reshuffle use. Precondition `NOT board.is_game_over()` passes (the board is stuck but not yet lost — LOSE triggers on the next attempted tap, not on the state itself). `spend(COINS, 250)` is attempted. On success, the new layout is produced under the **routable-card guarantee** (Core Rule 10 / Formula 6): it is re-rolled until at least one exposed card routes directly or opens coverage. The discard remains intact. **The reshuffled board is therefore never immediately stuck — the player always gets a meaningful move for their 250 coins, so the "spend-and-still-stuck, no refund" failure mode is designed out.**
 
-- **EC-06 — Extra Discard Slot when discard is already full (5 cards):** If all 5 slots are occupied: precondition `_active_discard_slots < MAX_DISCARD_SLOTS` (5 < 7) passes. `spend(COINS, 350)` is attempted. On success, `_active_discard_slots = 6`, a 6th empty slot opens immediately. The board is NOT in LOSE state. Player can now tap one more card. This is the primary Extra Discard Slot use case.
+- **EC-06 — Extra Discard Slot when discard is already full (purchase-ahead-only → BLOCKED):** If all current discard slots are occupied, the precondition `occupied_discard_cards < _active_discard_slots` **fails**: `BOOSTER_PRECONDITION_FAILED(EXTRA_DISCARD, reason=DISCARD_FULL)` is returned, no coins deducted. Extra Discard Slot is a *proactive* buy made while room remains — it is deliberately NOT a one-tap-from-LOSE rescue button. The UI greys the button when the discard is full and surfaces "buy earlier — no room to expand into now." (Reshuffle, with its routable guarantee, is the tool for an already-full board.)
 
 - **EC-07 — Extra Discard Slot at maximum (already expanded twice):** If `_active_discard_slots == MAX_DISCARD_SLOTS (7)`: `BOOSTER_PRECONDITION_FAILED` returned. `spend` is not called. Coins unchanged. The UI button is greyed out with a visual indicator that maximum slots have been reached.
 
 - **EC-08 — Two simultaneous Hint requests (double-tap):** If `_hint_in_progress == true` when a second Hint tap arrives: the second request is rejected before `spend` is called. No second coin deduction. No second computation. `BOOSTER_PURCHASE_FAILED` with reason `ALREADY_IN_PROGRESS` is emitted for the second tap. `_hint_in_progress` clears when the view signals the first result is consumed.
 
-- **EC-09 — Transaction failure mid-level (atomic rollback):** If `spend(COINS, 180)` returns `true` (coins deducted) but the board mutation subsequently raises an unexpected error: `WalletService` calls `earn(COINS, 180, SOURCE_ROLLBACK)` to restore the balance → emits `TRANSACTION_ROLLED_BACK(COINS, 180)` → board mutation is not applied → board remains in its pre-activation state → error is logged. `SOURCE_ROLLBACK` is the ONLY valid context for this earn source.
+- **EC-09 — Transaction failure mid-level (atomic rollback via snapshot):** If `spend(COINS, 180)` returns `true` (coins deducted) but the board mutation subsequently raises an unexpected error: `WalletService` restores the balance by **direct assignment** `wallet.coins = pre_spend_balance` (the value captured before the deduction) → emits `TRANSACTION_ROLLED_BACK(COINS, 180)` → board mutation is not applied → board remains in its pre-activation state → error is logged. **Rollback must NOT use `earn()`** — near `MAX_BALANCE` the clamp would silently truncate the re-credit and the player would lose coins (see AC-RL01). Snapshot assignment restores the exact pre-spend value regardless of proximity to the cap.
 
 - **EC-10 — Daily reward cap reached, rewarded ad attempted:** If the daily REWARDED_AD coin cap (e.g. 500) is already hit: `DailyCapTracker` computes remaining = 0 → `WalletData.earn` is NOT called → `EARN_CAP_REACHED(REWARDED_AD)` emitted → UI shows "daily limit reached." The ad impression was already shown — no refund.
 
@@ -479,13 +640,15 @@ The reshuffle does NOT call `LevelGenerator.generate()`. It only re-runs the `_f
 
 - **EC-15 — Reshuffle on an already-won board:** If `board.is_won() == true` when `use_booster(RESHUFFLE)` is called: `BOOSTER_PRECONDITION_FAILED` returned. Coins unchanged. (This edge case should be impossible in normal play but must be defended defensively.)
 
+- **EC-16 — Undo immediately after a Reshuffle:** Reshuffle clears `tap_history` (the recorded taps were made against the pre-reshuffle layout and cannot be replayed against the new one). If `use_booster(UNDO)` is called before any new tap, `tap_history.size() == 0` → `BOOSTER_PRECONDITION_FAILED(UNDO, reason=NO_HISTORY)` returned, coins unchanged. This is expected and correct: Undo becomes available again after the first tap on the reshuffled layout. The UI greys Undo immediately after a Reshuffle.
+
 ## Dependencies
 
 **This system depends on:**
 
 | System | Hard/Soft | Interface |
 |--------|-----------|-----------|
-| **Save Service** (`core/save_data.gd`, `autoloads/save_service.gd`) | Hard | Wallet balance (coins, gems) is persisted inside `SaveData`; `WalletService` reads/writes through `SaveService.data`. Schema migration on `SaveData._migrate()` must handle wallet fields. |
+| **Save Service** (`core/save_data.gd`, `autoloads/save_service.gd`) | Hard | Wallet balance (coins, gems) is persisted inside `SaveData`; `WalletService` reads/writes through `SaveService.data`. **Schema bump required:** `SaveData` currently has no wallet fields and `CURRENT_SCHEMA_VERSION = 1`. Adding `wallet_coins`/`wallet_gems` bumps it to 2 with an explicit `_migrate()` step (`if version == 1: out["wallet_coins"] = 0; out["wallet_gems"] = 0; version = 2`). `from_dict()` defaults missing keys to 0. |
 | **ComplianceService** (`autoloads/compliance_service.gd`) | Hard | IAP and ad-based coin/gem rewards require `ComplianceService.can_collect_personal_data()` / `can_show_ads()` to pass. Economy never reads `age_band` directly (ADR-0005). Child users earn coins through level wins only. |
 | **BoardModel** (`core/board_model.gd`) | Hard | Boosters that mutate board state (Undo, Reshuffle, Extra Discard Slot) must do so through `BoardModel` — never by writing view state directly. Undo replays the event log to state N−1. Reshuffle calls a new generation of slot assignments preserving card set + queue. Extra Discard Slot temporarily expands the discard capacity constant that `BoardModel` enforces. |
 | **LevelData / Level Generator** (`autoloads/level_data.gd`, `core/level_generator.gd`) | Hard | Reshuffle must produce a level that satisfies `LevelData.is_solvable()` (ADR-0003). The generator's `pick_operands` helper and solvability invariant constrain what a valid reshuffle can look like. |
@@ -523,11 +686,13 @@ All economy values live in an `EconomyConfig` resource (`assets/data/economy_con
 | `COINS_WIN_3_STAR` | 75 | 50–150 | High → 3-star grind is economically worth it; Low → stars feel cosmetic |
 | `COINS_DAILY_CHALLENGE` | 150 | 75–300 | Low → daily challenge feels unrewarded; High → daily engagement is buy-pass |
 | `COINS_REWARDED_AD` | 60 | 30–120 | Low → ads don't feel worth watching; High → ad farming dominates earn |
+| `CLEAN_CLEAR_BONUS` | 20 | 0–50 | Coin bonus for a zero-booster-spend level clear. 0 → the "not-spending feels good" pillar is unmechanized; High → over-rewards trivial bare-handed wins and inflates coin supply |
 | `MAX_ADS_PER_DAY` | 3 | 1–10 | Low → frustrating cap; High → ad farming negates progression intent |
 | `STREAK_DAY_2_TO_4_BONUS` | 25 | 10–50 | Additive on daily challenge; keeps streak meaningful |
 | `STREAK_DAY_5_TO_6_BONUS` | 50 | 25–100 | Escalation; too high → streak anxiety (breaks "calm, not frantic") |
-| `STREAK_DAY_7_BONUS` | 100 | 50–200 | Weekly anchor; too high → users feel punished for missing a day. **Live-ops lever:** if streak anxiety appears in M3 data (churn spike on day 8, negative reviews about streaks), the *first* adjustment is to soften the reset (streak freeze item, or reset to a floor like day 3 instead of day 1) — not to raise coin rewards, which only inflates income without reducing anxiety. |
-| `DAILY_COINS_CAP` | 500 | 200–1,500 | Low → frustrates engaged non-payers; High → ad farming yields too much |
+| `STREAK_DAY_7_BONUS` | 100 | 50–200 | Weekly anchor; too high → users feel punished for missing a day. **Live-ops lever:** if streak anxiety still appears in M3 data even with the day-3 reset floor, soften further (streak-freeze item) — not raise coin rewards, which only inflates income without reducing anxiety. |
+| `STREAK_RESET_FLOOR` | 3 | 1–4 | Day the streak falls back to on a missed day (Core Rule 16). 1 → harsher (closer to a full reset); 4 → barely any penalty. 3 is the calm-not-frantic default — a lapse costs momentum, never wipes to zero. |
+| `DAILY_COINS_CAP` | 500 | 200–1,500 | **Scope: rewarded-ad coin income only** (Rule 15). Level/challenge/streak/milestone/clean-clear are uncapped; gem-conversion uses its own cap. Low → frustrates ad-watchers; High → ad farming yields too much |
 | `DAILY_GEM_CONVERT_CAP` | 50 | 10–200 | Low → gems stay premium; High → soft-to-premium conversion undermines IAP |
 
 ### Booster costs
@@ -613,11 +778,35 @@ No new art assets or shaders are required by the economy model itself.
   - Greyed-out state if coin balance < cost (but button is still visible — player knows it exists)
   - Disabled state if the precondition is unmet (e.g. Undo greyed out at start; Extra Discard greyed out at MAX_DISCARD_SLOTS)
   - Active indicator while Hint is in-progress (preventing double-tap)
+- **Spend confirmation (anti-misfire).** Boosters costing **≥ 250 coins** (Reshuffle, Extra
+  Discard Slot) require a one-step confirm ("Spend 250 coins? [Confirm] [Cancel]") before
+  deduction. Hint (120) and Undo (180) are one-tap (low cost, and Undo is itself a correction).
+  Threshold lives in `EconomyConfig` (`SPEND_CONFIRM_THRESHOLD = 250`). This protects the
+  "deliberate, occasional" spend feel and prevents fat-finger loss of a half-day's coins.
+- **Distinguishable failure feedback.** Greyed buttons must communicate *why*: an **unaffordable**
+  booster (balance < cost) shows a coin-tinted grey + "not enough coins" on tap; a
+  **precondition-failed** booster (nothing to undo / discard full / at max slots) shows a neutral
+  grey + a context message on tap. The two states must be visually distinct, and a double-tap on
+  an in-progress Hint gives a brief pulse (EC-08) — no failure is silent.
+- **HUD layout budget (must be solved by the UX spec, not the single top bar).** Four 44×44pt
+  booster buttons (176pt) + a 6-digit coin balance (~100pt at large-text scale) + padding exceed
+  a 390pt-wide portrait bar once safe-area insets apply. The booster tray therefore moves to the
+  **bottom** of the play area (thumb-reachable) with the coin balance top-right; the single
+  "top bar" constraint is dropped. UX spec owns the final arrangement; 44pt targets are
+  non-negotiable.
 - **No IAP surface during gameplay.** Economy-related IAP/gem purchase offers appear only on pre-level screens, post-level screens, or the dedicated shop screen. Never as a mid-puzzle interruption.
 
 ### Level pre/post screens
 - **Pre-level booster selection** (optional feature, post-M3): allow players to equip 1 booster per level before starting (deliberate spend, not panic spend). Shows coin cost and current balance.
-- **Post-level earn summary:** "You earned +N coins" card with the earn breakdown (base + star bonus + streak). Rewarded ad offer: "Watch an ad to double your reward" button — only if `ComplianceService.can_show_ads()` is true.
+- **Post-level earn summary:** "You earned +N coins" card with the earn breakdown (base + star
+  bonus + streak + clean-clear bonus when earned). **CTA hierarchy:** the primary **Continue**
+  action is the most prominent element and reachable in one tap with zero interaction with any ad
+  offer. The "Watch an ad to double your reward" offer is a clearly secondary, dismissible element
+  — never the primary CTA (avoids the dark pattern of friction on the non-monetizing path). The
+  ad offer is **hidden** (not just disabled) when the player is restricted (`is_restricted()`) OR
+  the daily ad cap is exhausted (`ads_watched_today >= MAX_ADS_PER_DAY` or `ad_coins_today >=
+  DAILY_COINS_CAP`), so a player can never watch a full ad and then receive nothing (EC-10). The
+  double-reward offer is shown **at most once per session**, not after every level.
 
 ### Shop / currency screen (menu layer)
 - **Coin balance + Gem balance:** both visible in the shop header.
@@ -639,10 +828,27 @@ No new art assets or shaders are required by the economy model itself.
 > - **Pre-level booster selection** (if implemented in M3)
 >
 > Stories that reference UI for any of these should cite `design/ux/[screen].md`, not this GDD directly. Note this in the systems index.
+>
+> **Pre-UX decisions now resolved in this GDD (so `/ux-design` can start without stalling):**
+> spend-confirm policy (≥250-coin threshold), distinguishable failure feedback (unaffordable vs
+> precondition), HUD layout (bottom booster tray + top-right balance), ad-offer CTA hierarchy +
+> cap-gating + once-per-session, and Reshuffle-into-stuck (designed out via the routable-card
+> guarantee). The UX spec owns visual arrangement; these interaction contracts are fixed.
 
 ## Acceptance Criteria
 
 `[B]` = BLOCKING (automated unit/integration test). `[A]` = ADVISORY (manual check or playtest).
+
+> **Event-name convention:** AC shorthand (`SPENT(...)`, `EARNED(...)`, `SPEND_FAILED(...)`,
+> `TRANSACTION_ROLLED_BACK(...)`, `HINT_RESULT(...)`, etc.) maps 1:1 to the `EconomyEvent.Kind`
+> names defined in Detailed Design §Economy Events. Tests assert against those canonical enum
+> values (a separate type from board `GameEvent`).
+
+### Clean-clear efficiency bonus
+
+- **AC-EFF01 [B]** GIVEN a level won with `boosters_used_this_level == 0` and a 2-star result, WHEN the win is scored, THEN `earn(COINS, 55 + 20, LEVEL_WIN)` is granted (`CLEAN_CLEAR_BONUS = 20` added).
+- **AC-EFF02 [B]** GIVEN a level won after at least one booster was activated (`boosters_used_this_level ≥ 1`), WHEN the win is scored, THEN no clean-clear bonus is added (only the star-weighted + first-win coins).
+- **AC-EFF03 [B]** GIVEN `CLEAN_CLEAR_BONUS = 0` (knob disabled), WHEN any level is won clean, THEN no bonus is added (the mechanic is fully knob-gated).
 
 ### Wallet — spend
 
@@ -650,7 +856,8 @@ No new art assets or shaders are required by the economy model itself.
 - **AC-W02 [B]** GIVEN `coins = 20`, WHEN `spend(COINS, 30)`, THEN returns `false`, `coins == 20` unchanged, `SPEND_FAILED(COINS, 30, 20)` emitted.
 - **AC-W03 [B]** GIVEN `coins = 0`, WHEN `spend(COINS, 1)`, THEN returns `false`, `coins == 0`, `SPEND_FAILED` emitted.
 - **AC-W04 [B]** GIVEN any balance, WHEN `spend(COINS, 0)`, THEN returns `false` without emitting any event and without mutating balance (logic-error guard).
-- **AC-W05 [B]** GIVEN `coins = 100` and `spend(COINS, 50)` succeeds → `coins = 50`. WHEN board mutation raises error and rollback executes. THEN `coins == 100`, `TRANSACTION_ROLLED_BACK(COINS, 50)` emitted.
+- **AC-W05 [B]** GIVEN a stub `BoardModel` configured to raise on its mutation, AND `coins = 100`, WHEN `spend(COINS, 50)` succeeds (deducting to 50) and the board mutation then raises, THEN `WalletService` restores by snapshot assignment → `coins == 100`, `TRANSACTION_ROLLED_BACK(COINS, 50)` emitted.
+- **AC-W05b [B]** GIVEN `coins = COINS_MAX − 5`, `spend(COINS, 180)` succeeds (→ `COINS_MAX − 185`), WHEN the board mutation raises and rollback fires, THEN `coins == COINS_MAX − 5` exactly (snapshot restore — NOT an `earn(180)` that the `MAX_BALANCE` clamp would truncate). This is the regression test for the EC-09 clamp defect.
 
 ### Wallet — earn
 
@@ -680,13 +887,16 @@ No new art assets or shaders are required by the economy model itself.
 - **AC-U04 [B]** GIVEN last tap triggered `LOSE`. WHEN `use_booster(UNDO)`. THEN `board.is_lost() == false`, board in pre-lose state, 180 coins deducted.
 - **AC-U05 [B]** GIVEN taps [A, B]. After first Undo, `tap_history == [A]`. After second Undo, `tap_history == []`. After third Undo attempt, `BOOSTER_PRECONDITION_FAILED` returned.
 - **AC-U06 [B]** GIVEN Extra Discard Slot was activated, then player makes tap T, then uses Undo. THEN tap T is reverted AND `_active_discard_slots` is still 6 (slot not removed by Undo).
+- **AC-U07 [B]** GIVEN a Reshuffle was just used (so `tap_history` is empty) and no tap has been made since. WHEN `use_booster(UNDO)`. THEN `BOOSTER_PRECONDITION_FAILED(UNDO, reason=NO_HISTORY)` returned, coins unchanged (EC-16). After one tap on the new layout, Undo becomes available again.
 
 ### Reshuffle booster
 
 - **AC-R01 [B]** GIVEN a valid board. WHEN Reshuffle is used. THEN `new_board._result_of == original._result_of`, `new_board._target_queue == original._target_queue`, `new_board._removed == original._removed`, 250 coins deducted.
 - **AC-R02 [B]** GIVEN 4 cards already removed. WHEN Reshuffle is used. THEN those 4 cards remain removed in the new board; stack state, discard, and draw index are all preserved.
 - **AC-R03 [B]** GIVEN any valid board state. WHEN Reshuffle is used. THEN `LevelData.is_solvable(new_board) == true` (solvability invariant preserved).
-- **AC-R04 [B]** GIVEN `reshuffle_count = 1` and `reshuffle_count = 2` on the same level/session. THEN the two reshuffle seeds differ and the resulting layouts differ.
+- **AC-R04 [B]** GIVEN `level_id = 42` and an **injected** `level_start_timestamp = 1_718_000_000` (via a `TimeProvider` seam, not `Time.get_unix_time_from_system()`), WHEN Reshuffle runs with `reshuffle_count = 1` then `2`, THEN `reshuffle_seed == abs(hash("42:1718000000:1"))` and `abs(hash("42:1718000000:2"))` respectively, and the two slot-assignment arrays differ. (Determinism requires the injected clock — see Open Questions.)
+- **AC-R08 [B]** GIVEN `level_id = 42`, `reshuffle_count = 1`, injected timestamps `T1 = 1_718_000_000` and `T2 = 1_718_000_001`, WHEN Reshuffle runs with each, THEN the two seeds differ and the two layouts differ (cross-session anti-replay).
+- **AC-R09 [B]** GIVEN a board that is currently stuck (discard full, no exposed card routes), WHEN Reshuffle runs, THEN the resulting layout has ≥1 exposed card that routes directly or opens coverage (routable-card guarantee; the board is never immediately stuck post-reshuffle).
 - **AC-R05 [B]** GIVEN `board.is_won() == true`. WHEN `use_booster(RESHUFFLE)`. THEN `BOOSTER_PRECONDITION_FAILED` returned, coins unchanged.
 - **AC-R06 [B]** GIVEN `tap_history` has 3 entries. WHEN Reshuffle is used. THEN `tap_history` is empty afterwards; subsequent Undo attempt returns `BOOSTER_PRECONDITION_FAILED`.
 - **AC-R07 [B]** GIVEN discard full (5 cards), all exposed cards have no matching open stack. WHEN Reshuffle is used. THEN new board has same discard state, new layout, 250 coins deducted; no automatic win or lose is triggered by the reshuffle itself.
@@ -697,12 +907,34 @@ No new art assets or shaders are required by the economy model itself.
 - **AC-E02 [B]** GIVEN Extra Discard Slot activated. WHEN player uses Undo on a subsequent tap. THEN tap is reverted AND `_active_discard_slots` remains 6 (slot persists through Undo).
 - **AC-E03 [B]** GIVEN Extra Discard Slot was used during a level. WHEN level ends (win, lose, or abandon). THEN `_active_discard_slots` resets to `DISCARD_SLOTS` (5) for the next level.
 - **AC-E04 [B]** GIVEN `_active_discard_slots == MAX_DISCARD_SLOTS == 7`. WHEN `use_booster(EXTRA_DISCARD_SLOT)`. THEN `BOOSTER_PRECONDITION_FAILED` returned, coins unchanged.
-- **AC-E05 [B]** GIVEN all 5 discard slots occupied (board is one tap from LOSE). WHEN `use_booster(EXTRA_DISCARD_SLOT)` is called. THEN a 6th empty slot is immediately available; `board.is_lost()` is still `false`; player can tap one more card.
+- **AC-E05 [B]** GIVEN the discard row is full (`occupied_discard_cards == _active_discard_slots`, board is one tap from LOSE). WHEN `use_booster(EXTRA_DISCARD_SLOT)` is called. THEN `BOOSTER_PRECONDITION_FAILED(EXTRA_DISCARD, reason=DISCARD_FULL)` is returned, no coins deducted, no slot added (purchase-ahead-only — the rescue use case is blocked by design).
+- **AC-E06 [B]** GIVEN `_active_discard_slots == 5` with only 3 cards occupied (room remains). WHEN `use_booster(EXTRA_DISCARD_SLOT)`. THEN it succeeds: `_active_discard_slots == 6`, `_discard.size() == 6`, 350 coins deducted (proactive purchase while room remains).
 
 ### Compliance / IAP gating
 
-- **AC-CL01 [B]** GIVEN `ComplianceService.is_restricted() == true`. WHEN player initiates a Gem IAP. THEN `IAPService` is never called, no balance change, UI receives appropriate blocked signal.
-- **AC-CL02 [B]** Structural: `grep -n "age_band" autoloads/wallet_service.gd` returns no matches. All compliance checks route through `ComplianceService`.
+- **AC-CL01 [B]** GIVEN `ComplianceService.is_restricted() == true`, WHEN `WalletService.initiate_iap(SKU_GEM_PACK_S)` is called, THEN (a) `IAPService.purchase()` is never called, (b) `gems` is unchanged, (c) `IAP_BLOCKED(sku=GEM_PACK_S, reason=COMPLIANCE_RESTRICTED)` is emitted.
+- **AC-CL02 [B]** Behavior test (replaces the prior grep gate): GIVEN a stub `SaveData` with `age_band = CHILD` injected directly into `WalletService` (bypassing nothing — `WalletService` must still consult `ComplianceService`), WHEN `earn(COINS, 60, SOURCE_REWARDED_AD)` is requested, THEN the earn is blocked, proving the gate routes through `ComplianceService.is_restricted()` and not a direct `age_band` read.
+- **AC-CL03 [A]** Code-review gate (advisory): no `WalletService`/`WalletData` source reads `SaveData.age_band` directly — verified at PR review.
+
+### Child-mode earn (play-based earn is NOT gated)
+
+- **AC-CH01 [B]** GIVEN `ComplianceService.is_restricted() == true` (child user), WHEN player wins a level and `earn(COINS, 55, LEVEL_WIN)` is requested, THEN `coins` increases by 55 and `CURRENCY_EARNED` is emitted (play earn is uncapped and ungated).
+- **AC-CH02 [B]** GIVEN `is_restricted() == true`, WHEN `earn(COINS, 60, SOURCE_REWARDED_AD)` is requested, THEN the earn is blocked, `coins` unchanged (ad earn IS gated).
+
+### Gem→coin conversion (Formula 7)
+
+- **AC-GC01 [B]** GIVEN `gems = 20`, `coins = 100`, WHEN `convert_gems_to_coins(10)`, THEN `gems == 10`, `coins == 350`, both `CURRENCY_SPENT(GEMS, 10, 10)` and `CURRENCY_EARNED(COINS, 250, GEM_CONVERT, 350)` emitted.
+- **AC-GC02 [B]** GIVEN `daily_gem_convert_used == 50` (cap), WHEN `convert_gems_to_coins(1)`, THEN blocked, `gems` unchanged, `EARN_CAP_REACHED(GEM_CONVERT)` emitted (EC-13).
+- **AC-GC03 [B]** GIVEN `gems = 5`, WHEN `convert_gems_to_coins(10)`, THEN returns `false`, no balance change, `SPEND_FAILED(GEMS, 10, 5)` emitted.
+
+### Earn triggers (Formula 1, Rules 13–18)
+
+- **AC-EF01 [B]** GIVEN `first_win_today == true`, 3-star clean clear, WHEN scored, THEN `earn(COINS, 75 + 15 + 20, LEVEL_WIN)` (Formula 1 + 1b worked example = 110).
+- **AC-EF02 [B]** GIVEN two level wins on the same calendar day, THEN the first applies `first_win_bonus = 15`, the second applies `0`.
+- **AC-EF03 [B]** GIVEN login-streak day 7, WHEN the daily challenge completes, THEN `earn(COINS, 150 + 100, DAILY_CHALLENGE)` (base + streak bonus).
+- **AC-EF04 [B]** GIVEN a missed day, THEN `streak_count` resets to `STREAK_RESET_FLOOR` (3), not 0; GIVEN a natural day-8 rollover (no miss), `streak_count` continues into the next cycle.
+- **AC-EF05 [B]** GIVEN level 5 reached for the first time, THEN `earn(COINS, 100, MILESTONE_GIFT)` fires exactly once; subsequent visits do not re-fire.
+- **AC-EF06 [B]** GIVEN tutorial completion, THEN `earn(GEMS, 15, MILESTONE_GIFT)` fires exactly once.
 
 ### Integration: Economy + BoardModel
 
@@ -713,13 +945,14 @@ No new art assets or shaders are required by the economy model itself.
 
 - **AC-B01 [B]** GIVEN `coins = 0`. WHEN all four coin-cost boosters are attempted. THEN `spend` returns `false` for all; no board state changes.
 - **AC-B02 [B]** GIVEN `coins = COINS_MAX − 1`. WHEN `earn(COINS, 2, LEVEL_WIN)`. THEN `coins == COINS_MAX`, actual credited = 1.
-- **AC-B03 [A]** Playtest target: engaged non-paying adult player earns 600–900 coins per day across 3 sessions of 3 levels each, daily challenge, and ≤3 rewarded ads. Time-to-afford a Hint through pure play: 2–4 days. Time-to-afford an Extra Discard Slot: 5–8 days. Verify against real session data at M3 soft launch.
-- **AC-B04 [A]** Booster use rate target: non-paying player uses ≤1 booster per 5 levels on average. If observed rate is higher, booster costs should be increased. If 0% of players use boosters (economics too punishing), reduce costs.
+- **AC-B03 [A]** Playtest target: engaged non-paying adult player earns 600–900 coins/day. **Measurement:** sum `CURRENCY_EARNED` events (sources `LEVEL_WIN`, `DAILY_CHALLENGE`, `REWARDED_AD`, streak, clean-clear) per device-day from the M3 analytics export, filtered to non-paying players with ≥3 sessions that day. **Pass:** p50 daily earn ∈ [600, 900]. **Decision rule:** p50 < 600 → raise earn or lower costs; p50 > 900 → lower earn or raise costs. Owner: economy-designer, within 2 weeks of soft launch.
+- **AC-B04 [A]** Booster use-rate target: ≤1 booster per 5 levels on average. **Measurement:** `count(BOOSTER_ACTIVATED) / count(level_completed)` per non-paying cohort over a rolling 7-day window. **Decision rule:** rate > 0.20 → raise booster costs; rate ≈ 0 (economics too punishing) → lower costs. Owner: economy-designer, M3.
 
 ### No-arithmetic-solving constraint (hard rule)
 
-- **AC-M01 [B]** GIVEN any board state, WHEN Hint is used, THEN `HINT_RESULT` event contains only a `card_id` — no result value, no operands, no solution text. The view layer must NOT render the card's arithmetic result as part of the hint highlight.
-- **AC-M02 [B]** Code review gate: no `WalletService`, `WalletData`, or booster activation path reads or exposes `CardData.result` to the player. Any future booster that would require reading `result` to determine its effect must be rejected at design review.
+- **AC-M01a [B]** GIVEN any board state, WHEN Hint is used, THEN the `HINT_RESULT` event payload contains only `card_id: int` — no `result`, no `operands`, no `solution_text` field.
+- **AC-M01b [A]** Visual gate: the hint highlight in the view layer does not display the card's computed result value. Screenshot + lead sign-off in `production/qa/evidence/`.
+- **AC-M02 [A]** Code-review gate (advisory): no `WalletService`, `WalletData`, or booster activation path reads or exposes `CardData.result` to the player. Any future booster that would require reading `result` to determine its effect must be rejected at design review.
 
 ## Open Questions
 
@@ -727,9 +960,13 @@ No new art assets or shaders are required by the economy model itself.
 
 - **Star-rating interaction with earn** — this GDD assumes the Scoring/Stars system (S2-011, not yet authored) defines star ratings per level. The earn rates (40/55/75 by star) depend on what "1, 2, 3 stars" means mechanically (fewest discards? fastest clear?). If stars are not implemented by M3, fall back to a flat earn rate (e.g. 50 coins per win) until the Scoring GDD is authored. Owner: game-designer, during S2-011.
 
-- **Undo implementation risk** — Undo requires `tap_history` replay (O(N) replay per Undo). For typical levels (≤40 taps) this is negligible. On very long Endless-band levels (many undos + many taps before each), replay time should be profiled. If it exceeds ~16ms, switch to a snapshot-per-tap strategy. This is a deliberate technical risk flagged for architecture review when implementing. Owner: lead-programmer, at implementation spike.
+- **Undo implementation risk** — Undo is *replay-from-initial* in a session coordinator (no `replay_to()` on `BoardModel`; the model is stateless between taps but deterministic). O(N) per Undo for N taps; for typical levels (≤40 taps) negligible. On very long Endless-band levels (k Undos × N taps ≈ O(k·N)), profile and, if it exceeds ~16ms, switch to a snapshot-per-tap strategy. **ADR candidate** — where `tap_history` and the replay coordinator live (`WalletService` vs. a new `GameSession`) and how it is notified of taps (signal from view vs. call from `GameManager`) is a cross-system coupling decision. Owner: lead-programmer, at implementation spike.
 
-- **Extra Discard Slot requires BoardModel change** — `BoardModel` currently uses `DISCARD_SLOTS` as a constant. Adding Extra Discard Slot requires adding `_active_discard_slots: int` as a mutable field (AC-E01). This is a non-trivial change to an already-tested system (87 unit tests). **ADR candidate** — the approach (mutable override vs. per-level config parameter) should be decided before implementation. Owner: lead-programmer / godot-gdscript-specialist, when scoping the economy sprint.
+- **`EconomyEvent` type — ADR candidate** — economy events are a separate `core/` type from board `GameEvent` (different payload, different owner; see §Economy Events). Ratify `EconomyEvent` as its own `RefCounted` + `Kind` enum emitted via `WalletService` signals before implementation. Owner: godot-gdscript-specialist.
+
+- **Injectable clock (`TimeProvider`) for determinism** — Formula 6 uses `level_start_timestamp`, and daily caps/streaks use the calendar day. To keep tests deterministic (AC-R04/R08) and headless-safe, `WalletService`/`LevelData` must read time through an injectable `TimeProvider` seam, never `Time.get_unix_time_from_system()` directly. Owner: lead-programmer, at implementation spike.
+
+- **Extra Discard Slot requires BoardModel change** — `BoardModel` currently uses `const DISCARD_SLOTS = 5` in **three** loops (init, `_first_empty_discard`, `_pull_matching`); all three must iterate the mutable `_active_discard_slots`, and `BoardModel` gains an `expand_discard()` method. This is a non-trivial change to an already-tested system (87 unit tests). **ADR candidate** — confirmed approach: mutable field + uncapped `expand_discard()` on `BoardModel`, with `WalletService` enforcing `MAX_DISCARD_SLOTS` (keeps `BoardModel` free of economy-config knowledge). Owner: lead-programmer / godot-gdscript-specialist, when scoping the economy sprint.
 
 - **Gem drip calibration** — the gem milestone table is provisional. At ~715 lifetime gems for a year-one non-payer, they can buy 7–14 cosmetics or ~238 Hints. If this feels too generous (devalues IAP gem packs), reduce the every-10-levels drip from 5 gems to 3. If too stingy (players feel blocked from cosmetics), increase. Real calibration requires M3 store conversion data. Owner: economy-designer.
 
