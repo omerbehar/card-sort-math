@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # S3-001, S3-003 done; S3-002 next.
+updated: "2026-06-12"  # S3-001, S3-003, S3-002 done; S3-004 next.
 
 stories:
   - id: "S3-001"
@@ -39,11 +39,11 @@ stories:
     name: "WalletData + SaveData v1->v2 migration + EconomyConfig resource"
     file: "core/wallet_data.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-12"
   - id: "S3-004"
     name: "WalletService transaction core (atomic spend/earn, snapshot rollback, DI, per-level reset)"
     file: "autoloads/wallet_service.gd"

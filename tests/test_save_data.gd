@@ -165,3 +165,136 @@ func test_tutorial_seen_does_not_bump_schema_version() -> void:
 	# that includes tutorial_seen — no schema bump was performed.
 	var data := SaveData.from_dict({"tutorial_seen": true})
 	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+
+
+# ---------------------------------------------------------------------------
+# S3-002 — wallet fields (schema v2 migration)
+# design/gdd/deck-economy.md §Dependencies → Save Service
+# ---------------------------------------------------------------------------
+
+func test_schema_version_is_2() -> void:
+	# Bumped from 1 → 2 in S3-002 to add wallet_coins / wallet_gems.
+	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(2)
+
+
+func test_defaults_include_wallet_fields_at_zero() -> void:
+	# A fresh save must have both wallet fields defaulted to 0.
+	var data := SaveData.defaults()
+	assert_int(data.wallet_coins).is_equal(0)
+	assert_int(data.wallet_gems).is_equal(0)
+
+
+func test_to_dict_contains_wallet_coins_key() -> void:
+	var keys: Array = SaveData.new().to_dict().keys()
+	assert_bool(keys.has("wallet_coins")).is_true()
+
+
+func test_to_dict_contains_wallet_gems_key() -> void:
+	var keys: Array = SaveData.new().to_dict().keys()
+	assert_bool(keys.has("wallet_gems")).is_true()
+
+
+func test_v2_wallet_round_trips_coins() -> void:
+	# A v2 save with wallet values must survive a to_dict/from_dict round-trip losslessly.
+	var original := SaveData.new()
+	original.wallet_coins = 420
+	original.wallet_gems = 8
+	var restored := SaveData.from_dict(original.to_dict())
+	assert_int(restored.wallet_coins).is_equal(420)
+
+
+func test_v2_wallet_round_trips_gems() -> void:
+	var original := SaveData.new()
+	original.wallet_coins = 100
+	original.wallet_gems = 33
+	var restored := SaveData.from_dict(original.to_dict())
+	assert_int(restored.wallet_gems).is_equal(33)
+
+
+func test_migrate_v1_to_v2_sets_wallet_coins_to_zero() -> void:
+	# GDD canonical migration: if version == 1: out["wallet_coins"] = 0; version = 2.
+	# Existing fields must be preserved.
+	var v1_dict: Dictionary = {
+		"schema_version": 1,
+		"current_level": 5,
+		"age_band": int(SaveData.AgeBand.ADULT),
+	}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.wallet_coins).is_equal(0)
+
+
+func test_migrate_v1_to_v2_sets_wallet_gems_to_zero() -> void:
+	var v1_dict: Dictionary = {
+		"schema_version": 1,
+		"current_level": 5,
+	}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.wallet_gems).is_equal(0)
+
+
+func test_migrate_v1_to_v2_schema_version_becomes_2() -> void:
+	var v1_dict: Dictionary = {"schema_version": 1, "current_level": 3}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.schema_version).is_equal(2)
+
+
+func test_migrate_v1_to_v2_preserves_current_level() -> void:
+	# Migration must not clobber existing fields.
+	var v1_dict: Dictionary = {"schema_version": 1, "current_level": 7}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.current_level).is_equal(7)
+
+
+func test_migrate_v1_to_v2_preserves_age_band() -> void:
+	var v1_dict: Dictionary = {
+		"schema_version": 1,
+		"age_band": int(SaveData.AgeBand.CHILD),
+	}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(int(data.age_band)).is_equal(int(SaveData.AgeBand.CHILD))
+
+
+func test_migrate_v0_unversioned_sets_wallet_fields_to_zero() -> void:
+	# Pre-versioned (v0) saves arrive as version 0 and flow through _migrate unchanged;
+	# from_dict must still default the missing wallet keys to 0.
+	var v0_dict: Dictionary = {"current_level": 2}
+	var data := SaveData.from_dict(v0_dict)
+	assert_int(data.wallet_coins).is_equal(0)
+	assert_int(data.wallet_gems).is_equal(0)
+
+
+func test_migrate_v0_unversioned_schema_version_normalized() -> void:
+	var data := SaveData.from_dict({"current_level": 2})
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+
+
+func test_from_dict_missing_wallet_coins_defaults_to_zero() -> void:
+	# A v2 dict that somehow lacks wallet_coins must not crash and must default to 0.
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_gems": 5})
+	assert_int(data.wallet_coins).is_equal(0)
+
+
+func test_from_dict_missing_wallet_gems_defaults_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": 10})
+	assert_int(data.wallet_gems).is_equal(0)
+
+
+func test_from_dict_null_wallet_coins_clamped_to_zero() -> void:
+	# null wallet values must not crash and must default to 0.
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": null, "wallet_gems": 0})
+	assert_int(data.wallet_coins).is_equal(0)
+
+
+func test_from_dict_null_wallet_gems_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": 0, "wallet_gems": null})
+	assert_int(data.wallet_gems).is_equal(0)
+
+
+func test_from_dict_negative_wallet_coins_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": -500, "wallet_gems": 0})
+	assert_int(data.wallet_coins).is_equal(0)
+
+
+func test_from_dict_negative_wallet_gems_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": 0, "wallet_gems": -1})
+	assert_int(data.wallet_gems).is_equal(0)

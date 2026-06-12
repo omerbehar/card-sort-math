@@ -23,3 +23,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Verified: no hash() / no stray Time.* calls (sole clock call site = time_provider.gd:33)
 - Blockers: None
 - Next: S3-002 (WalletData + SaveData v1→v2 migration + EconomyConfig)
+
+## Session Extract — /dev-story 2026-06-12 (S3-002)
+- Story: S3-002 — WalletData + SaveData v1→v2 migration + EconomyConfig
+- Files: core/wallet_data.gd (new), core/save_data.gd (v2 bump + migration), data/economy_config.gd (new), assets/data/economy_config.tres (new), tests/test_wallet_data.gd + test_economy_config.gd (new), tests/test_save_data.gd (extended)
+- Test: full suite 348/348 green, exit 0 (was 270; +78)
+- Notes: stale class-cache caused a transient "WalletData not declared" parse error — fixed by `godot --import` (CI's gdUnit4-action imports automatically). Hardened WalletData.from_dict null-safety to match its "never crashes" contract.
+- Next: S3-004 (WalletService transaction core)

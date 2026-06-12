@@ -8,10 +8,11 @@ extends RefCounted
 ## unit-testable (see [code]tests/test_save_data.gd[/code]) per ADR-0001.
 ##
 ## Persisted fields: [member schema_version], [member current_level],
-## [member age_band], [member settings], [member tutorial_seen].
+## [member age_band], [member settings], [member tutorial_seen],
+## [member wallet_coins], [member wallet_gems].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 1
+const CURRENT_SCHEMA_VERSION: int = 2
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -28,6 +29,16 @@ var settings: Settings = Settings.new()
 ## old saves correctly default to [code]false[/code] (they have not seen the tutorial).
 var tutorial_seen: bool = false
 
+## Coin balance (soft currency). Persisted from [WalletData.coins].
+## Added in schema v2 (S3-002 / design/gdd/deck-economy.md §Core Rule 3).
+## Clamped to >= 0 in [method from_dict]; upper cap applied by WalletService (S3-004).
+var wallet_coins: int = 0
+
+## Gem balance (hard currency). Persisted from [WalletData.gems].
+## Added in schema v2 (S3-002 / design/gdd/deck-economy.md §Core Rule 3).
+## Clamped to >= 0 in [method from_dict]; upper cap applied by WalletService (S3-004).
+var wallet_gems: int = 0
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -42,6 +53,8 @@ func to_dict() -> Dictionary:
 		"age_band": int(age_band),
 		"settings": settings.to_dict(),
 		"tutorial_seen": tutorial_seen,
+		"wallet_coins": wallet_coins,
+		"wallet_gems": wallet_gems,
 	}
 
 
@@ -58,6 +71,8 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.age_band = _parse_age_band(migrated.get("age_band", AgeBand.UNKNOWN))
 	data.settings = Settings.from_dict(migrated.get("settings", {}))
 	data.tutorial_seen = bool(migrated.get("tutorial_seen", false))
+	data.wallet_coins = maxi(0, _safe_int(migrated.get("wallet_coins", 0)))
+	data.wallet_gems = maxi(0, _safe_int(migrated.get("wallet_gems", 0)))
 	return data
 
 
@@ -68,11 +83,23 @@ static func from_dict(dict: Dictionary) -> SaveData:
 static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 	var out: Dictionary = dict.duplicate(true)
 	var version: int = from_version
-	# Example (future): migrating v1 -> v2 would go here.
-	# if version == 1:
-	#     out["new_field"] = <default>
-	#     version = 2
+	# v1 → v2: wallet fields introduced (S3-002, design/gdd/deck-economy.md §Dependencies Save Service).
+	if version == 1:
+		out["wallet_coins"] = 0
+		out["wallet_gems"] = 0
+		version = 2
 	return out
+
+
+# Coerces a Variant to int, treating null and non-numeric values as 0.
+# Required because int(null) raises in GDScript — a save with an explicit JSON null
+# for a numeric field must not crash (mirrors the null-guard in _parse_age_band).
+static func _safe_int(value: Variant) -> int:
+	if value == null:
+		return 0
+	if value is int or value is float:
+		return int(value)
+	return 0
 
 
 # Accepts an int / float / enum value; null, non-numeric, or out-of-range -> UNKNOWN.
