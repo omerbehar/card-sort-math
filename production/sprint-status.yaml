@@ -14,23 +14,23 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # S3-001 in-progress (/dev-story).
+updated: "2026-06-12"  # S3-001 done; S3-003 in-progress (/dev-story).
 
 stories:
   - id: "S3-001"
     name: "EconomyEvent + economy enums (ADR-0008)"
     file: "core/economy_event.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gdscript-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-12"
   - id: "S3-003"
     name: "TimeProvider seam + explicit-int reshuffle mix() (ADR-0009)"
     file: "core/time_provider.gd"
     priority: must-have
-    status: ready-for-dev
+    status: in-progress
     owner: "gdscript-specialist"
     estimate_days: 0.5
     blocker: ""
