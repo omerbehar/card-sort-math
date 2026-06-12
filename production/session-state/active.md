@@ -30,3 +30,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test: full suite 348/348 green, exit 0 (was 270; +78)
 - Notes: stale class-cache caused a transient "WalletData not declared" parse error — fixed by `godot --import` (CI's gdUnit4-action imports automatically). Hardened WalletData.from_dict null-safety to match its "never crashes" contract.
 - Next: S3-004 (WalletService transaction core)
+
+## Session Extract — /dev-story 2026-06-12 (S3-004)
+- Story: S3-004 — WalletService transaction core (autoload)
+- Files: autoloads/wallet_service.gd (new), tests/test_wallet_service.gd (new, 19 tests), project.godot (autoload registered)
+- Test: full suite 367/367 green, exit 0 (was 348; +19). AC-W05b near-cap snapshot rollback verified.
+- Notes: implemented directly by orchestrator — the gameplay-programmer agent stalled on a write-permission prompt without producing files and its context couldn't be resumed (SendMessage unavailable). EC-09 "board mutation raises" modeled as on_committed Callable returning false (GDScript has no exceptions). Fixed the agent's planned bug: GameManager autoload guard uses get_node_or_null("/root/GameManager"), NOT Engine.has_singleton.
+- Next: S3-007 (Hint booster) — first booster on the use_booster/spend seam

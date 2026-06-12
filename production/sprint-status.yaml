@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # S3-001, S3-003, S3-002 done; S3-004 next.
+updated: "2026-06-12"  # S3-001, S3-003, S3-002, S3-004 done; S3-007 next.
 
 stories:
   - id: "S3-001"
@@ -48,11 +48,11 @@ stories:
     name: "WalletService transaction core (atomic spend/earn, snapshot rollback, DI, per-level reset)"
     file: "autoloads/wallet_service.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-12"
   - id: "S3-007"
     name: "Hint booster (hint_score Formula 5 + use_booster + HINT_RESULT)"
     file: "core/hint_score.gd"

@@ -24,6 +24,7 @@ AudioService="*res://autoloads/audio_service.gd"
 JuiceService="*res://autoloads/juice_service.gd"
 GameManager="*res://autoloads/game_manager.gd"
 LevelData="*res://autoloads/level_data.gd"
+WalletService="*res://autoloads/wallet_service.gd"
 
 [display]
 
