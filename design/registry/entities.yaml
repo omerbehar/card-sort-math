@@ -1,0 +1,184 @@
+# Entity Registry — CardSortMath
+# Cross-system facts that must remain consistent across GDDs.
+# Never modify existing value fields without surfacing a conflict first.
+# Add `referenced_by` entries when a new GDD references an existing entity.
+
+# ─── Deck Economy ────────────────────────────────────────────────────────────
+# Source: design/gdd/deck-economy.md
+
+formulas:
+  - name: hint_score
+    source: design/gdd/deck-economy.md
+    description: Scores exposed cards to identify the most productive tap for the Hint booster
+    variables: [routes_directly, opens_new_cards, discard_relief, ROUTES_WEIGHT, OPENS_WEIGHT, RELIEF_WEIGHT]
+    output_range: "0–585 (ordinal only; practical upper bound on 18-card board)"
+    referenced_by: []
+
+  - name: reshuffle_seed
+    source: design/gdd/deck-economy.md
+    description: Deterministic seed for a board reshuffle, keyed on level+session+count
+    variables: [level_id, level_start_timestamp, reshuffle_count]
+    output_range: "GDScript hash() int"
+    referenced_by: []
+
+  - name: daily_income_model
+    source: design/gdd/deck-economy.md
+    description: Design calibration formula for expected daily coin income (non-runtime)
+    variables: [sessions_per_day, levels_per_session, avg_coins_per_level, daily_challenge_coins, streak_bonus, ads_per_day, coins_per_ad]
+    output_range: "~600–900 coins/day (engaged non-payer)"
+    referenced_by: []
+
+constants:
+  - name: COINS_WIN_1_STAR
+    source: design/gdd/deck-economy.md
+    value: 40
+    unit: coins
+    referenced_by: []
+
+  - name: COINS_WIN_2_STAR
+    source: design/gdd/deck-economy.md
+    value: 55
+    unit: coins
+    referenced_by: []
+
+  - name: COINS_WIN_3_STAR
+    source: design/gdd/deck-economy.md
+    value: 75
+    unit: coins
+    referenced_by: []
+
+  - name: COINS_DAILY_CHALLENGE
+    source: design/gdd/deck-economy.md
+    value: 150
+    unit: coins
+    referenced_by: []
+
+  - name: COINS_REWARDED_AD
+    source: design/gdd/deck-economy.md
+    value: 60
+    unit: coins
+    referenced_by: []
+
+  - name: MAX_ADS_PER_DAY
+    source: design/gdd/deck-economy.md
+    value: 3
+    unit: ads
+    referenced_by: []
+
+  - name: DAILY_COINS_CAP
+    source: design/gdd/deck-economy.md
+    value: 500
+    unit: coins
+    description: Daily cap on coin income from REWARDED_AD and DAILY_REWARD sources
+    referenced_by: []
+
+  - name: GEM_TO_COIN_RATE
+    source: design/gdd/deck-economy.md
+    value: 25
+    unit: "coins per gem"
+    description: Penalised downward conversion rate; must remain below booster-parity rate (35)
+    referenced_by: []
+
+  - name: HINT_COST_COINS
+    source: design/gdd/deck-economy.md
+    value: 120
+    unit: coins
+    referenced_by: []
+
+  - name: UNDO_COST_COINS
+    source: design/gdd/deck-economy.md
+    value: 180
+    unit: coins
+    referenced_by: []
+
+  - name: RESHUFFLE_COST_COINS
+    source: design/gdd/deck-economy.md
+    value: 250
+    unit: coins
+    referenced_by: []
+
+  - name: EXTRA_DISCARD_COST_COINS
+    source: design/gdd/deck-economy.md
+    value: 350
+    unit: coins
+    referenced_by: []
+
+  - name: HINT_COST_GEMS
+    source: design/gdd/deck-economy.md
+    value: 3
+    unit: gems
+    referenced_by: []
+
+  - name: UNDO_COST_GEMS
+    source: design/gdd/deck-economy.md
+    value: 5
+    unit: gems
+    referenced_by: []
+
+  - name: RESHUFFLE_COST_GEMS
+    source: design/gdd/deck-economy.md
+    value: 7
+    unit: gems
+    referenced_by: []
+
+  - name: EXTRA_DISCARD_COST_GEMS
+    source: design/gdd/deck-economy.md
+    value: 10
+    unit: gems
+    referenced_by: []
+
+  - name: ROUTES_WEIGHT
+    source: design/gdd/deck-economy.md
+    value: 200
+    unit: score_points
+    description: Weight for hint_score routes_directly component; determines whether routing dominates over exposure gain
+    referenced_by: []
+
+  - name: OPENS_WEIGHT
+    source: design/gdd/deck-economy.md
+    value: 10
+    unit: "score_points per card"
+    referenced_by: []
+
+  - name: RELIEF_WEIGHT
+    source: design/gdd/deck-economy.md
+    value: 5
+    unit: "score_points per discard card"
+    referenced_by: []
+
+  - name: MAX_DISCARD_SLOTS
+    source: design/gdd/deck-economy.md
+    value: 7
+    unit: slots
+    description: Maximum discard slots including Extra Discard Slot booster expansions; default 5 is DISCARD_SLOTS constant in BoardModel
+    referenced_by: []
+
+  - name: DAILY_GEM_CONVERT_CAP
+    source: design/gdd/deck-economy.md
+    value: 50
+    unit: gems
+    description: Daily cap on gem-to-coin conversions
+    referenced_by: []
+
+items:
+  - name: WalletData
+    type: class
+    source: design/gdd/deck-economy.md
+    attributes:
+      coins: "int, 0–COINS_MAX (999999)"
+      gems: "int, 0–GEMS_MAX (9999)"
+    description: Pure core/ RefCounted holding currency balances; persisted in SaveData
+    referenced_by: []
+
+  - name: EarnSource
+    type: enum
+    source: design/gdd/deck-economy.md
+    values: [LEVEL_WIN, DAILY_CHALLENGE, REWARDED_AD, IAP, MILESTONE_GIFT, DAILY_REWARD, SOURCE_ROLLBACK]
+    referenced_by: []
+
+  - name: EconomyConfig
+    type: resource
+    source: design/gdd/deck-economy.md
+    file: assets/data/economy_config.tres
+    description: Data-driven resource holding all tuning knobs; remote-config-loadable
+    referenced_by: []
