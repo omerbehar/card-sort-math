@@ -57,7 +57,7 @@ stories:
     name: "Hint booster (hint_score Formula 5 + use_booster + HINT_RESULT)"
     file: "core/hint_score.gd"
     priority: must-have
-    status: ready-for-dev
+    status: in-progress
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
