@@ -15,3 +15,11 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test written: tests/test_economy_event.gd (47 functions; full suite 259/259 green, exit 0)
 - Blockers: None
 - Next: /code-review then /story-done S3-001 → then S3-003 (TimeProvider)
+
+## Session Extract — /dev-story 2026-06-12 (S3-003)
+- Story: S3-003 — TimeProvider seam + explicit-int reshuffle mix() (ADR-0009)
+- Files changed: core/time_provider.gd, core/reshuffle_seed.gd, tests/fixed_time_provider.gd, tests/test_time_provider.gd
+- Test written: tests/test_time_provider.gd (11 functions); full suite 270/270 green, exit 0
+- Verified: no hash() / no stray Time.* calls (sole clock call site = time_provider.gd:33)
+- Blockers: None
+- Next: S3-002 (WalletData + SaveData v1→v2 migration + EconomyConfig)

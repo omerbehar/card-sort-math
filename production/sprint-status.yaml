@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # S3-001 done; S3-003 in-progress (/dev-story).
+updated: "2026-06-12"  # S3-001, S3-003 done; S3-002 next.
 
 stories:
   - id: "S3-001"
@@ -30,11 +30,11 @@ stories:
     name: "TimeProvider seam + explicit-int reshuffle mix() (ADR-0009)"
     file: "core/time_provider.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gdscript-specialist"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-12"
   - id: "S3-002"
     name: "WalletData + SaveData v1->v2 migration + EconomyConfig resource"
     file: "core/wallet_data.gd"
