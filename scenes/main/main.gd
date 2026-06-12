@@ -14,6 +14,13 @@ const DISCARD_WARN_AT: int = 4
 # Offset from a stack's origin to its centre, where the clear burst spawns.
 const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 
+# --- prototype: locked-decks (placeholder economy; not yet designed) ---
+# Stacks that start OPEN; the rest are locked and bought with coins/ad.
+const PROTO_OPEN_COUNT: int = 1
+const UNLOCK_COST: int = 100          # coin price; falls back to a free "ad" unlock
+var _coins: int = 150                 # fake starting balance (no persistence yet)
+var _coins_label: Label = null
+
 var _model: BoardModel
 var _config: LevelConfig
 
@@ -58,6 +65,7 @@ func _build_board() -> void:
 		stack.position = Vector2(STACK_XS[i], STACK_Y)
 		add_child(stack)
 		stack.setup(i, -1, colorblind)
+		stack.unlock_requested.connect(_on_unlock_requested)
 		_stacks.append(stack)
 		_stack_cards.append([])
 
@@ -74,6 +82,10 @@ func _build_board() -> void:
 	_hud = Hud.new()
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
+	# Prototype: a fake coin balance shown top-right (no economy system yet).
+	_coins_label = UiFactory.label(_hud_layer, "", Vector2(250, 12), Vector2(130, 28), 20, Color(1, 0.93, 0.5))
+	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_update_coins_hud()
 	# Live-recolour the stacks when the colorblind palette is toggled in-game.
 	SettingsService.changed.connect(_on_setting_changed)
 
@@ -81,7 +93,7 @@ func _build_board() -> void:
 ## (Re)starts level [param n]: rebuilds the model and floor, resets the view.
 func start_level(n: int) -> void:
 	_config = LevelData.get_level(n)
-	_model = BoardModel.from_config(_config)
+	_model = BoardModel.from_config(_config, PROTO_OPEN_COUNT)
 	GameManager.start_level(n)
 
 	for cards in _stack_cards:
@@ -93,6 +105,8 @@ func start_level(n: int) -> void:
 	_floor.spawn(_config)
 	for i in _stacks.size():
 		_stacks[i].set_target(_model.stack_target(i))
+		# Prototype: show locked stacks as buyable "+" slots.
+		_stacks[i].set_locked(_model.is_stack_locked(i), UNLOCK_COST)
 	_discard.set_warning(false)
 	_floor.refresh_exposure(_model)
 	if _hud != null:
@@ -198,6 +212,11 @@ func _play_event(event: GameEvent) -> void:
 			await _into_stack(event.card_id, event.stack_index)
 		GameEvent.Kind.STACK_CLEARED:
 			await _clear_stack(event.stack_index, event.new_target)
+		GameEvent.Kind.UNLOCK:
+			# Visual already swapped to the open slot in _on_unlock_requested;
+			# just celebrate the open.
+			JuiceService.haptic(15)
+			JuiceService.punch(_stacks[event.stack_index])
 		GameEvent.Kind.WIN:
 			JuiceService.haptic(40)
 			GameManager.complete_level()
@@ -252,6 +271,38 @@ func _clear_stack(stack_index: int, new_target: int) -> void:
 	await _stacks[stack_index].play_clear()
 
 
+# Prototype: locked-decks. A tapped locked stack is bought with coins if the
+# player can afford it, otherwise unlocked free via a stubbed "watch ad". The
+# real economy + ad SDK + difficulty balancing are deferred (design pending).
+func _on_unlock_requested(stack_index: int) -> void:
+	if _input_locked or is_instance_valid(_result_screen):
+		return
+	if not _model.is_stack_locked(stack_index):
+		return
+	if _coins >= UNLOCK_COST:
+		_coins -= UNLOCK_COST
+	# else: stubbed ad watch — free unlock for now.
+	_update_coins_hud()
+
+	# Swap the slot to its open look before animating the pulled-in cards.
+	var events := _model.unlock_stack(stack_index)
+	_stacks[stack_index].set_locked(false)
+	_stacks[stack_index].set_target(_model.stack_target(stack_index))
+
+	_input_locked = true
+	await _play_events(events)
+	if is_instance_valid(_result_screen):
+		return
+	_floor.refresh_exposure(_model)
+	_update_discard_warning()
+	_input_locked = false
+
+
+func _update_coins_hud() -> void:
+	if _coins_label != null:
+		_coins_label.text = "🪙 %d" % _coins
+
+
 func _update_discard_warning() -> void:
 	var filled: int = 0
 	for card_id: int in _discard_cards:
@@ -269,12 +320,22 @@ func _open_pause() -> void:
 	_pause_menu.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pause_menu.resumed.connect(_close_pause)
 	_pause_menu.home_pressed.connect(_on_home_pressed)
+	_pause_menu.reset_tutorial_pressed.connect(_on_reset_tutorial)
 	_hud_layer.add_child(_pause_menu)
 
 
 func _close_pause() -> void:
 	_pause_menu = null
 	get_tree().paused = false
+
+
+# Clears the first-time-tutorial flag from settings so the coach replays. Saved
+# immediately; re-arms on the current level if eligible (the tutorial is gated to
+# the early-game flow, so on a later level it simply replays next time it applies).
+func _on_reset_tutorial() -> void:
+	SaveService.data.tutorial_seen = false
+	SaveService.save_game()
+	_arm_tutorial(GameManager.current_level)
 
 
 # No main-menu screen exists yet, so "home" restarts the current level. Rewire to

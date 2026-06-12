@@ -19,6 +19,12 @@ const DOT_GAP: float = 5.0
 const DOT_Y: float = FRAME_H - DOT_SIZE * 0.5
 const DOT_Z: int = 130
 
+## Emitted when a LOCKED stack is tapped (prototype: locked-decks). The board
+## controller decides whether the unlock can be afforded (coins/ad).
+signal unlock_requested(stack_index: int)
+
+const _LOCK_GREEN: Color = Color(0.40, 0.78, 0.34)
+
 var stack_index: int = -1
 var target: int = -1
 # Whether the colour-blind palette is active (see [StackPalette]).
@@ -27,6 +33,12 @@ var _colorblind: bool = false
 var _frame: NinePatchRect
 var _label: Label
 var _dots: Array[Sprite2D] = []
+
+# Prototype: locked-decks. The lock chrome is built lazily on first lock.
+var _locked: bool = false
+var _lock_button: Button = null
+var _lock_plus: Label = null
+var _lock_cost: Label = null
 
 
 func setup(index: int, target_value: int, colorblind: bool = false) -> void:
@@ -87,6 +99,46 @@ func apply_palette(colorblind: bool) -> void:
 	var tint: Color = _base_tint()
 	tint.a = 1.0 if target >= 0 else 0.5
 	_frame.self_modulate = tint
+
+
+## Prototype: locked-decks. Shows/hides the locked "+" chrome over the slot. When
+## [param locked], the slot reads as an unbuyable green "+" with a coin [param
+## cost]; tapping it emits [signal unlock_requested]. When unlocked, the normal
+## target/dots are restored by the caller via [method set_target].
+func set_locked(locked: bool, cost: int = 0) -> void:
+	_locked = locked
+	if locked and _lock_button == null:
+		_build_lock_chrome()
+	if _lock_button != null:
+		_lock_button.visible = locked
+	if _lock_plus != null:
+		_lock_plus.visible = locked
+	if _lock_cost != null:
+		_lock_cost.visible = locked
+		_lock_cost.text = "%d" % cost
+	if locked:
+		_label.text = ""                 # hide any target number
+		for d in _dots:
+			d.visible = false
+		_frame.self_modulate = _LOCK_GREEN
+	else:
+		for d in _dots:
+			d.visible = true
+
+
+func _build_lock_chrome() -> void:
+	_lock_plus = UiFactory.label(self, "+", Vector2(0, -6), Vector2(FRAME_W, FRAME_H), 44, Color.WHITE)
+	_lock_plus.add_theme_color_override("font_outline_color", Color(0.12, 0.30, 0.12, 0.9))
+	_lock_plus.add_theme_constant_override("outline_size", 6)
+	_lock_cost = UiFactory.label(self, "", Vector2(0, FRAME_H - 26), Vector2(FRAME_W, 22), 16, Color(1, 1, 0.85))
+	# Transparent button over the whole slot captures the unlock tap.
+	_lock_button = Button.new()
+	_lock_button.flat = true
+	_lock_button.position = Vector2.ZERO
+	_lock_button.size = Vector2(FRAME_W, FRAME_H)
+	_lock_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_lock_button)
+	_lock_button.pressed.connect(func() -> void: unlock_requested.emit(stack_index))
 
 
 ## Lights the first [param count] capacity dots (0..[constant

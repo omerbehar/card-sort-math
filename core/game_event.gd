@@ -12,6 +12,7 @@ enum Kind {
 	DISCARD,        ## card had no matching stack and went to a discard slot
 	STACK_CLEARED,  ## a stack reached capacity, cleared, and took a new target
 	PULL,           ## a card was pulled out of discard into a (re)targeted stack
+	UNLOCK,         ## a locked stack was opened (prototype: paid with coins/ad)
 	WIN,            ## the floor is empty
 	LOSE,           ## a card had to be discarded but the discard row was full
 }
@@ -53,6 +54,16 @@ static func pull(card_id: int, stack_index: int, discard_slot: int) -> GameEvent
 	e.card_id = card_id
 	e.stack_index = stack_index
 	e.discard_slot = discard_slot
+	return e
+
+
+## A locked stack [param stack_index] was opened and adopted [param new_target]
+## (prototype: the locked-decks feature).
+static func unlock(stack_index: int, new_target: int) -> GameEvent:
+	var e := GameEvent.new()
+	e.kind = Kind.UNLOCK
+	e.stack_index = stack_index
+	e.new_target = new_target
 	return e
 
 
