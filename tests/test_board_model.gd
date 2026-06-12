@@ -17,6 +17,68 @@ func _kinds(events: Array[GameEvent]) -> Array:
 	return out
 
 
+# Fully-exposed model that starts with only [param open_count] stacks open
+# (prototype: locked-decks).
+func _open_model_locked(results: Array[int], queue: Array[int], open_count: int) -> BoardModel:
+	var covered_by: Dictionary = {}
+	for i in results.size():
+		covered_by[i] = [] as Array[int]
+	return BoardModel.new(results, covered_by, queue, open_count)
+
+
+# --- prototype: locked-decks ------------------------------------------------
+
+func test_locked_decks_only_open_stacks_have_targets() -> void:
+	# Arrange/Act: start with 1 of 4 stacks open.
+	var model := _open_model_locked([5, 7, 9, 11], [5, 7, 9, 11], 1)
+	# Assert: stack 0 active (target 5), stacks 1..3 locked with no target.
+	assert_int(model.stack_target(0)).is_equal(5)
+	assert_bool(model.is_stack_locked(0)).is_false()
+	for i in [1, 2, 3]:
+		assert_bool(model.is_stack_locked(i)).is_true()
+		assert_int(model.stack_target(i)).is_equal(BoardModel.NO_TARGET)
+
+
+func test_locked_decks_card_for_locked_target_goes_to_discard() -> void:
+	# Result 7's stack is locked, so a 7 has nowhere to route -> discard.
+	var model := _open_model_locked([5, 7, 9, 11, 5, 5, 9, 9, 11, 11, 7, 7], [5, 7, 9, 11], 1)
+	var events := model.tap_card(1)  # card_id 1 has result 7
+	assert_array(_kinds(events)).is_equal([GameEvent.Kind.DISCARD])
+
+
+func test_unlock_stack_draws_next_target_and_pulls_from_discard() -> void:
+	# Arrange: 1 stack open; discard a 7 (its stack is locked).
+	var model := _open_model_locked([5, 7, 9, 11, 5, 5, 9, 9, 11, 11, 7, 7], [5, 7, 9, 11], 1)
+	model.tap_card(1)  # 7 -> discard slot 0
+	assert_int(model.discard_card(0)).is_equal(1)
+	# Act: unlock stack 1 (the next queue target is 7).
+	var events := model.unlock_stack(1)
+	# Assert: it opens to target 7 and pulls the discarded 7 back in.
+	assert_bool(model.is_stack_locked(1)).is_false()
+	assert_int(model.stack_target(1)).is_equal(7)
+	assert_array(_kinds(events)).contains([GameEvent.Kind.UNLOCK, GameEvent.Kind.PULL])
+	assert_int(model.discard_card(0)).is_equal(-1)
+	assert_int(model.stack_count(1)).is_equal(1)
+
+
+func test_unlock_already_open_stack_is_a_no_op() -> void:
+	var model := _open_model_locked([5, 7, 9, 11], [5, 7, 9, 11], 1)
+	assert_array(model.unlock_stack(0)).is_empty()  # stack 0 already open
+
+
+func test_locked_level_is_winnable_after_unlocking_all_stacks() -> void:
+	# 12-card level, all exposed, 1 stack open: unlock the other 3, then it plays
+	# out like a normal 4-stack board.
+	var results: Array[int] = [5, 7, 9, 11, 5, 7, 9, 11, 5, 7, 9, 11]
+	var model := _open_model_locked(results, [5, 7, 9, 11], 1)
+	model.unlock_stack(1)
+	model.unlock_stack(2)
+	model.unlock_stack(3)
+	for c in results.size():
+		model.tap_card(c)
+	assert_bool(model.is_won()).is_true()
+
+
 func test_card_routes_to_matching_stack() -> void:
 	# Stacks start as targets 7,9,11,13; a single 7 routes to stack 0.
 	var model := _open_model([7, 9, 11, 13, 5, 5], [7, 9, 11, 13])

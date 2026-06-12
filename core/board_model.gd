@@ -22,6 +22,7 @@ var _target_queue: Array[int] = []
 var _removed: Dictionary = {}          # card_id -> true once off the floor
 var _stack_targets: Array[int] = []    # per stack, NO_TARGET when inactive
 var _stack_counts: Array[int] = []     # per stack, 0..STACK_CAPACITY
+var _locked: Array[bool] = []          # per stack (prototype: locked-decks)
 var _discard: Array[int] = []          # slot -> card_id, or -1 when empty
 var _draw_index: int = STACK_COUNT     # next unused target_queue entry
 var _total_cards: int = 0
@@ -32,19 +33,29 @@ var _lost: bool = false
 ## Low-level constructor. [param results] maps card_id -> result, [param
 ## covered_by] is the exposure graph (see [Exposure]), [param target_queue] is
 ## the ordered target list whose first [constant STACK_COUNT] entries seed the
-## stacks.
-func _init(results: Array[int], covered_by: Dictionary, target_queue: Array[int]) -> void:
+## stacks. [param open_count] (prototype: locked-decks) is how many stacks start
+## OPEN; the rest start locked with no target until [method unlock_stack] opens
+## them. Defaults to [constant STACK_COUNT] so all existing callers/tests behave
+## exactly as before.
+func _init(results: Array[int], covered_by: Dictionary, target_queue: Array[int],
+		open_count: int = STACK_COUNT) -> void:
 	_result_of = results
 	_covered_by = covered_by
 	_target_queue = target_queue
 	_total_cards = results.size()
 
+	var open: int = clampi(open_count, 0, STACK_COUNT)
 	_stack_targets = []
 	_stack_counts = []
+	_locked = []
 	for i in STACK_COUNT:
-		_stack_targets.append(_target_queue[i] if i < _target_queue.size() else NO_TARGET)
+		var is_open: bool = i < open
+		_stack_targets.append(_target_queue[i] if (is_open and i < _target_queue.size()) else NO_TARGET)
 		_stack_counts.append(0)
-	_draw_index = STACK_COUNT
+		_locked.append(not is_open)
+	# Open stacks have consumed the first `open` queue entries; the next unlock
+	# (or stack clear) draws from here.
+	_draw_index = open
 
 	_discard = []
 	for _i in DISCARD_SLOTS:
@@ -52,14 +63,14 @@ func _init(results: Array[int], covered_by: Dictionary, target_queue: Array[int]
 
 
 ## Convenience constructor that derives the exposure graph from the level's
-## layout preset.
-static func from_config(config: LevelConfig) -> BoardModel:
+## layout preset. [param open_count] (prototype) is how many stacks start open.
+static func from_config(config: LevelConfig, open_count: int = STACK_COUNT) -> BoardModel:
 	var results: Array[int] = []
 	for card: CardData in config.card_pool:
 		results.append(card.result)
 	var placements := Layouts.get_layout(config.layout_id)
 	var covered_by := Exposure.compute_covered_by(placements)
-	return BoardModel.new(results, covered_by, config.target_queue)
+	return BoardModel.new(results, covered_by, config.target_queue, open_count)
 
 
 # --- queries ---
@@ -72,6 +83,10 @@ func stack_target(stack_index: int) -> int:
 
 func stack_count(stack_index: int) -> int:
 	return _stack_counts[stack_index]
+
+## Whether [param stack_index] is still locked (prototype: locked-decks).
+func is_stack_locked(stack_index: int) -> bool:
+	return _locked[stack_index]
 
 func discard_card(slot: int) -> int:
 	return _discard[slot]
@@ -127,6 +142,33 @@ func tap_card(card_id: int) -> Array[GameEvent]:
 		_discard[slot] = card_id
 		events.append(GameEvent.discard(card_id, slot))
 
+	_resolve_cascade(events)
+
+	if not _won and floor_count() == 0:
+		_won = true
+		events.append(GameEvent.win())
+	return events
+
+
+## Opens locked stack [param stack_index] (prototype: locked-decks): it draws the
+## next queue target and pulls any matching cards back out of discard, possibly
+## cascading. Returns the ordered events; a no-op (empty) when the stack is
+## already open, out of range, or the game is over. Payment (coins/ad) is the
+## caller's concern — the model only models the board.
+func unlock_stack(stack_index: int) -> Array[GameEvent]:
+	var events: Array[GameEvent] = []
+	if stack_index < 0 or stack_index >= STACK_COUNT:
+		return events
+	if not _locked[stack_index] or is_game_over():
+		return events
+
+	_locked[stack_index] = false
+	var new_target: int = _draw_next_target()
+	_stack_targets[stack_index] = new_target
+	events.append(GameEvent.unlock(stack_index, new_target))
+
+	if new_target != NO_TARGET:
+		_pull_matching(stack_index, new_target, events)
 	_resolve_cascade(events)
 
 	if not _won and floor_count() == 0:
