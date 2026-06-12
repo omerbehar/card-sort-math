@@ -44,3 +44,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test: full suite 388/388 green, exit 0 (was 367; +21)
 - Notes: gdscript-specialist agent left ONE failing test (test fixture bug — gave card 1 result 9 which DOES route since the queue seeds stack target 9; impl was correct). Fixed fixture (result 9→5). AC-M01a verified: HINT_RESULT carries card_id only.
 - Next: S3-005 (compliance gating + daily caps + gem→coin) — LAST Must-Have
+
+## Session Extract — /dev-story 2026-06-12 (S3-005)
+- Story: S3-005 — compliance gating + daily caps + gem→coin conversion
+- Files: core/save_data.gd (v2→v3: daily_key/ad_coins_today/ads_watched_today/gems_converted_today + migration), autoloads/wallet_service.gd (earn() source-router + _earn_raw/_earn_rewarded_ad/convert_gems_to_coins/initiate_iap/is_ad_earn_available/_roll_day_if_needed), tests/test_save_data.gd (+v3 migration tests), tests/test_wallet_service.gd (+14 S3-005 AC tests)
+- Test: full suite 410/410 green, exit 0 (was 388; +22)
+- Notes: gameplay-programmer agent was truncated mid-test-writing — it finished the SaveData v3 + migration tests + ALL WalletService impl, but did NOT add the WalletService S3-005 behavior tests. I added the 14 missing AC tests (C01/C02/C03, CH01/CH02, CL01, GC01/GC02/GC03, EC-13/14, rollover, count cap, is_ad_earn_available). Impl verified correct. AC-CL03/M02 advisory gate passes (no direct age_band/CardData.result reads).
+- ALL 6 MUST-HAVES DONE. Should-Have: S3-006 (Extra Discard), S3-008 (earn triggers). Nice: S3-009/010/011.

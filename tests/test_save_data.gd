@@ -172,9 +172,9 @@ func test_tutorial_seen_does_not_bump_schema_version() -> void:
 # design/gdd/deck-economy.md §Dependencies → Save Service
 # ---------------------------------------------------------------------------
 
-func test_schema_version_is_2() -> void:
-	# Bumped from 1 → 2 in S3-002 to add wallet_coins / wallet_gems.
-	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(2)
+func test_schema_version_is_3() -> void:
+	# Bumped from 2 → 3 in S3-005 to add daily cap counters.
+	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(3)
 
 
 func test_defaults_include_wallet_fields_at_zero() -> void:
@@ -232,10 +232,11 @@ func test_migrate_v1_to_v2_sets_wallet_gems_to_zero() -> void:
 	assert_int(data.wallet_gems).is_equal(0)
 
 
-func test_migrate_v1_to_v2_schema_version_becomes_2() -> void:
+func test_migrate_v1_to_v2_schema_version_becomes_current() -> void:
+	# A v1 save flows v1→v2→v3; the stored schema_version must match CURRENT.
 	var v1_dict: Dictionary = {"schema_version": 1, "current_level": 3}
 	var data := SaveData.from_dict(v1_dict)
-	assert_int(data.schema_version).is_equal(2)
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
 
 
 func test_migrate_v1_to_v2_preserves_current_level() -> void:
@@ -298,3 +299,121 @@ func test_from_dict_negative_wallet_coins_clamped_to_zero() -> void:
 func test_from_dict_negative_wallet_gems_clamped_to_zero() -> void:
 	var data := SaveData.from_dict({"schema_version": 2, "wallet_coins": 0, "wallet_gems": -1})
 	assert_int(data.wallet_gems).is_equal(0)
+
+
+# ---------------------------------------------------------------------------
+# S3-005 — daily cap counters (schema v3 migration)
+# design/gdd/deck-economy.md Rule 15 / Rule 21 / Formula 7 / Formula 8
+# ---------------------------------------------------------------------------
+
+func test_schema_v3_defaults_include_daily_fields_at_zero() -> void:
+	# A fresh SaveData must have all four v3 fields defaulted to 0.
+	var data := SaveData.defaults()
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+
+
+func test_to_dict_contains_all_four_v3_keys() -> void:
+	var keys: Array = SaveData.new().to_dict().keys()
+	for key: String in ["daily_key", "ad_coins_today", "ads_watched_today", "gems_converted_today"]:
+		assert_bool(keys.has(key)).is_true()
+
+
+func test_v3_dict_round_trips_all_daily_fields() -> void:
+	# A v3 save with non-zero daily counters must survive a to_dict/from_dict round-trip.
+	var original := SaveData.new()
+	original.daily_key = 20000
+	original.ad_coins_today = 120
+	original.ads_watched_today = 2
+	original.gems_converted_today = 30
+	original.wallet_coins = 500
+	original.wallet_gems = 10
+	var restored := SaveData.from_dict(original.to_dict())
+	assert_int(restored.daily_key).is_equal(20000)
+	assert_int(restored.ad_coins_today).is_equal(120)
+	assert_int(restored.ads_watched_today).is_equal(2)
+	assert_int(restored.gems_converted_today).is_equal(30)
+	assert_int(restored.wallet_coins).is_equal(500)
+	assert_int(restored.wallet_gems).is_equal(10)
+
+
+func test_migrate_v2_to_v3_sets_daily_fields_to_zero() -> void:
+	# A v2 dict with wallet values migrates to v3; daily fields default to 0,
+	# and existing wallet + level fields are preserved.
+	var v2_dict: Dictionary = {
+		"schema_version": 2,
+		"current_level": 9,
+		"wallet_coins": 420,
+		"wallet_gems": 8,
+	}
+	var data := SaveData.from_dict(v2_dict)
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+	# Existing fields preserved.
+	assert_int(data.wallet_coins).is_equal(420)
+	assert_int(data.wallet_gems).is_equal(8)
+	assert_int(data.current_level).is_equal(9)
+
+
+func test_migrate_v1_flows_all_the_way_to_v3() -> void:
+	# A v1 save must migrate v1→v2→v3 in sequence; all four daily fields == 0,
+	# wallet fields == 0, and the existing level field is preserved (AC-SD chain).
+	var v1_dict: Dictionary = {
+		"schema_version": 1,
+		"current_level": 4,
+		"age_band": int(SaveData.AgeBand.ADULT),
+	}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.wallet_coins).is_equal(0)
+	assert_int(data.wallet_gems).is_equal(0)
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+	assert_int(data.current_level).is_equal(4)
+	assert_int(int(data.age_band)).is_equal(int(SaveData.AgeBand.ADULT))
+
+
+func test_from_dict_missing_daily_fields_default_to_zero() -> void:
+	# A v3 dict that lacks any of the four daily keys must not crash and must default 0.
+	var data := SaveData.from_dict({"schema_version": 3, "wallet_coins": 10})
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+
+
+func test_from_dict_null_daily_fields_clamped_to_zero() -> void:
+	# Explicit null on any daily field must not crash (int(null) raises in GDScript).
+	var data := SaveData.from_dict({
+		"schema_version": 3,
+		"daily_key": null,
+		"ad_coins_today": null,
+		"ads_watched_today": null,
+		"gems_converted_today": null,
+	})
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+
+
+func test_from_dict_negative_daily_fields_clamped_to_zero() -> void:
+	# Negative values on daily counters must be clamped to 0 (maxi guard).
+	var data := SaveData.from_dict({
+		"schema_version": 3,
+		"daily_key": -1,
+		"ad_coins_today": -100,
+		"ads_watched_today": -5,
+		"gems_converted_today": -50,
+	})
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)

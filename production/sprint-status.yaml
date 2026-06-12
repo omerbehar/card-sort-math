@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # S3-001/003/002/004/007 done; S3-005 next (last Must-Have).
+updated: "2026-06-12"  # ALL 6 Must-Haves done (S3-001/003/002/004/007/005). Should/Nice remain.
 
 stories:
   - id: "S3-001"
@@ -66,11 +66,11 @@ stories:
     name: "Compliance gating + daily caps + gem-to-coin conversion"
     file: "autoloads/wallet_service.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-12"
   - id: "S3-006"
     name: "Extra Discard Slot booster (ADR-0010 BoardModel change)"
     file: "core/board_model.gd"

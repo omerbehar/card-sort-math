@@ -9,10 +9,12 @@ extends RefCounted
 ##
 ## Persisted fields: [member schema_version], [member current_level],
 ## [member age_band], [member settings], [member tutorial_seen],
-## [member wallet_coins], [member wallet_gems].
+## [member wallet_coins], [member wallet_gems],
+## [member daily_key], [member ad_coins_today],
+## [member ads_watched_today], [member gems_converted_today].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 2
+const CURRENT_SCHEMA_VERSION: int = 3
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -39,6 +41,22 @@ var wallet_coins: int = 0
 ## Clamped to >= 0 in [method from_dict]; upper cap applied by WalletService (S3-004).
 var wallet_gems: int = 0
 
+## The UTC day key ([method TimeProvider.utc_day_key]) these daily counters belong to.
+## Value 0 means uninitialised (no counters recorded yet). Added in schema v3 (S3-005).
+var daily_key: int = 0
+
+## Coins earned from rewarded ads today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 15 / Formula 8).
+var ad_coins_today: int = 0
+
+## Number of rewarded ads watched today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 15 / Formula 8).
+var ads_watched_today: int = 0
+
+## Gems converted to coins today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 21 / Formula 7).
+var gems_converted_today: int = 0
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -55,6 +73,10 @@ func to_dict() -> Dictionary:
 		"tutorial_seen": tutorial_seen,
 		"wallet_coins": wallet_coins,
 		"wallet_gems": wallet_gems,
+		"daily_key": daily_key,
+		"ad_coins_today": ad_coins_today,
+		"ads_watched_today": ads_watched_today,
+		"gems_converted_today": gems_converted_today,
 	}
 
 
@@ -73,6 +95,10 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.tutorial_seen = bool(migrated.get("tutorial_seen", false))
 	data.wallet_coins = maxi(0, _safe_int(migrated.get("wallet_coins", 0)))
 	data.wallet_gems = maxi(0, _safe_int(migrated.get("wallet_gems", 0)))
+	data.daily_key = maxi(0, _safe_int(migrated.get("daily_key", 0)))
+	data.ad_coins_today = maxi(0, _safe_int(migrated.get("ad_coins_today", 0)))
+	data.ads_watched_today = maxi(0, _safe_int(migrated.get("ads_watched_today", 0)))
+	data.gems_converted_today = maxi(0, _safe_int(migrated.get("gems_converted_today", 0)))
 	return data
 
 
@@ -88,6 +114,13 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 		out["wallet_coins"] = 0
 		out["wallet_gems"] = 0
 		version = 2
+	# v2 → v3: daily cap counters introduced (S3-005, design/gdd/deck-economy.md Rule 15/21).
+	if version == 2:
+		out["daily_key"] = 0
+		out["ad_coins_today"] = 0
+		out["ads_watched_today"] = 0
+		out["gems_converted_today"] = 0
+		version = 3
 	return out
 
 

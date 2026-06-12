@@ -118,11 +118,27 @@ func _cap_for(currency: int) -> int:
 
 # --- transactions ---
 
-## Credits [param amount] of [param currency], clamped to the per-currency cap
-## (Formula 4). Returns the [b]actual[/b] amount credited (after the clamp).
+## Routes [param amount] of [param currency] through the policy layer, then
+## delegates to [method _earn_raw] for the actual balance mutation (Formula 4).
+## Returns the [b]actual[/b] amount credited (after policy + clamp).
 ## A 0-or-negative amount is a logic-error guard (EC-14): no mutation, no event, returns 0.
-## Daily caps + compliance gating wrap this in S3-005 — this is the raw, uncapped-by-source earn.
+##
+## Policy routing (S3-005 / design/gdd/deck-economy.md Rule 15, Rule 21):
+## - [constant EconomyEnums.EarnSource.REWARDED_AD] → compliance + daily-cap gate via [method _earn_rewarded_ad].
+## - All other sources (LEVEL_WIN, DAILY_CHALLENGE, MILESTONE_GIFT, GEM_CONVERT, IAP) → raw,
+##   uncapped, ungated (AC-C03 / AC-CH01).
 func earn(currency: int, amount: int, source: int) -> int:
+	if amount <= 0:
+		return 0  # EC-14
+	if source == EconomyEnums.EarnSource.REWARDED_AD:
+		return _earn_rewarded_ad(amount)
+	return _earn_raw(currency, amount, source)
+
+
+# Raw, uncapped, ungated credit — the actual balance mutation (Formula 4).
+# Extracted from the original earn() body so _earn_rewarded_ad() and
+# convert_gems_to_coins() can call it after their own policy checks.
+func _earn_raw(currency: int, amount: int, source: int) -> int:
 	if amount <= 0:
 		return 0
 	var current: int = _wallet.balance_of(currency)
@@ -135,6 +151,115 @@ func earn(currency: int, amount: int, source: int) -> int:
 	_persist()
 	economy_event.emit(EconomyEvent.currency_earned(currency, actual, source, new_balance))
 	return actual
+
+
+# Rolls the daily counters to zero if the UTC day has advanced since they were last
+# written (design/gdd/deck-economy.md Rule 15 / Formula 8 / Rule 21).
+# Guard: silently skips if _save, _save.data, or _time is null (incomplete DI).
+func _roll_day_if_needed() -> void:
+	if _save == null or _save.data == null or _time == null:
+		return
+	var today: int = _time.utc_day_key()
+	if _save.data.daily_key != today:
+		_save.data.ad_coins_today = 0
+		_save.data.ads_watched_today = 0
+		_save.data.gems_converted_today = 0
+		_save.data.daily_key = today
+		_persist()
+
+
+# Gated ad earn: compliance + per-day count cap + per-day coin cap (Rule 15, Formula 8).
+# Returns actual coins credited (0 on any block).
+# Source: design/gdd/deck-economy.md AC-C01/C02/CH02/CL02.
+func _earn_rewarded_ad(amount: int) -> int:
+	_roll_day_if_needed()
+	# Compliance gate — child / restricted users: silent block, no event (AC-CH02 / AC-CL02).
+	if _compliance != null and _compliance.is_restricted():
+		return 0
+	# Count cap: max rewarded ads per day (Formula 8).
+	if _save != null and _save.data != null \
+			and _save.data.ads_watched_today >= _config.max_ads_per_day:
+		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.REWARDED_AD))
+		return 0
+	# Coin cap: daily_coins_cap applies to REWARDED_AD income only (Rule 15 canonical scope).
+	var remaining: int = 0
+	if _save != null and _save.data != null:
+		remaining = _config.daily_coins_cap - _save.data.ad_coins_today
+	else:
+		remaining = _config.daily_coins_cap
+	if remaining <= 0:
+		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.REWARDED_AD))
+		return 0  # AC-C01
+	# Partial cap earn: clamp to remaining headroom (AC-C02 / EC-11).
+	var credited: int = _earn_raw(
+			EconomyEnums.Currency.COINS,
+			mini(amount, remaining),
+			EconomyEnums.EarnSource.REWARDED_AD)
+	if _save != null and _save.data != null:
+		_save.data.ad_coins_today += credited
+		_save.data.ads_watched_today += 1
+		_persist()
+	return credited
+
+
+## Converts [param gems_amount] gems to coins at the penalised rate (Formula 7,
+## Rule 21). Returns [code]true[/code] on success, [code]false[/code] on any failure.
+##
+## Failure paths (no balance change on false return):
+## - [param gems_amount] <= 0 → false, no event (EC-14).
+## - daily_gem_convert_cap exceeded → false, [code]EARN_CAP_REACHED(GEM_CONVERT)[/code] (AC-GC02 / EC-13).
+## - insufficient gem balance → false, [code]SPEND_FAILED[/code] (AC-GC03).
+##
+## On success: gems spent, coins credited, [member SaveData.gems_converted_today] incremented.
+## Source: design/gdd/deck-economy.md Rule 21, Formula 7, AC-GC01..GC03.
+func convert_gems_to_coins(gems_amount: int) -> bool:
+	if gems_amount <= 0:
+		return false  # EC-14 — no event
+	_roll_day_if_needed()
+	# Daily gem conversion cap (Rule 21 / Formula 7). Uses its own cap, NOT daily_coins_cap.
+	if _save != null and _save.data != null \
+			and _save.data.gems_converted_today + gems_amount > _config.daily_gem_convert_cap:
+		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.GEM_CONVERT))
+		return false  # AC-GC02 / EC-13
+	# Atomic spend first — insufficient gems emits SPEND_FAILED (AC-GC03).
+	if not spend(EconomyEnums.Currency.GEMS, gems_amount):
+		return false
+	# Credit coins at the penalised rate (GEM_CONVERT is NOT subject to daily_coins_cap — AC-C03).
+	var coins: int = gems_amount * _config.gem_to_coin_rate
+	_earn_raw(EconomyEnums.Currency.COINS, coins, EconomyEnums.EarnSource.GEM_CONVERT)
+	if _save != null and _save.data != null:
+		_save.data.gems_converted_today += gems_amount
+		_persist()
+	return true
+
+
+## Initiates an IAP purchase for [param sku]. Gated by [method ComplianceService.is_restricted]:
+## restricted (CHILD / UNKNOWN) users are blocked before [code]IAPService[/code] is ever called.
+##
+## Returns [code]true[/code] if the IAP flow may proceed; [code]false[/code] if blocked.
+## On block: [code]IAP_BLOCKED(sku, COMPLIANCE_RESTRICTED)[/code] emitted, gems unchanged (AC-CL01).
+## IAPService integration is deferred to M4; this method is the compliance chokepoint stub.
+## Source: design/gdd/deck-economy.md Rule 5/6, AC-CL01, EC-12.
+func initiate_iap(sku: int) -> bool:
+	if _compliance != null and _compliance.is_restricted():
+		economy_event.emit(EconomyEvent.iap_blocked(sku, EconomyEnums.FailReason.COMPLIANCE_RESTRICTED))
+		return false
+	# IAPService.purchase(sku) deferred to M4 — stub returns true (flow may proceed).
+	return true
+
+
+## Returns whether a rewarded ad earn is currently available (Formula 8 / Rule 15).
+## True only when the player is not restricted, has not hit the ad count cap, and
+## has not hit the daily coin cap. Intended for HUD availability checks.
+## Source: design/gdd/deck-economy.md Formula 8, AC-C01.
+func is_ad_earn_available() -> bool:
+	_roll_day_if_needed()
+	if _compliance != null and _compliance.is_restricted():
+		return false
+	if _save == null or _save.data == null:
+		return true
+	return _save.data.ads_watched_today < _config.max_ads_per_day \
+		and _save.data.ad_coins_today < _config.daily_coins_cap
 
 
 ## Atomically spends [param amount] of [param currency] (Formula 3). Returns true on

@@ -1,16 +1,18 @@
 extends GdUnitTestSuite
-## Tests for the WalletService transaction core (S3-004).
+## Tests for the WalletService transaction core (S3-004 / S3-005).
 ##
 ## WalletService is instantiated directly (NOT via the autoload) and configured with
-## injected stubs — a fake save, a FixedTimeProvider, and an EconomyConfig — so every
-## test is isolated and proves the logic has no autoload coupling (DI over singletons).
-## Emitted [EconomyEvent]s are captured for assertion.
+## injected stubs — a fake save, a FixedTimeProvider, a compliance stub, and an
+## EconomyConfig — so every test is isolated and proves the logic has no autoload
+## coupling (DI over singletons). Emitted [EconomyEvent]s are captured for assertion.
 
 const WALLET := preload("res://autoloads/wallet_service.gd")
 
 const COINS := EconomyEnums.Currency.COINS
 const GEMS := EconomyEnums.Currency.GEMS
 const LEVEL_WIN := EconomyEnums.EarnSource.LEVEL_WIN
+const REWARDED_AD := EconomyEnums.EarnSource.REWARDED_AD
+const GEM_CONVERT := EconomyEnums.EarnSource.GEM_CONVERT
 
 # A minimal stand-in for SaveService: real SaveData, a counted save_game(), no file I/O.
 class StubSave extends RefCounted:
@@ -22,20 +24,40 @@ class StubSave extends RefCounted:
 		save_called += 1
 
 
+## Compliance stub. Set [member restricted] before injecting into a WalletService.
+## Implements only the is_restricted() surface the economy consults (AC-CL02/CL03).
+class StubCompliance extends RefCounted:
+	var restricted: bool = false
+	func is_restricted() -> bool:
+		return restricted
+
+
 var _events: Array = []
 var _save_stub: StubSave
+var _time_stub: FixedTimeProvider
 
 
-# Builds a configured WalletService seeded to the given balances. Optionally takes a
-# config override (e.g. a small coins_max for cap tests). Captures emitted events.
-func _make(coins: int = 0, gems: int = 0, config: EconomyConfig = null):
+## Builds a configured WalletService seeded to the given balances.
+## [param coins] / [param gems]: starting balances.
+## [param config]: optional EconomyConfig override (e.g. small coins_max for cap tests).
+## [param compliance]: optional StubCompliance; defaults to a permissive stub (not restricted).
+## [param time_stub]: optional FixedTimeProvider; defaults to a new one at epoch 0.
+## All S3-004 tests pass null/default compliance so they are unaffected by the new arg.
+func _make(
+		coins: int = 0,
+		gems: int = 0,
+		config: EconomyConfig = null,
+		compliance: StubCompliance = null,
+		time_stub: FixedTimeProvider = null):
 	_events = []
 	_save_stub = StubSave.new()
 	_save_stub.data.wallet_coins = coins
 	_save_stub.data.wallet_gems = gems
 	var cfg: EconomyConfig = config if config != null else EconomyConfig.new()
+	var comp: StubCompliance = compliance if compliance != null else StubCompliance.new()
+	_time_stub = time_stub if time_stub != null else FixedTimeProvider.new()
 	var svc = auto_free(WALLET.new())
-	svc.configure(_save_stub, null, FixedTimeProvider.new(), cfg)
+	svc.configure(_save_stub, comp, _time_stub, cfg)
 	svc.economy_event.connect(func(e: EconomyEvent) -> void: _events.append(e))
 	return svc
 
@@ -412,3 +434,151 @@ func test_use_hint_boosters_used_incremented_on_success_only() -> void:
 	var w_ok = _make(500)
 	w_ok.use_hint(board)
 	assert_int(w_ok.boosters_used_this_level).is_equal(1)
+
+
+# ============================================================================
+# S3-005 — compliance gating, daily caps, gem→coin conversion
+# ============================================================================
+
+func _restricted() -> StubCompliance:
+	var c := StubCompliance.new()
+	c.restricted = true
+	return c
+
+
+func test_rewarded_ad_at_coin_cap_credits_nothing_and_emits_cap_reached() -> void:
+	# AC-C01: ad coins already at daily_coins_cap (500) -> earn credits 0, cap event.
+	var w = _make(1000)
+	_save_stub.data.ad_coins_today = 500                 # default daily_coins_cap
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(1000)
+	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
+	assert_object(cap).is_not_null()
+	assert_int(cap.source).is_equal(REWARDED_AD)
+
+
+func test_rewarded_ad_partial_cap_credits_remaining_only() -> void:
+	# AC-C02 / EC-11: 460 of 500 used -> a 60-coin ad credits only 40.
+	var w = _make(0)
+	_save_stub.data.ad_coins_today = 460
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(40)
+	assert_int(w.balance(COINS)).is_equal(40)
+	var e := _event_of(EconomyEvent.Kind.CURRENCY_EARNED)
+	assert_int(e.amount).is_equal(40)
+	assert_int(e.source).is_equal(REWARDED_AD)
+
+
+func test_level_win_uncapped_even_at_ad_cap() -> void:
+	# AC-C03: daily_coins_cap is REWARDED_AD-only; LEVEL_WIN ignores it.
+	var w = _make(0)
+	_save_stub.data.ad_coins_today = 500
+	assert_int(w.earn(COINS, 55, LEVEL_WIN)).is_equal(55)
+	assert_int(w.balance(COINS)).is_equal(55)
+
+
+func test_child_level_win_earn_succeeds_play_earn_ungated() -> void:
+	# AC-CH01: restricted user still earns from play.
+	var w = _make(0, 0, null, _restricted())
+	assert_int(w.earn(COINS, 55, LEVEL_WIN)).is_equal(55)
+	assert_int(w.balance(COINS)).is_equal(55)
+
+
+func test_child_rewarded_ad_earn_blocked() -> void:
+	# AC-CH02 / AC-CL02: restricted user's ad earn is blocked (gate routes via is_restricted()).
+	var w = _make(0, 0, null, _restricted())
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(0)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_EARNED)).is_null()
+
+
+func test_restricted_iap_blocked_emits_iap_blocked() -> void:
+	# AC-CL01: restricted -> initiate_iap false, IAP_BLOCKED, gems unchanged.
+	var w = _make(0, 100, null, _restricted())
+	assert_bool(w.initiate_iap(3)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(100)
+	var e := _event_of(EconomyEvent.Kind.IAP_BLOCKED)
+	assert_object(e).is_not_null()
+	assert_int(e.sku).is_equal(3)
+	assert_int(e.reason).is_equal(EconomyEnums.FailReason.COMPLIANCE_RESTRICTED)
+
+
+func test_unrestricted_iap_proceeds_without_block_event() -> void:
+	var w = _make(0, 100)                                # default permissive compliance
+	assert_bool(w.initiate_iap(3)).is_true()
+	assert_object(_event_of(EconomyEvent.Kind.IAP_BLOCKED)).is_null()
+
+
+func test_convert_gems_to_coins_spends_gems_credits_coins() -> void:
+	# AC-GC01: 10 gems -> 250 coins; both spend + earn events.
+	var w = _make(100, 20)
+	assert_bool(w.convert_gems_to_coins(10)).is_true()
+	assert_int(w.balance(GEMS)).is_equal(10)
+	assert_int(w.balance(COINS)).is_equal(350)
+	var spent := _event_of(EconomyEvent.Kind.CURRENCY_SPENT)
+	assert_int(spent.currency).is_equal(GEMS)
+	assert_int(spent.amount).is_equal(10)
+	assert_int(spent.new_balance).is_equal(10)
+	var earned := _event_of(EconomyEvent.Kind.CURRENCY_EARNED)
+	assert_int(earned.currency).is_equal(COINS)
+	assert_int(earned.amount).is_equal(250)
+	assert_int(earned.source).is_equal(GEM_CONVERT)
+	assert_int(earned.new_balance).is_equal(350)
+
+
+func test_convert_gems_at_daily_cap_blocked() -> void:
+	# AC-GC02 / EC-13: 50 gems already converted today -> next conversion blocked.
+	var w = _make(0, 20)
+	_save_stub.data.gems_converted_today = 50           # default daily_gem_convert_cap
+	assert_bool(w.convert_gems_to_coins(1)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(20)
+	assert_int(_event_of(EconomyEvent.Kind.EARN_CAP_REACHED).source).is_equal(GEM_CONVERT)
+
+
+func test_convert_gems_insufficient_balance_fails() -> void:
+	# AC-GC03: not enough gems -> SPEND_FAILED, no change.
+	var w = _make(0, 5)
+	assert_bool(w.convert_gems_to_coins(10)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(5)
+	var sf := _event_of(EconomyEvent.Kind.SPEND_FAILED)
+	assert_int(sf.currency).is_equal(GEMS)
+	assert_int(sf.amount).is_equal(10)
+
+
+func test_convert_gems_zero_amount_guarded() -> void:
+	# EC-14: 0-amount conversion is a no-op with no event.
+	var w = _make(0, 20)
+	assert_bool(w.convert_gems_to_coins(0)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(20)
+	assert_int(_events.size()).is_equal(0)
+
+
+func test_daily_counters_reset_on_day_rollover() -> void:
+	# Caps reset when utc_day_key() advances (TimeProvider-driven).
+	var clock := FixedTimeProvider.new()
+	clock.now_seconds = 0
+	var w = _make(0, 0, null, null, clock)
+	_save_stub.data.ad_coins_today = 500                # at cap on day 0
+	assert_bool(w.is_ad_earn_available()).is_false()
+	clock.now_seconds = 86_400                          # advance one UTC day
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(60)   # counters rolled -> succeeds
+	assert_int(w.balance(COINS)).is_equal(60)
+
+
+func test_rewarded_ad_count_cap_blocks_after_max_ads() -> void:
+	# Formula 8: after max_ads_per_day (3) earns, the next is capped (coin cap not yet hit).
+	var w = _make(0)
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(60)
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(60)
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(60)
+	assert_int(w.balance(COINS)).is_equal(180)
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(0)    # 4th -> count cap
+	assert_int(w.balance(COINS)).is_equal(180)
+	assert_int(_event_of(EconomyEvent.Kind.EARN_CAP_REACHED).source).is_equal(REWARDED_AD)
+
+
+func test_is_ad_earn_available_reflects_compliance_and_caps() -> void:
+	assert_bool(_make(0).is_ad_earn_available()).is_true()           # fresh + permissive
+	assert_bool(_make(0, 0, null, _restricted()).is_ad_earn_available()).is_false()  # restricted
+	var w = _make(0)
+	_save_stub.data.ad_coins_today = 500
+	assert_bool(w.is_ad_earn_available()).is_false()                 # at coin cap
