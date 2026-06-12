@@ -24,6 +24,7 @@
 | First-Time Tutorial | [`first-time-tutorial.md`](gdd/first-time-tutorial.md) | Implemented (S1-010, 2026-06-09; 34 tutorial tests green) | `core/tutorial_logic.gd`, `core/tutorial_state.gd`, `scenes/ui/coach_overlay.gd`, `scenes/main/main.gd` (wiring), `SaveData.tutorial_seen` |
 | Save & Settings | [`save-service.md`](gdd/save-service.md) | Approved + 3 P0 follow-ups implemented (atomic write, load_failed, ComplianceService) 2026-06-09 | `core/save_data.gd`, `autoloads/save_service.gd`, `autoloads/compliance_service.gd`, `data/settings.gd`, `autoloads/settings_service.gd` |
 | Level Generator | [`level-generator.md`](gdd/level-generator.md) | **Implemented** (S2-001..004, 2026-06-11; 42 generator tests green, live in `LevelData.get_level`) | `core/level_generator.gd`, `core/difficulty_schedule.gd`, `core/recoverability_simulator.gd`, `core/operand_picker.gd`, `core/solvability.gd`, `assets/data/difficulty_schedule.tres`, wired in `autoloads/level_data.gd` |
+| Deck Economy | [`deck-economy.md`](gdd/deck-economy.md) | **Designed** (2026-06-12; CD-GDD-ALIGN CONCERNS accepted; pending independent /design-review) | `core/wallet_data.gd` (planned), `autoloads/wallet_service.gd` (planned), `assets/data/economy_config.tres` (planned) |
 
 ## Dependency graph
 
@@ -33,15 +34,17 @@ Floor Exposure ──gates which cards are tappable──▶ Card Routing & Stac
 Level & Solvability ──builds board (cards + layout + queue)──▶ Card Routing & Stacks
 Layouts ──placements──▶ Floor Exposure
 Save + BoardModel + Settings + Level 1 content ──read by──▶ First-Time Tutorial
+Deck Economy ──boosters mutate board state──▶ Card Routing & Stacks
+Deck Economy ──persists wallet balance──▶ Save & Settings
+Level Generator ──long-tail fantasy requires (design dep)──▶ Deck Economy
 ```
 
 ## Not yet designed (see `docs/GAME_PLAN.md`)
 
-Audio, economy/currencies, boosters, monetization (IAP/ads), analytics,
-meta/progression, scoring/stars, operation worlds. These are roadmap items; GDDs
-should be authored (via `/design-system`) before implementation. (Save/profile,
-settings, the first-time tutorial, and the **level generator** (M2) are now
-documented — see the systems table above.)
+Audio, monetization (IAP/ads), analytics, meta/progression, scoring/stars, operation worlds.
+These are roadmap items; GDDs should be authored (via `/design-system`) before implementation.
+(Save/profile, settings, the first-time tutorial, the **level generator** (M2), and the
+**deck economy** are now documented — see the systems table above.)
 
 ## Architecture decisions
 

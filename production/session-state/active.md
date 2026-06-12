@@ -1,10 +1,8 @@
 # Active Design Session
 
-Task: level-generator GDD (S2-001) — COMPLETE
-Status: Designed; all 8 sections + Open Questions; CD-GDD-ALIGN gate addressed
-(recoverability guard). Pending independent /design-review (fresh session).
-File: design/gdd/level-generator.md
-Registry: design/registry/entities.yaml not present — candidates noted in GDD
-(GeneratorParams, _has_valid_operand_pair, _fisher_yates_shuffle, difficulty_schedule,
-level_id=0 convention).
-Next: /design-review design/gdd/level-generator.md (fresh session) → then S2-002 (ADR-0007).
+Task: deck-economy GDD — COMPLETE
+Status: Designed (2026-06-12); all 8 required sections + Visual/Audio, UI Requirements, Open Questions written; CD-GDD-ALIGN CONCERNS (accepted); pending independent /design-review (fresh session)
+File: design/gdd/deck-economy.md
+Registry: design/registry/entities.yaml created (18 constants, 3 formulas, 3 data types)
+Systems index: updated with Deck Economy row + dependency graph
+Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring/stars GDD (S2-011)
