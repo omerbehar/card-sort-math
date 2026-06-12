@@ -33,7 +33,7 @@ window/size/window_width_override=855
 window/size/window_height_override=1850
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/handheld/orientation="portrait"
+window/handheld/orientation=1
 
 [editor_plugins]
 
