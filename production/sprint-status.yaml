@@ -48,7 +48,7 @@ stories:
     name: "WalletService transaction core (atomic spend/earn, snapshot rollback, DI, per-level reset)"
     file: "autoloads/wallet_service.gd"
     priority: must-have
-    status: ready-for-dev
+    status: in-progress
     owner: "gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
