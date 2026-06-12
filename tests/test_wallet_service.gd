@@ -228,3 +228,187 @@ func test_reset_level_state_accepts_level_arg_for_signal_binding() -> void:
 	w.boosters_used_this_level = 5
 	w.reset_level_state(42)   # bindable to level_started(level: int)
 	assert_int(w.boosters_used_this_level).is_equal(0)
+
+
+# ---------------------------------------------------------------------------
+# Hint booster (S3-007): use_hint + notify_hint_consumed
+# ---------------------------------------------------------------------------
+
+## Builds a minimal fully-exposed BoardModel. All results are the same value and
+## no stack in [param queue] targets that value, so every card goes to discard
+## unless specified otherwise. The first [param exposed_count] cards have no
+## coverers; all others are unreachable (covered by a card id outside the set).
+func _open_board(results: Array[int], queue: Array[int]) -> BoardModel:
+	var covered_by: Dictionary = {}
+	for i in results.size():
+		covered_by[i] = [] as Array[int]
+	return BoardModel.new(results, covered_by, queue)
+
+
+func test_use_hint_success_deducts_coins_returns_best_card_emits_events() -> void:
+	## AC-H01: enough coins, board with 3 exposed cards (scores 220/35/200).
+	## Expected: deducts 120, emits CURRENCY_SPENT + HINT_RESULT(card=2) + BOOSTER_ACTIVATED,
+	## returns card_id 2, boosters_used_this_level == 1.
+	#
+	# Build the Formula 5 worked-example board (same as test_hint_score.gd):
+	#   results: [99,99,7,99,99,9,99,9,7]
+	#   queue:   [7,11,13,17]  (result-9 cards go to discard)
+	#   card 0,1 covered by card 2; card 3,4,6 covered by card 5; card 7 fully exposed
+	#   card 2 → score 220; card 5 → score 35; card 8 → score 200
+	var covered_by: Dictionary = {
+		0: [2] as Array[int], 1: [2] as Array[int], 2: [] as Array[int],
+		3: [5] as Array[int], 4: [5] as Array[int], 5: [] as Array[int],
+		6: [5] as Array[int], 7: [] as Array[int],  8: [] as Array[int],
+	}
+	var results: Array[int] = [99, 99, 7, 99, 99, 9, 99, 9, 7]
+	var board := BoardModel.new(results, covered_by, [7, 11, 13, 17])
+	# Discard card 7 (result 9 → discard, since no stack targets 9) → relief=1 for card 5.
+	board.tap_card(7)
+
+	var w = _make(200)  # 200 coins > 120 cost
+	var card_id: int = w.use_hint(board)
+
+	# Returns the best card.
+	assert_int(card_id).is_equal(2)
+	# Coins deducted.
+	assert_int(w.balance(COINS)).is_equal(80)
+	# boosters_used_this_level incremented.
+	assert_int(w.boosters_used_this_level).is_equal(1)
+
+	# Events: CURRENCY_SPENT then HINT_RESULT then BOOSTER_ACTIVATED.
+	var kinds: Array = []
+	for e: EconomyEvent in _events:
+		kinds.append(e.kind)
+	assert_bool(kinds.has(EconomyEvent.Kind.CURRENCY_SPENT)).is_true()
+	assert_bool(kinds.has(EconomyEvent.Kind.HINT_RESULT)).is_true()
+	assert_bool(kinds.has(EconomyEvent.Kind.BOOSTER_ACTIVATED)).is_true()
+
+	# CURRENCY_SPENT comes before HINT_RESULT.
+	var spent_idx: int = kinds.find(EconomyEvent.Kind.CURRENCY_SPENT)
+	var hint_idx: int = kinds.find(EconomyEvent.Kind.HINT_RESULT)
+	assert_bool(spent_idx < hint_idx).is_true()
+
+	# HINT_RESULT carries only card_id (AC-M01a).
+	var hint_evt: EconomyEvent = _event_of(EconomyEvent.Kind.HINT_RESULT)
+	assert_int(hint_evt.card_id).is_equal(2)
+
+	# BOOSTER_ACTIVATED carries the HINT booster type.
+	var act_evt: EconomyEvent = _event_of(EconomyEvent.Kind.BOOSTER_ACTIVATED)
+	assert_int(act_evt.booster_type).is_equal(EconomyEnums.BoosterType.HINT)
+
+
+func test_use_hint_ac_m01a_hint_result_has_only_card_id_set() -> void:
+	## AC-M01a: HINT_RESULT payload contains only card_id; all other fields
+	## remain at their sentinel defaults (-1 / 0). This is the no-arithmetic-
+	## solving structural check — no result, operands, or solution_text.
+	var board := _open_board([7], [7, 9, 11, 13])
+	var w = _make(200)
+	w.use_hint(board)
+
+	var evt: EconomyEvent = _event_of(EconomyEvent.Kind.HINT_RESULT)
+	assert_object(evt).is_not_null()
+	assert_int(evt.card_id).is_equal(0)   # only card, so card 0 is selected
+	# All other payload fields must be at sentinel defaults.
+	assert_int(evt.currency).is_equal(-1)
+	assert_int(evt.amount).is_equal(0)
+	assert_int(evt.source).is_equal(-1)
+	assert_int(evt.new_balance).is_equal(-1)
+	assert_int(evt.booster_type).is_equal(-1)
+	assert_int(evt.reason).is_equal(-1)
+	assert_int(evt.sku).is_equal(-1)
+
+
+func test_use_hint_ac_h03_no_exposed_cards_precondition_failed_no_spend() -> void:
+	## AC-H03: board with 0 exposed cards → BOOSTER_PRECONDITION_FAILED, coins unchanged.
+	# Mutual coverage → neither card is exposed.
+	var covered_by: Dictionary = {
+		0: [1] as Array[int],
+		1: [0] as Array[int],
+	}
+	var board := BoardModel.new([7, 9], covered_by, [7, 9, 11, 13])
+	var w = _make(500)
+	var result: int = w.use_hint(board)
+
+	assert_int(result).is_equal(-1)
+	assert_int(w.balance(COINS)).is_equal(500)  # no deduction
+
+	var evt: EconomyEvent = _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
+	assert_object(evt).is_not_null()
+	assert_int(evt.booster_type).is_equal(EconomyEnums.BoosterType.HINT)
+	assert_int(evt.reason).is_equal(EconomyEnums.FailReason.NO_EXPOSED_CARD)
+	# No CURRENCY_SPENT event.
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_use_hint_ac_h04_double_tap_rejected_no_second_deduction() -> void:
+	## AC-H04 / EC-08: while _hint_in_progress is true, a second use_hint call
+	## is rejected with BOOSTER_PURCHASE_FAILED(ALREADY_IN_PROGRESS). No second
+	## coin deduction. notify_hint_consumed() re-enables it.
+	var board := _open_board([7], [7, 9, 11, 13])
+	var w = _make(500)
+
+	# First call succeeds.
+	var first: int = w.use_hint(board)
+	assert_int(first).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(380)  # 500 - 120
+
+	# Second call while in-progress.
+	_events = []
+	var second: int = w.use_hint(board)
+	assert_int(second).is_equal(-1)
+	assert_int(w.balance(COINS)).is_equal(380)  # no further deduction
+
+	var failed_evt: EconomyEvent = _event_of(EconomyEvent.Kind.BOOSTER_PURCHASE_FAILED)
+	assert_object(failed_evt).is_not_null()
+	assert_int(failed_evt.booster_type).is_equal(EconomyEnums.BoosterType.HINT)
+	assert_int(failed_evt.reason).is_equal(EconomyEnums.FailReason.ALREADY_IN_PROGRESS)
+
+	# After notify_hint_consumed(), another call succeeds again.
+	w.notify_hint_consumed()
+	_events = []
+	var third: int = w.use_hint(board)
+	assert_int(third).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(260)  # 380 - 120
+
+
+func test_use_hint_insufficient_coins_returns_minus_one_not_in_progress() -> void:
+	## Insufficient balance → SPEND_FAILED emitted, returns -1, _hint_in_progress stays false.
+	var board := _open_board([7], [7, 9, 11, 13])
+	var w = _make(0)  # 0 coins, Hint costs 120
+	var result: int = w.use_hint(board)
+
+	assert_int(result).is_equal(-1)
+	assert_int(w.balance(COINS)).is_equal(0)
+
+	var failed_evt: EconomyEvent = _event_of(EconomyEvent.Kind.SPEND_FAILED)
+	assert_object(failed_evt).is_not_null()
+
+	# _hint_in_progress must NOT be set to true on a failed spend (subsequent calls
+	# should not be rejected with ALREADY_IN_PROGRESS).
+	_events = []
+	w.earn(COINS, 120, LEVEL_WIN)
+	_events = []
+	var retry: int = w.use_hint(board)
+	assert_int(retry).is_equal(0)  # succeeds — not stuck in progress
+
+
+func test_use_hint_boosters_used_incremented_on_success_only() -> void:
+	## boosters_used_this_level increments on success; stays 0 on every failure path.
+	var board := _open_board([7], [7, 9, 11, 13])
+
+	# Insufficient coins — no increment.
+	var w_broke = _make(0)
+	w_broke.use_hint(board)
+	assert_int(w_broke.boosters_used_this_level).is_equal(0)
+
+	# No exposed cards — no increment.
+	var covered_by: Dictionary = {0: [1] as Array[int], 1: [0] as Array[int]}
+	var empty_board := BoardModel.new([7, 9], covered_by, [7, 9, 11, 13])
+	var w_empty = _make(500)
+	w_empty.use_hint(empty_board)
+	assert_int(w_empty.boosters_used_this_level).is_equal(0)
+
+	# Successful activation — increment to 1.
+	var w_ok = _make(500)
+	w_ok.use_hint(board)
+	assert_int(w_ok.boosters_used_this_level).is_equal(1)

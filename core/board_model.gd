@@ -113,6 +113,31 @@ func exposed_cards() -> Array[int]:
 	return Exposure.exposed_cards(_removed, _covered_by)
 
 
+## Number of currently-unexposed cards that would become exposed if [param card_id]
+## were removed now (i.e. cards for which card_id is the last remaining coverer).
+## Used by the Hint booster's scoring (Formula 5 opens_new_cards). Read-only; pure.
+func newly_exposed_count(card_id: int) -> int:
+	if _removed.has(card_id):
+		return 0
+	var count: int = 0
+	for other: int in _covered_by:
+		if other == card_id or _removed.has(other):
+			continue
+		var coverers: Array = _covered_by[other]
+		if not coverers.has(card_id):
+			continue
+		# `other` is covered by card_id and not removed -> not currently exposed.
+		# It becomes exposed iff every OTHER coverer is already removed.
+		var still_covered: bool = false
+		for c: int in coverers:
+			if c != card_id and not _removed.has(c):
+				still_covered = true
+				break
+		if not still_covered:
+			count += 1
+	return count
+
+
 ## Resolves a tap on [param card_id]. Returns the ordered events to animate, or
 ## an empty array if the tap is a no-op (card already gone, not exposed, or the
 ## game is over).

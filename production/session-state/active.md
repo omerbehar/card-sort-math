@@ -37,3 +37,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test: full suite 367/367 green, exit 0 (was 348; +19). AC-W05b near-cap snapshot rollback verified.
 - Notes: implemented directly by orchestrator — the gameplay-programmer agent stalled on a write-permission prompt without producing files and its context couldn't be resumed (SendMessage unavailable). EC-09 "board mutation raises" modeled as on_committed Callable returning false (GDScript has no exceptions). Fixed the agent's planned bug: GameManager autoload guard uses get_node_or_null("/root/GameManager"), NOT Engine.has_singleton.
 - Next: S3-007 (Hint booster) — first booster on the use_booster/spend seam
+
+## Session Extract — /dev-story 2026-06-12 (S3-007)
+- Story: S3-007 — Hint booster (hint_score Formula 5 + WalletService.use_hint)
+- Files: core/hint_score.gd (new), core/board_model.gd (+newly_exposed_count query), autoloads/wallet_service.gd (+use_hint/_hint_in_progress/notify_hint_consumed), tests/test_hint_score.gd (new, 14), tests/test_wallet_service.gd + test_board_model.gd (extended)
+- Test: full suite 388/388 green, exit 0 (was 367; +21)
+- Notes: gdscript-specialist agent left ONE failing test (test fixture bug — gave card 1 result 9 which DOES route since the queue seeds stack target 9; impl was correct). Fixed fixture (result 9→5). AC-M01a verified: HINT_RESULT carries card_id only.
+- Next: S3-005 (compliance gating + daily caps + gem→coin) — LAST Must-Have

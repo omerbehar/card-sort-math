@@ -41,6 +41,7 @@ var _wallet: WalletData = WalletData.new()
 var reshuffle_count: int = 0
 var boosters_used_this_level: int = 0
 var extra_discard_active: bool = false
+var _hint_in_progress: bool = false
 
 
 func _ready() -> void:
@@ -164,6 +165,53 @@ func spend(currency: int, amount: int, on_committed := Callable()) -> bool:
 	return true
 
 
+## Activates the Hint booster on [param board] (Core Rule 8, Formula 5).
+##
+## Precondition checks (in order — no spend before any precondition fails):
+## 1. [member _hint_in_progress] — rejects double-tap (EC-08, AC-H04).
+## 2. [method BoardModel.exposed_cards] empty — no card to hint (AC-H03).
+## 3. [method spend] — deducts [member EconomyConfig.hint_cost_coins] (AC-H01).
+##
+## On success: sets [member _hint_in_progress], increments
+## [member boosters_used_this_level], emits [code]HINT_RESULT(card_id)[/code]
+## then [code]BOOSTER_ACTIVATED(HINT)[/code], returns the hinted card_id.
+##
+## [b]No-arithmetic-solving (AC-M01a):[/b] emits card_id ONLY via
+## [method EconomyEvent.hint_result]. No result, operands, or solution_text
+## is ever forwarded.
+##
+## Returns [code]-1[/code] on any failure (precondition or insufficient funds).
+func use_hint(board: BoardModel) -> int:
+	if _hint_in_progress:
+		economy_event.emit(EconomyEvent.booster_purchase_failed(
+				EconomyEnums.BoosterType.HINT,
+				EconomyEnums.FailReason.ALREADY_IN_PROGRESS))
+		return -1  # EC-08 / AC-H04: no second spend
+	if board.exposed_cards().is_empty():
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.HINT,
+				EconomyEnums.FailReason.NO_EXPOSED_CARD))
+		return -1  # AC-H03: coins unchanged
+	if not spend(EconomyEnums.Currency.COINS, _config.hint_cost_coins):
+		return -1  # insufficient -> SPEND_FAILED already emitted by spend()
+	_hint_in_progress = true
+	boosters_used_this_level += 1
+	var card_id: int = HintScore.best_card(
+			board,
+			_config.routes_weight,
+			_config.opens_weight,
+			_config.relief_weight)
+	economy_event.emit(EconomyEvent.hint_result(card_id))          # AC-M01a: card_id ONLY
+	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.HINT))
+	return card_id
+
+
+## Clears the in-progress Hint flag once the view has consumed the highlight
+## (EC-08). Call this when the highlighted card is tapped or the level ends.
+func notify_hint_consumed() -> void:
+	_hint_in_progress = false
+
+
 ## Clears the per-level economy state. Called on a new level (GameManager.level_started,
 ## connected at runtime) and directly by tests. Accepts an optional level argument so it
 ## can be bound straight to the [code]level_started(level: int)[/code] signal.
@@ -171,3 +219,4 @@ func reset_level_state(_level: int = 0) -> void:
 	reshuffle_count = 0
 	boosters_used_this_level = 0
 	extra_discard_active = false
+	_hint_in_progress = false
