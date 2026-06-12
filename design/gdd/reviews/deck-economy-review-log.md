@@ -36,3 +36,44 @@ streak = day-3 floor; Reshuffle = guarantee a routable card.
 Prior verdict resolved: First review.
 Disposition: Revisions accepted; marked Approved without a fresh-context re-review (author's call).
 Note: No `design/gdd/systems-index.md` exists in this repo, so no systems-index status update was made.
+
+## Scope change — 2026-06-12 — Undo booster removed (author decision, pre-implementation)
+
+Trigger: while scoping ADRs for implementation (the "decide before implementation" Open
+Questions), the author elected to **cut the Undo booster entirely** rather than build the
+replay-from-initial coordinator it required. The booster set drops from four to **three**:
+**Hint, Reshuffle, Extra Discard Slot**.
+
+Rationale:
+- Undo was the only booster requiring net-new cross-system machinery — a per-level session
+  coordinator owning `tap_history`, a `LevelConfig` reference, and an O(N) replay of every prior
+  tap against a freshly reconstructed `BoardModel` — for a quality-of-life feature. Cutting it
+  removes the heaviest, highest-risk slice of the economy (the replay coordinator + its tap-capture
+  coupling) with no impact on the core faucet/sink economy or the no-arithmetic-solving pillar.
+- The remaining boosters act on board *arrangement* (Hint = routing highlight; Reshuffle = layout;
+  Extra Discard = buffer capacity); none needs an event log or replay seam, so `BoardModel` keeps
+  its stateless-return model unchanged.
+
+Ripple applied this session (full removal + this log note, per author):
+- **GDD body**: Overview + Player Fantasy ("all three boosters"); Core Rule 7 (four→three);
+  Core Rule 9 **tombstoned** (kept as a number so `Core Rule N` cross-refs stay valid); Core Rules
+  4/8/12 Undo clauses struck; clean-clear forfeit list (Rule 13); States table (`undos_used` +
+  `tap_history` rows removed); Interactions + Dependencies `BoardModel` rows; Visual/Audio
+  ("Undo activation" bullet); UI Requirements (tray 4→3 buttons, 176pt→132pt, spend-confirm copy,
+  failure-feedback copy).
+- **Spend rates**: Rule 19 (Undo 180 coins) + Rule 20 (Undo 5 gems) removed; Formula 2
+  time-to-afford table Undo row removed; Formula 1b example reworded.
+- **Edge cases**: EC-02/03/04/16 struck (tombstoned); EC-09 rollback example moved Undo(180)→Reshuffle(250).
+- **Acceptance Criteria**: AC-U01–U07 withdrawn; AC-R06 (tap_history/Undo) removed; AC-E02
+  (Undo+Extra-Discard interaction) removed; AC-W05b 180→250; AC-I01/I02 integration retargeted
+  Undo-replay → Reshuffle; AC-B01 "four"→"three".
+- **Tuning Knobs**: `UNDO_COST_COINS`, `UNDO_COST_GEMS` rows removed.
+- **IAP catalog**: Booster 5-Pack copy "5× Undo"→"5× Reshuffle".
+- **Open Questions**: "Undo implementation risk" withdrawn; `EconomyEvent` / `TimeProvider` /
+  Extra-Discard entries marked RESOLVED in ADR-0008 / ADR-0009 / ADR-0010 respectively.
+- **Registry** (`design/registry/entities.yaml`): `UNDO_COST_COINS` + `UNDO_COST_GEMS` removed
+  (tombstone comments left in place).
+
+Note: the injectable `TimeProvider` seam **survives** the Undo cut — it is still required for
+Reshuffle determinism (Formula 6 `level_start_timestamp`, AC-R04/R08) and daily caps/streaks.
+It is ratified independently in ADR-0009.
