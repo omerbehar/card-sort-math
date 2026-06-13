@@ -8,7 +8,7 @@ const CARD_FLY: float = 0.28
 # them, the floor pile in the central play area, tool bar at the bottom.
 const STACK_XS: Array[float] = [14.0, 108.0, 202.0, 296.0]
 const STACK_Y: float = 112.0
-const DISCARD_ORIGIN: Vector2 = Vector2(7, 250)
+const DISCARD_ORIGIN: Vector2 = Vector2(195, 240)  # screen-centre x; DiscardRow self-centres its slots
 const FLOOR_ORIGIN: Vector2 = Layouts.FLOOR_ORIGIN
 const DISCARD_WARN_AT: int = 4
 # Offset from a stack's origin to its centre, where the clear burst spawns.
