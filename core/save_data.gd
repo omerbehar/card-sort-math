@@ -11,10 +11,10 @@ extends RefCounted
 ## [member age_band], [member settings], [member tutorial_seen],
 ## [member wallet_coins], [member wallet_gems],
 ## [member daily_key], [member ad_coins_today],
-## [member ads_watched_today], [member gems_converted_today].
+## [member ads_watched_today], [member gems_converted_today], [member wins_today].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 3
+const CURRENT_SCHEMA_VERSION: int = 4
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -57,6 +57,12 @@ var ads_watched_today: int = 0
 ## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 21 / Formula 7).
 var gems_converted_today: int = 0
 
+## Level wins recorded today (resets when [member daily_key] advances). Drives the
+## once-per-day [code]first_win_bonus[/code] (Formula 1): the bonus applies only when
+## this is still 0 at win time. Added in schema v4 (S3-008 / design/gdd/deck-economy.md
+## Formula 1, AC-EF01/EF02).
+var wins_today: int = 0
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -77,6 +83,7 @@ func to_dict() -> Dictionary:
 		"ad_coins_today": ad_coins_today,
 		"ads_watched_today": ads_watched_today,
 		"gems_converted_today": gems_converted_today,
+		"wins_today": wins_today,
 	}
 
 
@@ -99,6 +106,7 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.ad_coins_today = maxi(0, _safe_int(migrated.get("ad_coins_today", 0)))
 	data.ads_watched_today = maxi(0, _safe_int(migrated.get("ads_watched_today", 0)))
 	data.gems_converted_today = maxi(0, _safe_int(migrated.get("gems_converted_today", 0)))
+	data.wins_today = maxi(0, _safe_int(migrated.get("wins_today", 0)))
 	return data
 
 
@@ -121,6 +129,10 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 		out["ads_watched_today"] = 0
 		out["gems_converted_today"] = 0
 		version = 3
+	# v3 → v4: daily win counter introduced (S3-008, design/gdd/deck-economy.md Formula 1).
+	if version == 3:
+		out["wins_today"] = 0
+		version = 4
 	return out
 
 

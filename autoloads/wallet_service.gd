@@ -93,9 +93,17 @@ func _connect_game_manager() -> void:
 	if not is_inside_tree():
 		return
 	var gm := get_node_or_null("/root/GameManager")
-	if gm != null and gm.has_signal("level_started") \
+	if gm == null:
+		return
+	if gm.has_signal("level_started") \
 			and not gm.level_started.is_connected(reset_level_state):
 		gm.level_started.connect(reset_level_state)
+	# Level-win coin earn (S3-008): GameManager has no star scoring yet (S2-011
+	# deferred), so the live wiring grants the flat-fallback win reward. Unit tests
+	# call grant_level_win(stars) directly to exercise the star-weighted path.
+	if gm.has_signal("level_completed") \
+			and not gm.level_completed.is_connected(_on_level_completed):
+		gm.level_completed.connect(_on_level_completed)
 
 
 # --- queries ---
@@ -155,6 +163,73 @@ func _earn_raw(currency: int, amount: int, source: int) -> int:
 	return actual
 
 
+## Grants the coin reward for a level win (Formula 1 + 1b). Returns the actual coins
+## credited (after the wallet cap clamp). Emits a single [code]CURRENCY_EARNED(LEVEL_WIN)[/code]
+## for the summed total.
+##
+## Reward = base + first-win bonus + clean-clear bonus, where:
+## - base = [method _base_win_coins] ([param stars] → BASE_WIN_COINS, else the flat fallback).
+## - first-win bonus ([member EconomyConfig.first_win_bonus]) applies once per UTC day —
+##   the first win whose [member SaveData.wins_today] is still 0 (AC-EF01/EF02).
+## - clean-clear bonus ([member EconomyConfig.clean_clear_bonus]) applies only when
+##   [member boosters_used_this_level] == 0 and the knob is > 0 (Formula 1b / AC-EFF01-03).
+##
+## LEVEL_WIN income is uncapped and ungated — it flows through [method earn] which routes
+## non-ad sources straight to the raw credit (AC-C03 / AC-CH01). [param stars] is the
+## 1–3 star rating from the Scoring system (S2-011); until that ships the live
+## [signal GameManager.level_completed] wiring passes 0 → flat fallback.
+## Source: design/gdd/deck-economy.md Formula 1/1b, Rule 13; AC-EF01/EF02, AC-EFF01-03.
+func grant_level_win(stars: int = 0) -> int:
+	_roll_day_if_needed()
+	var total: int = _base_win_coins(stars)
+	if _is_first_win_today():
+		total += _config.first_win_bonus
+	if _config.clean_clear_bonus > 0 and boosters_used_this_level == 0:
+		total += _config.clean_clear_bonus
+	var credited: int = earn(
+			EconomyEnums.Currency.COINS, total, EconomyEnums.EarnSource.LEVEL_WIN)
+	_record_win_today()
+	return credited
+
+
+# Star-weighted base reward (Formula 1). A 1–3 star rating maps to its configured
+# coin value; any other value (notably 0 = "no star scoring yet", S2-011 deferred)
+# falls back to coins_win_flat_fallback so no earn value is ever hardcoded.
+func _base_win_coins(stars: int) -> int:
+	match stars:
+		1:
+			return _config.coins_win_1_star
+		2:
+			return _config.coins_win_2_star
+		3:
+			return _config.coins_win_3_star
+		_:
+			return _config.coins_win_flat_fallback
+
+
+# True if no level has been won yet on the current UTC day (drives first_win_bonus).
+# Conservatively true when no save is wired (DI incomplete) so the bonus is not lost.
+func _is_first_win_today() -> bool:
+	if _save == null or _save.data == null:
+		return true
+	return _save.data.wins_today == 0
+
+
+# Records that a win happened today (after the day-roll has run). Persisted so the
+# once-per-day first-win bonus survives an app restart within the same UTC day.
+func _record_win_today() -> void:
+	if _save == null or _save.data == null:
+		return
+	_save.data.wins_today += 1
+	_persist()
+
+
+# GameManager.level_completed handler — grants the flat-fallback win reward (stars
+# unavailable until S2-011). Signature matches level_completed(level: int).
+func _on_level_completed(_level: int = 0) -> void:
+	grant_level_win()
+
+
 # Rolls the daily counters to zero if the UTC day has advanced since they were last
 # written (design/gdd/deck-economy.md Rule 15 / Formula 8 / Rule 21).
 # Guard: silently skips if _save, _save.data, or _time is null (incomplete DI).
@@ -166,6 +241,7 @@ func _roll_day_if_needed() -> void:
 		_save.data.ad_coins_today = 0
 		_save.data.ads_watched_today = 0
 		_save.data.gems_converted_today = 0
+		_save.data.wins_today = 0
 		_save.data.daily_key = today
 		_persist()
 
