@@ -172,9 +172,9 @@ func test_tutorial_seen_does_not_bump_schema_version() -> void:
 # design/gdd/deck-economy.md §Dependencies → Save Service
 # ---------------------------------------------------------------------------
 
-func test_schema_version_is_3() -> void:
-	# Bumped from 2 → 3 in S3-005 to add daily cap counters.
-	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(3)
+func test_schema_version_is_4() -> void:
+	# Bumped 2 → 3 (S3-005 daily cap counters), then 3 → 4 (S3-008 daily win counter).
+	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(4)
 
 
 func test_defaults_include_wallet_fields_at_zero() -> void:
@@ -417,3 +417,79 @@ func test_from_dict_negative_daily_fields_clamped_to_zero() -> void:
 	assert_int(data.ad_coins_today).is_equal(0)
 	assert_int(data.ads_watched_today).is_equal(0)
 	assert_int(data.gems_converted_today).is_equal(0)
+
+
+# ---------------------------------------------------------------------------
+# S3-008 — daily win counter (schema v4 migration)
+# design/gdd/deck-economy.md Formula 1 / AC-EF01 / AC-EF02
+# ---------------------------------------------------------------------------
+
+func test_defaults_include_wins_today_at_zero() -> void:
+	assert_int(SaveData.defaults().wins_today).is_equal(0)
+
+
+func test_to_dict_contains_wins_today_key() -> void:
+	assert_bool(SaveData.new().to_dict().keys().has("wins_today")).is_true()
+
+
+func test_v4_dict_round_trips_wins_today() -> void:
+	var original := SaveData.new()
+	original.wins_today = 3
+	var restored := SaveData.from_dict(original.to_dict())
+	assert_int(restored.wins_today).is_equal(3)
+
+
+func test_migrate_v3_to_v4_sets_wins_today_to_zero() -> void:
+	# A v3 dict with daily counters migrates to v4; wins_today defaults to 0 and
+	# the existing v3 fields are preserved.
+	var v3_dict: Dictionary = {
+		"schema_version": 3,
+		"current_level": 6,
+		"wallet_coins": 200,
+		"daily_key": 19000,
+		"ad_coins_today": 120,
+	}
+	var data := SaveData.from_dict(v3_dict)
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.wins_today).is_equal(0)
+	# Existing fields preserved.
+	assert_int(data.wallet_coins).is_equal(200)
+	assert_int(data.daily_key).is_equal(19000)
+	assert_int(data.ad_coins_today).is_equal(120)
+	assert_int(data.current_level).is_equal(6)
+
+
+func test_migrate_v1_flows_all_the_way_to_v4() -> void:
+	# A v1 save must migrate v1→v2→v3→v4; wallet + all daily fields default to 0,
+	# wins_today == 0, and the existing level/age fields are preserved.
+	var v1_dict: Dictionary = {
+		"schema_version": 1,
+		"current_level": 4,
+		"age_band": int(SaveData.AgeBand.ADULT),
+	}
+	var data := SaveData.from_dict(v1_dict)
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.wallet_coins).is_equal(0)
+	assert_int(data.wallet_gems).is_equal(0)
+	assert_int(data.daily_key).is_equal(0)
+	assert_int(data.ad_coins_today).is_equal(0)
+	assert_int(data.ads_watched_today).is_equal(0)
+	assert_int(data.gems_converted_today).is_equal(0)
+	assert_int(data.wins_today).is_equal(0)
+	assert_int(data.current_level).is_equal(4)
+	assert_int(int(data.age_band)).is_equal(int(SaveData.AgeBand.ADULT))
+
+
+func test_from_dict_missing_wins_today_defaults_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 4, "wallet_coins": 10})
+	assert_int(data.wins_today).is_equal(0)
+
+
+func test_from_dict_null_wins_today_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 4, "wins_today": null})
+	assert_int(data.wins_today).is_equal(0)
+
+
+func test_from_dict_negative_wins_today_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 4, "wins_today": -3})
+	assert_int(data.wins_today).is_equal(0)

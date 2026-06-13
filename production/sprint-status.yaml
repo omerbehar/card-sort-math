@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-12"  # ALL 6 Must-Haves done (S3-001/003/002/004/007/005). Should/Nice remain.
+updated: "2026-06-13"  # 6 Must-Haves + S3-008 (earn triggers) done. S3-006 + Nice-to-Haves remain.
 
 stories:
   - id: "S3-001"
@@ -84,11 +84,11 @@ stories:
     name: "Earn triggers: level-win coins + clean-clear bonus (flat fallback)"
     file: "autoloads/wallet_service.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-13"
   - id: "S3-009"
     name: "Reshuffle booster (LevelGenerator.reshuffle helper + use_booster)"
     file: "core/level_generator.gd"
