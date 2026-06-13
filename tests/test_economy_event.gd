@@ -2,16 +2,15 @@ extends GdUnitTestSuite
 ## Tests for [EconomyEvent] and [EconomyEnums] — S3-001 chain-head story.
 ##
 ## Coverage:
-##   - Kind enum has exactly 10 values with the canonical names (enum-drift guard).
+##   - Kind enum has exactly 9 values with the canonical names (enum-drift guard).
 ##   - Each static factory sets only its documented payload fields and leaves all
 ##     others at their sentinel defaults.
-##   - AC-M01a (HARD RULE): hint_result sets ONLY card_id; no result/operands/
-##     solution_text field exists on the class.
-##   - EconomyEnums.BoosterType has exactly 3 values (HINT, RESHUFFLE, EXTRA_DISCARD);
-##     no UNDO.
+##   - No-arithmetic-solving: no result/operands/solution_text field exists on the class.
+##   - EconomyEnums.BoosterType has exactly 3 values (PICKER, RESHUFFLE, EXTRA_DISCARD);
+##     no UNDO, no HINT.
 ##   - EconomyEnums.EarnSource matches the registry canonical list (6 values).
 ##
-## Source: design/gdd/deck-economy.md §Economy Events, AC-M01a; ADR-0008.
+## Source: design/gdd/deck-economy.md §Economy Events; ADR-0008.
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +27,6 @@ func _payload(e: EconomyEvent) -> Dictionary:
 		"new_balance": e.new_balance,
 		"booster_type": e.booster_type,
 		"reason": e.reason,
-		"card_id": e.card_id,
 		"sku": e.sku,
 	}
 
@@ -37,11 +35,11 @@ func _payload(e: EconomyEvent) -> Dictionary:
 # Kind enum — drift guard
 # ---------------------------------------------------------------------------
 
-func test_kind_enum_has_exactly_10_values() -> void:
+func test_kind_enum_has_exactly_9_values() -> void:
 	# Arrange/Act
 	var keys: Array = EconomyEvent.Kind.keys()
-	# Assert
-	assert_int(keys.size()).is_equal(10)
+	# Assert (HINT_RESULT removed when Hint was replaced by Picker, 2026-06-13)
+	assert_int(keys.size()).is_equal(9)
 
 
 func test_kind_enum_contains_all_canonical_names() -> void:
@@ -55,7 +53,6 @@ func test_kind_enum_contains_all_canonical_names() -> void:
 		"BOOSTER_ACTIVATED",
 		"BOOSTER_PRECONDITION_FAILED",
 		"BOOSTER_PURCHASE_FAILED",
-		"HINT_RESULT",
 		"IAP_BLOCKED",
 	]
 	var actual: Array = EconomyEvent.Kind.keys()
@@ -75,8 +72,7 @@ func test_kind_enum_order_matches_canonical_definition() -> void:
 	assert_int(EconomyEvent.Kind.BOOSTER_ACTIVATED).is_equal(5)
 	assert_int(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED).is_equal(6)
 	assert_int(EconomyEvent.Kind.BOOSTER_PURCHASE_FAILED).is_equal(7)
-	assert_int(EconomyEvent.Kind.HINT_RESULT).is_equal(8)
-	assert_int(EconomyEvent.Kind.IAP_BLOCKED).is_equal(9)
+	assert_int(EconomyEvent.Kind.IAP_BLOCKED).is_equal(8)
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +105,6 @@ func test_currency_earned_leaves_non_payload_fields_at_sentinel() -> void:
 	# Assert: fields not in this Kind's payload are at sentinel
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -136,7 +131,6 @@ func test_currency_spent_leaves_non_payload_fields_at_sentinel() -> void:
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -162,7 +156,6 @@ func test_spend_failed_leaves_non_payload_fields_at_sentinel() -> void:
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -186,7 +179,6 @@ func test_earn_cap_reached_sets_source_only() -> void:
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -201,7 +193,6 @@ func test_earn_cap_reached_carries_optional_reason() -> void:
 	assert_int(e.amount).is_equal(0)
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -226,7 +217,6 @@ func test_transaction_rolled_back_leaves_non_payload_fields_at_sentinel() -> voi
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -235,7 +225,7 @@ func test_transaction_rolled_back_leaves_non_payload_fields_at_sentinel() -> voi
 # ---------------------------------------------------------------------------
 
 func test_booster_activated_sets_kind_correctly() -> void:
-	var e: EconomyEvent = EconomyEvent.booster_activated(EconomyEnums.BoosterType.HINT)
+	var e: EconomyEvent = EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER)
 	assert_int(e.kind).is_equal(EconomyEvent.Kind.BOOSTER_ACTIVATED)
 
 
@@ -248,7 +238,6 @@ func test_booster_activated_sets_booster_type_only() -> void:
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -276,7 +265,6 @@ func test_booster_precondition_failed_leaves_non_payload_fields_at_sentinel() ->
 	assert_int(e.amount).is_equal(0)
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.new_balance).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
@@ -286,86 +274,44 @@ func test_booster_precondition_failed_leaves_non_payload_fields_at_sentinel() ->
 
 func test_booster_purchase_failed_sets_kind_correctly() -> void:
 	var e: EconomyEvent = EconomyEvent.booster_purchase_failed(
-			EconomyEnums.BoosterType.HINT, EconomyEnums.FailReason.ALREADY_IN_PROGRESS)
+			EconomyEnums.BoosterType.PICKER, EconomyEnums.FailReason.INVALID_TARGET)
 	assert_int(e.kind).is_equal(EconomyEvent.Kind.BOOSTER_PURCHASE_FAILED)
 
 
 func test_booster_purchase_failed_sets_booster_type_and_reason() -> void:
 	var e: EconomyEvent = EconomyEvent.booster_purchase_failed(
-			EconomyEnums.BoosterType.HINT, EconomyEnums.FailReason.ALREADY_IN_PROGRESS)
-	assert_int(e.booster_type).is_equal(EconomyEnums.BoosterType.HINT)
-	assert_int(e.reason).is_equal(EconomyEnums.FailReason.ALREADY_IN_PROGRESS)
+			EconomyEnums.BoosterType.PICKER, EconomyEnums.FailReason.INVALID_TARGET)
+	assert_int(e.booster_type).is_equal(EconomyEnums.BoosterType.PICKER)
+	assert_int(e.reason).is_equal(EconomyEnums.FailReason.INVALID_TARGET)
 
 
 func test_booster_purchase_failed_leaves_non_payload_fields_at_sentinel() -> void:
 	var e: EconomyEvent = EconomyEvent.booster_purchase_failed(
-			EconomyEnums.BoosterType.HINT, EconomyEnums.FailReason.ALREADY_IN_PROGRESS)
+			EconomyEnums.BoosterType.PICKER, EconomyEnums.FailReason.INVALID_TARGET)
 	assert_int(e.currency).is_equal(-1)
 	assert_int(e.amount).is_equal(0)
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.new_balance).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
 
 # ---------------------------------------------------------------------------
-# Factory: hint_result — AC-M01a (HARD RULE)
+# No-arithmetic-solving structural guard (Picker replaced Hint; no answer fields)
 # ---------------------------------------------------------------------------
 
-func test_hint_result_sets_kind_correctly() -> void:
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
-	assert_int(e.kind).is_equal(EconomyEvent.Kind.HINT_RESULT)
-
-
-func test_hint_result_sets_card_id() -> void:
-	# Arrange/Act
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
-	# Assert
-	assert_int(e.card_id).is_equal(7)
-
-
-func test_hint_result_ac_m01a_all_other_fields_at_sentinel() -> void:
-	## AC-M01a (BLOCKING): HINT_RESULT payload is card_id ONLY.
-	## Every other payload field must remain at its sentinel — no result,
-	## no operands, no solution_text. This structurally enforces the
-	## no-arithmetic-solving pillar at the type level.
-	# Arrange/Act
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
-	# Assert: documented card_id
-	assert_int(e.card_id).is_equal(7)
-	# Assert: all other payload fields at sentinel
-	assert_int(e.currency).is_equal(-1)
-	assert_int(e.amount).is_equal(0)
-	assert_int(e.source).is_equal(-1)
-	assert_int(e.new_balance).is_equal(-1)
-	assert_int(e.booster_type).is_equal(-1)
-	assert_int(e.reason).is_equal(-1)
-	assert_int(e.sku).is_equal(-1)
-
-
-func test_hint_result_ac_m01a_class_has_no_result_field() -> void:
-	## AC-M01a structural guard: EconomyEvent must NOT expose a 'result' field.
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
+func test_event_class_has_no_result_field() -> void:
+	var e: EconomyEvent = EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER)
 	assert_bool(e.get("result") == null).is_true()
 
 
-func test_hint_result_ac_m01a_class_has_no_operands_field() -> void:
-	## AC-M01a structural guard: EconomyEvent must NOT expose an 'operands' field.
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
+func test_event_class_has_no_operands_field() -> void:
+	var e: EconomyEvent = EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER)
 	assert_bool(e.get("operands") == null).is_true()
 
 
-func test_hint_result_ac_m01a_class_has_no_solution_text_field() -> void:
-	## AC-M01a structural guard: EconomyEvent must NOT expose a 'solution_text' field.
-	var e: EconomyEvent = EconomyEvent.hint_result(7)
+func test_event_class_has_no_solution_text_field() -> void:
+	var e: EconomyEvent = EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER)
 	assert_bool(e.get("solution_text") == null).is_true()
-
-
-func test_hint_result_card_id_reflects_input_value() -> void:
-	# Verify different card IDs are faithfully stored (not a constant).
-	for expected_id: int in [0, 1, 5, 17, 99]:
-		var e: EconomyEvent = EconomyEvent.hint_result(expected_id)
-		assert_int(e.card_id).is_equal(expected_id)
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +337,6 @@ func test_iap_blocked_leaves_non_payload_fields_at_sentinel() -> void:
 	assert_int(e.source).is_equal(-1)
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
-	assert_int(e.card_id).is_equal(-1)
 
 
 # ---------------------------------------------------------------------------
@@ -399,12 +344,18 @@ func test_iap_blocked_leaves_non_payload_fields_at_sentinel() -> void:
 # ---------------------------------------------------------------------------
 
 func test_booster_type_enum_has_exactly_3_values() -> void:
-	## Undo was removed (2026-06-12). The set is HINT, RESHUFFLE, EXTRA_DISCARD only.
+	## Undo removed (2026-06-12); Hint replaced by Picker (2026-06-13).
+	## The set is PICKER, RESHUFFLE, EXTRA_DISCARD only.
 	assert_int(EconomyEnums.BoosterType.keys().size()).is_equal(3)
 
 
-func test_booster_type_enum_contains_hint() -> void:
-	assert_bool("HINT" in EconomyEnums.BoosterType.keys()).is_true()
+func test_booster_type_enum_contains_picker() -> void:
+	assert_bool("PICKER" in EconomyEnums.BoosterType.keys()).is_true()
+
+
+func test_booster_type_enum_does_not_contain_hint() -> void:
+	## Hint was replaced by Picker (2026-06-13); must not reappear.
+	assert_bool("HINT" in EconomyEnums.BoosterType.keys()).is_false()
 
 
 func test_booster_type_enum_contains_reshuffle() -> void:
@@ -448,16 +399,15 @@ func test_earn_source_enum_contains_all_registry_values() -> void:
 # EconomyEnums — FailReason
 # ---------------------------------------------------------------------------
 
-func test_fail_reason_enum_has_exactly_10_values() -> void:
-	# 6 original + 4 earn-cap disambiguation reasons (AD_COUNT_CAP, DAILY_COIN_CAP,
-	# GEM_CONVERT_CAP, WALLET_FULL) added so the HUD can tell EARN_CAP_REACHED apart.
-	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(10)
+func test_fail_reason_enum_has_exactly_9_values() -> void:
+	# Picker replaced Hint (2026-06-13): the two Hint-only reasons
+	# (ALREADY_IN_PROGRESS, NO_EXPOSED_CARD) were dropped and INVALID_TARGET added.
+	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(9)
 
 
 func test_fail_reason_enum_contains_all_expected_values() -> void:
 	var expected: Array[String] = [
-		"ALREADY_IN_PROGRESS",
-		"NO_EXPOSED_CARD",
+		"INVALID_TARGET",
 		"DISCARD_FULL",
 		"AT_MAX",
 		"WON_BOARD",
@@ -470,6 +420,13 @@ func test_fail_reason_enum_contains_all_expected_values() -> void:
 	var actual: Array = EconomyEnums.FailReason.keys()
 	for name: String in expected:
 		assert_bool(name in actual).is_true()
+
+
+func test_fail_reason_enum_does_not_contain_hint_reasons() -> void:
+	## Hint-only reasons removed with the Picker swap (2026-06-13).
+	var keys: Array = EconomyEnums.FailReason.keys()
+	assert_bool("ALREADY_IN_PROGRESS" in keys).is_false()
+	assert_bool("NO_EXPOSED_CARD" in keys).is_false()
 
 
 func test_fail_reason_enum_does_not_contain_no_history() -> void:
@@ -487,7 +444,7 @@ func test_to_string_includes_kind_name() -> void:
 	assert_str(e._to_string()).contains("CURRENCY_EARNED")
 
 
-func test_to_string_hint_result_includes_card_id() -> void:
-	var e: EconomyEvent = EconomyEvent.hint_result(42)
-	# The _to_string output should contain the card_id value.
-	assert_str(e._to_string()).contains("42")
+func test_to_string_includes_payload_values() -> void:
+	var e: EconomyEvent = EconomyEvent.currency_spent(EconomyEnums.Currency.COINS, 120, 80)
+	# The _to_string output should contain a payload value (the spend amount).
+	assert_str(e._to_string()).contains("120")

@@ -41,7 +41,10 @@ var _wallet: WalletData = WalletData.new()
 var reshuffle_count: int = 0
 var boosters_used_this_level: int = 0
 var extra_discard_active: bool = false
-var _hint_in_progress: bool = false
+# Captured at each level boundary so the Reshuffle seed (Formula 6) is stable across
+# all reshuffles of a level (level_id + level_start_timestamp + reshuffle_count).
+var _level_id: int = 0
+var _level_start_ts: int = 0
 
 
 func _ready() -> void:
@@ -391,51 +394,64 @@ func spend(currency: int, amount: int, on_committed := Callable()) -> bool:
 	return true
 
 
-## Activates the Hint booster on [param board] (Core Rule 8, Formula 5).
+## Activates the Picker booster: plays the covered card [param card_id] the player
+## chose, bypassing the coverage rule (replaces Hint). Returns the ordered
+## [code]Array[GameEvent][/code] for the view to animate, or an empty array on
+## failure (invalid target or insufficient funds).
 ##
 ## Precondition checks (in order — no spend before any precondition fails):
-## 1. [member _hint_in_progress] — rejects double-tap (EC-08, AC-H04).
-## 2. [method BoardModel.exposed_cards] empty — no card to hint (AC-H03).
-## 3. [method spend] — deducts [member EconomyConfig.hint_cost_coins] (AC-H01).
+## 1. Valid target — the board is not over and the card is still on the floor
+##    → else [code]BOOSTER_PRECONDITION_FAILED(PICKER, INVALID_TARGET)[/code].
+## 2. [method spend] — deducts [member EconomyConfig.picker_cost_coins].
 ##
-## On success: sets [member _hint_in_progress], increments
-## [member boosters_used_this_level], emits [code]HINT_RESULT(card_id)[/code]
-## then [code]BOOSTER_ACTIVATED(HINT)[/code], returns the hinted card_id.
+## On success: increments [member boosters_used_this_level], plays the card via
+## [method BoardModel.pick_card], emits [code]BOOSTER_ACTIVATED(PICKER)[/code].
 ##
-## [b]No-arithmetic-solving (AC-M01a):[/b] emits card_id ONLY via
-## [method EconomyEvent.hint_result]. No result, operands, or solution_text
-## is ever forwarded.
-##
-## Returns [code]-1[/code] on any failure (precondition or insufficient funds).
-func use_hint(board: BoardModel) -> int:
-	if _hint_in_progress:
-		economy_event.emit(EconomyEvent.booster_purchase_failed(
-				EconomyEnums.BoosterType.HINT,
-				EconomyEnums.FailReason.ALREADY_IN_PROGRESS))
-		return -1  # EC-08 / AC-H04: no second spend
-	if board.exposed_cards().is_empty():
+## [b]No-arithmetic-solving:[/b] the pick resolves to board [GameEvent]s (route /
+## discard); no arithmetic answer is ever computed or revealed.
+func use_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
+	if board.is_game_over() or board.is_card_removed(card_id):
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
-				EconomyEnums.BoosterType.HINT,
-				EconomyEnums.FailReason.NO_EXPOSED_CARD))
-		return -1  # AC-H03: coins unchanged
-	if not spend(EconomyEnums.Currency.COINS, _config.hint_cost_coins):
-		return -1  # insufficient -> SPEND_FAILED already emitted by spend()
-	_hint_in_progress = true
+				EconomyEnums.BoosterType.PICKER,
+				EconomyEnums.FailReason.INVALID_TARGET))
+		return []
+	if not spend(EconomyEnums.Currency.COINS, _config.picker_cost_coins):
+		return []  # insufficient -> SPEND_FAILED already emitted by spend()
 	boosters_used_this_level += 1
-	var card_id: int = HintScore.best_card(
-			board,
-			_config.routes_weight,
-			_config.opens_weight,
-			_config.relief_weight)
-	economy_event.emit(EconomyEvent.hint_result(card_id))          # AC-M01a: card_id ONLY
-	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.HINT))
-	return card_id
+	var events: Array[GameEvent] = board.pick_card(card_id)
+	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER))
+	return events
 
 
-## Clears the in-progress Hint flag once the view has consumed the highlight
-## (EC-08). Call this when the highlighted card is tapped or the level ends.
-func notify_hint_consumed() -> void:
-	_hint_in_progress = false
+## Activates the Reshuffle booster on [param board] (Core Rule 10, Formula 6, ADR-0009).
+## [param placements] is the level layout (passed in — autoloads load it, [code]core/[/code]
+## does not). Returns [code]true[/code] on success.
+##
+## Precondition: the board must not be in a WIN state (EC-15, AC-R05) — else
+## [code]BOOSTER_PRECONDITION_FAILED(RESHUFFLE, WON_BOARD)[/code], no spend.
+## On success: increments [member reshuffle_count], spends
+## [member EconomyConfig.reshuffle_cost_coins], derives the seed via
+## [method ReshuffleSeed.mix] (level_id + captured level_start_timestamp +
+## reshuffle_count) into a fresh RNG, re-permutes the floor coverage via
+## [method BoardModel.reshuffle] (routable-card guarantee, AC-R09), and emits
+## [code]BOOSTER_ACTIVATED(RESHUFFLE)[/code]. The timestamp comes from the injected
+## [TimeProvider] (AC-R04/R08) captured in [method reset_level_state].
+func use_reshuffle(board: BoardModel, placements: Array) -> bool:
+	if board.is_won():
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.RESHUFFLE,
+				EconomyEnums.FailReason.WON_BOARD))
+		return false  # EC-15 / AC-R05
+	if not spend(EconomyEnums.Currency.COINS, _config.reshuffle_cost_coins):
+		return false  # insufficient -> SPEND_FAILED already emitted
+	reshuffle_count += 1
+	var seed: int = ReshuffleSeed.mix(_level_id, _level_start_ts, reshuffle_count)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	board.reshuffle(placements, rng)
+	boosters_used_this_level += 1
+	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.RESHUFFLE))
+	return true
 
 
 ## Activates the Extra Discard Slot booster on [param board] (Core Rule 11, ADR-0010).
@@ -475,10 +491,13 @@ func use_extra_discard(board: BoardModel) -> bool:
 
 
 ## Clears the per-level economy state. Called on a new level (GameManager.level_started,
-## connected at runtime) and directly by tests. Accepts an optional level argument so it
-## can be bound straight to the [code]level_started(level: int)[/code] signal.
-func reset_level_state(_level: int = 0) -> void:
+## connected at runtime) and directly by tests. [param level] is the level id (bound
+## straight from the [code]level_started(level: int)[/code] signal); it and the
+## injected clock are captured so the Reshuffle seed (Formula 6) is stable across all
+## reshuffles of this level.
+func reset_level_state(level: int = 0) -> void:
 	reshuffle_count = 0
 	boosters_used_this_level = 0
 	extra_discard_active = false
-	_hint_in_progress = false
+	_level_id = level
+	_level_start_ts = _time.unix_seconds() if _time != null else 0
