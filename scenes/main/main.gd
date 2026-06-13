@@ -311,6 +311,20 @@ func _update_discard_warning() -> void:
 	_discard.set_warning(filled >= DISCARD_WARN_AT)
 
 
+## Grows the discard buffer by one slot — the Extra Discard Slot booster's
+## model→view path (S3-006 / ADR-0010). Expands [BoardModel], mirrors the new
+## capacity in the [DiscardRow] view, and extends the per-slot bookkeeping.
+## NOTE: the booster *button* in the HUD is pending the economy-UI sprint; the
+## eventual WalletService.use_extra_discard() success path drives this method.
+func expand_discard() -> void:
+	if _model == null:
+		return
+	_model.expand_discard()
+	_discard.set_slot_count(_model.active_discard_slots())
+	_discard_cards.append(-1)
+	_update_discard_warning()
+
+
 func _open_pause() -> void:
 	if _pause_menu != null and is_instance_valid(_pause_menu):
 		return
