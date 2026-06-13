@@ -62,13 +62,44 @@ func _build_visuals() -> void:
 
 
 ## Sets the number of rendered slots to [param n] (mirrors the model's active
-## discard capacity) and rebuilds the centred row. Slot size is fixed (budgeted for
-## [constant MAX_SLOTS]); adding a slot re-centres the row. (S3-006 / ADR-0010.)
+## discard capacity). Slot size is fixed (budgeted for [constant MAX_SLOTS]); adding
+## a slot re-centres the row. A grow is animated (existing slots slide to their new
+## centred positions, the new slot fades in) unless reduced-motion is on, in which
+## case it rebuilds instantly. (S3-006 / ADR-0010.)
 func set_slot_count(n: int) -> void:
 	if n == _slot_count:
 		return
+	var old_count: int = _slot_count
 	_slot_count = maxi(1, n)
-	_build_visuals()
+	if is_inside_tree() and _slot_count > old_count and old_count == _frames.size() \
+			and not _reduced_motion():
+		_animate_grow(old_count)
+	else:
+		_build_visuals()
+
+
+# True when the player has enabled reduced motion (skip the slide/fade).
+func _reduced_motion() -> bool:
+	var settings := get_node_or_null("/root/SettingsService")
+	return settings != null and bool(settings.get_value("reduced_motion"))
+
+
+# Slides the existing frames to their new centred positions and fades the appended
+# slot(s) in, so a mid-level Extra Discard purchase doesn't snap the row sideways.
+func _animate_grow(old_count: int) -> void:
+	_start_x = _compute_start_x()
+	var tint: Color = _WARNING_TINT if _warning else _NORMAL_TINT
+	var tween := create_tween().set_parallel(true)
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	for i in old_count:
+		tween.tween_property(_frames[i], "position",
+				Vector2(_start_x + i * (SLOT_W + SLOT_GAP), 0), 0.20)
+	for i in range(old_count, _slot_count):
+		var pos := Vector2(_start_x + i * (SLOT_W + SLOT_GAP), 0)
+		var frame := UiFactory.nine_patch(self, "kenney/slot_grey.png", pos, Vector2(SLOT_W, SLOT_H), 12, tint)
+		frame.self_modulate = Color(tint, 0.0)
+		_frames.append(frame)
+		tween.tween_property(frame, "self_modulate:a", tint.a, 0.20).set_delay(0.06)
 
 
 ## Current rendered slot count.
