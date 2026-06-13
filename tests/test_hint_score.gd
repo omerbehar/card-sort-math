@@ -275,3 +275,23 @@ func test_best_card_single_exposed_card_returns_it() -> void:
 	}
 	var model := _board([7, 99], covered_by, [7, 9, 11, 13])
 	assert_int(HintScore.best_card(model, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(1)
+
+
+func test_discard_relief_counts_card_in_expanded_slot() -> void:
+	## ADR-0010 cross-interaction: relief must scan the live (expanded) discard, not
+	## the base 5 slots. Fill the 5 base slots with non-matching cards, expand, then
+	## discard a result-5 card into the new slot 6; card 0 (result 5) must see relief=1.
+	# cards 1-5: result 9 (filler, discard into base slots 0-4)
+	# card 6:    result 5 (discarded into the expanded slot 5)
+	# card 0:    result 5, exposed, scored (no routing — 5 is not a stack target)
+	# Queue [7,11,13,17] has no "5" or "9", so all these cards discard rather than route.
+	var results: Array[int] = [5, 9, 9, 9, 9, 9, 5]
+	var model := _open(results, [7, 11, 13, 17])
+	for i in range(1, 6):
+		model.tap_card(i)                   # fill base discard slots 0..4 with result-9 cards
+	model.expand_discard()
+	model.tap_card(6)                        # result-5 card → expanded slot 5
+	assert_int(model.discard_card(5)).is_equal(6)
+	# Relief for card 0 (result 5) must count the result-5 card in the expanded slot.
+	# routes=0 (no "5" stack), opens=0, relief=1 → score = 1 * L_WEIGHT.
+	assert_int(HintScore.score(model, 0, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(L_WEIGHT)

@@ -24,6 +24,12 @@ var _stack_targets: Array[int] = []    # per stack, NO_TARGET when inactive
 var _stack_counts: Array[int] = []     # per stack, 0..STACK_CAPACITY
 var _locked: Array[bool] = []          # per stack (prototype: locked-decks)
 var _discard: Array[int] = []          # slot -> card_id, or -1 when empty
+# Live discard capacity (ADR-0010). Initialised to DISCARD_SLOTS (the base/reset
+# value) and grown one slot at a time by expand_discard() (Extra Discard Slot
+# booster). All three live-discard loops iterate this field, not the constant, so
+# the array and its capacity stay in lockstep. Resets to DISCARD_SLOTS every level
+# because a fresh BoardModel is built per level (AC-E03).
+var _active_discard_slots: int = DISCARD_SLOTS
 var _draw_index: int = STACK_COUNT     # next unused target_queue entry
 var _total_cards: int = 0
 var _won: bool = false
@@ -58,7 +64,7 @@ func _init(results: Array[int], covered_by: Dictionary, target_queue: Array[int]
 	_draw_index = open
 
 	_discard = []
-	for _i in DISCARD_SLOTS:
+	for _i in _active_discard_slots:   # base DISCARD_SLOTS at construction (ADR-0010)
 		_discard.append(-1)
 
 
@@ -90,6 +96,30 @@ func is_stack_locked(stack_index: int) -> bool:
 
 func discard_card(slot: int) -> int:
 	return _discard[slot]
+
+## Current discard capacity (live, post-expansion). Used by the view layout and by
+## the economy precondition for the Extra Discard Slot booster (ADR-0010).
+func active_discard_slots() -> int:
+	return _active_discard_slots
+
+## Count of occupied discard slots. Drives the purchase-ahead precondition (EC-06):
+## Extra Discard Slot is blocked when this equals [method active_discard_slots]
+## (the row is full — buy earlier, no room to expand into now).
+func occupied_discard_count() -> int:
+	var n: int = 0
+	for slot in _active_discard_slots:
+		if _discard[slot] != -1:
+			n += 1
+	return n
+
+## Appends one empty discard slot (Extra Discard Slot booster, Core Rule 11).
+## [b]UNCAPPED by design[/b]: the [code]MAX_DISCARD_SLOTS[/code] policy is enforced by
+## the caller ([WalletService]), keeping [BoardModel] free of economy config (ADR-0010).
+## Per-level: a fresh BoardModel is built each level, so capacity resets to
+## [constant DISCARD_SLOTS] naturally (AC-E03).
+func expand_discard() -> void:
+	_active_discard_slots += 1
+	_discard.append(-1)
 
 func is_card_removed(card_id: int) -> bool:
 	return _removed.has(card_id)
@@ -220,7 +250,7 @@ func _resolve_cascade(events: Array[GameEvent]) -> void:
 # Pulls cards whose result == target out of discard into the (just cleared)
 # stack, up to its remaining capacity.
 func _pull_matching(stack_index: int, target: int, events: Array[GameEvent]) -> void:
-	for slot in DISCARD_SLOTS:
+	for slot in _active_discard_slots:   # live capacity, not the base constant (ADR-0010)
 		if _stack_counts[stack_index] >= STACK_CAPACITY:
 			return
 		var card_id: int = _discard[slot]
@@ -248,7 +278,7 @@ func _find_full_stack() -> int:
 
 
 func _first_empty_discard() -> int:
-	for slot in DISCARD_SLOTS:
+	for slot in _active_discard_slots:   # live capacity, not the base constant (ADR-0010)
 		if _discard[slot] == -1:
 			return slot
 	return -1

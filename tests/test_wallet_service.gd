@@ -635,3 +635,97 @@ func test_convert_gems_exact_fit_at_coin_cap_succeeds() -> void:
 	assert_bool(w.convert_gems_to_coins(10)).is_true()
 	assert_int(w.balance(COINS)).is_equal(1000)
 	assert_int(w.balance(GEMS)).is_equal(10)
+
+
+# ============================================================================
+# S3-006 — Extra Discard Slot booster (use_extra_discard + ADR-0010 BoardModel)
+# ============================================================================
+
+const EXTRA_DISCARD := EconomyEnums.BoosterType.EXTRA_DISCARD
+
+
+## Builds a fully-exposed board whose cards all discard (no stack targets their result).
+func _discard_board(card_count: int) -> BoardModel:
+	var results: Array[int] = []
+	var covered_by: Dictionary = {}
+	for i in card_count:
+		results.append(99)
+		covered_by[i] = [] as Array[int]
+	return BoardModel.new(results, covered_by, [1, 2, 3, 4])
+
+
+func test_use_extra_discard_with_room_expands_and_deducts() -> void:
+	# AC-E01 / AC-E06: room remains (3 of 5 occupied) → 5→6, _discard.size()==6, 350 deducted.
+	var board := _discard_board(4)
+	board.tap_card(0)
+	board.tap_card(1)
+	board.tap_card(2)                       # 3 of 5 occupied — room remains
+	var w = _make(500)
+	var ok: bool = w.use_extra_discard(board)
+	assert_bool(ok).is_true()
+	assert_int(board.active_discard_slots()).is_equal(6)
+	assert_int(board.discard_card(5)).is_equal(-1)         # new empty slot
+	assert_int(w.balance(COINS)).is_equal(150)             # 500 - 350
+	assert_bool(w.extra_discard_active).is_true()
+	assert_int(w.boosters_used_this_level).is_equal(1)
+	var act := _event_of(EconomyEvent.Kind.BOOSTER_ACTIVATED)
+	assert_object(act).is_not_null()
+	assert_int(act.booster_type).is_equal(EXTRA_DISCARD)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_not_null()
+
+
+func test_use_extra_discard_at_max_blocked_no_spend() -> void:
+	# AC-E04 / EC-07: already at MAX_DISCARD_SLOTS (7) → AT_MAX, coins unchanged, no expand.
+	var board := _discard_board(1)
+	board.expand_discard()
+	board.expand_discard()                  # 5 → 7 (at default max)
+	var w = _make(500)
+	var ok: bool = w.use_extra_discard(board)
+	assert_bool(ok).is_false()
+	assert_int(board.active_discard_slots()).is_equal(7)   # unchanged
+	assert_int(w.balance(COINS)).is_equal(500)             # no deduction
+	var pf := _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
+	assert_object(pf).is_not_null()
+	assert_int(pf.booster_type).is_equal(EXTRA_DISCARD)
+	assert_int(pf.reason).is_equal(EconomyEnums.FailReason.AT_MAX)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_use_extra_discard_when_row_full_blocked_no_spend() -> void:
+	# AC-E05 / EC-06: discard row full (purchase-ahead-only) → DISCARD_FULL, no spend, no slot.
+	# 6 cards: fill all 5 slots, the 6th stays on the floor (no win).
+	var board := _discard_board(6)
+	for i in 5:
+		board.tap_card(i)                   # slots 0..4 full
+	assert_int(board.occupied_discard_count()).is_equal(5)
+	var w = _make(500)
+	var ok: bool = w.use_extra_discard(board)
+	assert_bool(ok).is_false()
+	assert_int(board.active_discard_slots()).is_equal(5)   # no slot added
+	assert_int(w.balance(COINS)).is_equal(500)             # no deduction
+	var pf := _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
+	assert_object(pf).is_not_null()
+	assert_int(pf.reason).is_equal(EconomyEnums.FailReason.DISCARD_FULL)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_use_extra_discard_insufficient_coins_returns_false() -> void:
+	# Not enough coins → SPEND_FAILED, false, no expansion, not active.
+	var board := _discard_board(2)
+	var w = _make(0)                        # Extra Discard costs 350
+	assert_bool(w.use_extra_discard(board)).is_false()
+	assert_int(board.active_discard_slots()).is_equal(5)
+	assert_bool(w.extra_discard_active).is_false()
+	assert_int(w.boosters_used_this_level).is_equal(0)
+	assert_object(_event_of(EconomyEvent.Kind.SPEND_FAILED)).is_not_null()
+
+
+func test_use_extra_discard_precondition_failure_does_not_increment_boosters() -> void:
+	# A blocked activation (at max) must not increment boosters_used_this_level.
+	var board := _discard_board(1)
+	board.expand_discard()
+	board.expand_discard()                  # at max 7
+	var w = _make(500)
+	w.use_extra_discard(board)
+	assert_int(w.boosters_used_this_level).is_equal(0)
+	assert_bool(w.extra_discard_active).is_false()
