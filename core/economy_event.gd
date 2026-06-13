@@ -122,12 +122,16 @@ static func spend_failed(
 	return e
 
 
-## Emitted when a daily cap prevents (fully or partially) an earn.
-## [param source]: [EconomyEnums.EarnSource] that triggered the cap.
-static func earn_cap_reached(p_source: int) -> EconomyEvent:
+## Emitted when a daily cap (or the wallet hard cap) prevents an earn.
+## [param p_source]: [EconomyEnums.EarnSource] that triggered the cap.
+## [param p_reason]: optional [EconomyEnums.FailReason] disambiguating which cap
+## was hit (AD_COUNT_CAP / DAILY_COIN_CAP / GEM_CONVERT_CAP / WALLET_FULL).
+## Defaults to [code]-1[/code] (unspecified) for back-compatible callers.
+static func earn_cap_reached(p_source: int, p_reason: int = -1) -> EconomyEvent:
 	var e := EconomyEvent.new()
 	e.kind = Kind.EARN_CAP_REACHED
 	e.source = p_source
+	e.reason = p_reason
 	return e
 
 

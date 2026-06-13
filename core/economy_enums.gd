@@ -47,11 +47,15 @@ enum BoosterType {
 }
 
 
-## Reason codes for booster precondition failures and IAP blocks.
+## Reason codes for booster precondition failures, IAP blocks, and earn-cap events.
 ## Carried in the [code]reason[/code] field of BOOSTER_PRECONDITION_FAILED,
-## BOOSTER_PURCHASE_FAILED, and IAP_BLOCKED events.
+## BOOSTER_PURCHASE_FAILED, IAP_BLOCKED, and EARN_CAP_REACHED events.
 ## [br][br]
 ## There is no NO_HISTORY reason — that was Undo-only and Undo has been removed.
+## [br][br]
+## The four [code]*_CAP[/code] / [code]WALLET_FULL[/code] reasons let the HUD tell
+## the EARN_CAP_REACHED variants apart (e.g. "watched max ads today" vs "daily coin
+## cap reached" vs "wallet full") — all three otherwise share source REWARDED_AD.
 enum FailReason {
 	ALREADY_IN_PROGRESS,  ## A Hint is already computing; double-tap rejected (EC-08, AC-H04).
 	NO_EXPOSED_CARD,      ## Hint precondition: zero exposed cards on the board (AC-H03).
@@ -59,4 +63,8 @@ enum FailReason {
 	AT_MAX,               ## Extra Discard precondition: already at MAX_DISCARD_SLOTS (EC-07, AC-E04).
 	WON_BOARD,            ## Reshuffle precondition: board is already in WIN state (EC-15, AC-R05).
 	COMPLIANCE_RESTRICTED, ## IAP blocked because ComplianceService.is_restricted() is true (AC-CL01).
+	AD_COUNT_CAP,         ## Rewarded-ad earn blocked: max_ads_per_day reached (Formula 8, AC-C01).
+	DAILY_COIN_CAP,       ## Rewarded-ad earn blocked: daily_coins_cap reached (Rule 15, AC-C01).
+	GEM_CONVERT_CAP,      ## Gem→coin conversion blocked: daily_gem_convert_cap reached (Rule 21, AC-GC02).
+	WALLET_FULL,          ## Earn blocked: balance already at the per-currency hard cap (coins_max/gems_max).
 }

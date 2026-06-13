@@ -455,6 +455,7 @@ func test_rewarded_ad_at_coin_cap_credits_nothing_and_emits_cap_reached() -> voi
 	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
 	assert_object(cap).is_not_null()
 	assert_int(cap.source).is_equal(REWARDED_AD)
+	assert_int(cap.reason).is_equal(EconomyEnums.FailReason.DAILY_COIN_CAP)
 
 
 func test_rewarded_ad_partial_cap_credits_remaining_only() -> void:
@@ -531,7 +532,9 @@ func test_convert_gems_at_daily_cap_blocked() -> void:
 	_save_stub.data.gems_converted_today = 50           # default daily_gem_convert_cap
 	assert_bool(w.convert_gems_to_coins(1)).is_false()
 	assert_int(w.balance(GEMS)).is_equal(20)
-	assert_int(_event_of(EconomyEvent.Kind.EARN_CAP_REACHED).source).is_equal(GEM_CONVERT)
+	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
+	assert_int(cap.source).is_equal(GEM_CONVERT)
+	assert_int(cap.reason).is_equal(EconomyEnums.FailReason.GEM_CONVERT_CAP)
 
 
 func test_convert_gems_insufficient_balance_fails() -> void:
@@ -573,7 +576,9 @@ func test_rewarded_ad_count_cap_blocks_after_max_ads() -> void:
 	assert_int(w.balance(COINS)).is_equal(180)
 	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(0)    # 4th -> count cap
 	assert_int(w.balance(COINS)).is_equal(180)
-	assert_int(_event_of(EconomyEvent.Kind.EARN_CAP_REACHED).source).is_equal(REWARDED_AD)
+	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
+	assert_int(cap.source).is_equal(REWARDED_AD)
+	assert_int(cap.reason).is_equal(EconomyEnums.FailReason.AD_COUNT_CAP)
 
 
 func test_is_ad_earn_available_reflects_compliance_and_caps() -> void:
@@ -582,3 +587,51 @@ func test_is_ad_earn_available_reflects_compliance_and_caps() -> void:
 	var w = _make(0)
 	_save_stub.data.ad_coins_today = 500
 	assert_bool(w.is_ad_earn_available()).is_false()                 # at coin cap
+
+
+# ---------------------------------------------------------------------------
+# Wallet hard-cap (coins_max) interaction — value-loss guards (review S2 / N2)
+# ---------------------------------------------------------------------------
+
+func test_rewarded_ad_with_full_wallet_emits_wallet_full_and_consumes_no_ad() -> void:
+	# Wallet already at coins_max but daily ad headroom remains: the credit clamps to 0.
+	# The ad view must NOT be consumed and a WALLET_FULL cap event must surface
+	# (regression: previously incremented ads_watched_today for a 0-coin payout).
+	var w = _make(1000, 0, _config_with_coins_max(1000))   # at coin hard cap, day counters 0
+	assert_int(w.earn(COINS, 60, REWARDED_AD)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(1000)
+	# Ad counters untouched — no ad was "spent".
+	assert_int(_save_stub.data.ads_watched_today).is_equal(0)
+	assert_int(_save_stub.data.ad_coins_today).is_equal(0)
+	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
+	assert_object(cap).is_not_null()
+	assert_int(cap.source).is_equal(REWARDED_AD)
+	assert_int(cap.reason).is_equal(EconomyEnums.FailReason.WALLET_FULL)
+	# No spurious credit event.
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_EARNED)).is_null()
+
+
+func test_convert_gems_aborts_without_spending_when_coin_wallet_full() -> void:
+	# AC-W05b sibling: the coin payout would exceed coins_max, so the conversion must
+	# abort BEFORE spending gems — gems are never burned for a truncated payout.
+	var cfg := _config_with_coins_max(1000)   # gem_to_coin_rate default 25
+	var w = _make(990, 20, cfg)               # 10 gems -> 250 coins, but only 10 headroom
+	assert_bool(w.convert_gems_to_coins(10)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(20)  # gems preserved
+	assert_int(w.balance(COINS)).is_equal(990)
+	assert_int(_save_stub.data.gems_converted_today).is_equal(0)
+	var cap := _event_of(EconomyEvent.Kind.EARN_CAP_REACHED)
+	assert_object(cap).is_not_null()
+	assert_int(cap.source).is_equal(GEM_CONVERT)
+	assert_int(cap.reason).is_equal(EconomyEnums.FailReason.WALLET_FULL)
+	# No gem spend occurred.
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_convert_gems_exact_fit_at_coin_cap_succeeds() -> void:
+	# Boundary: the payout that fills coins_max exactly must still succeed.
+	var cfg := _config_with_coins_max(1000)   # 10 gems * 25 = 250 coins; 750 + 250 = 1000
+	var w = _make(750, 20, cfg)
+	assert_bool(w.convert_gems_to_coins(10)).is_true()
+	assert_int(w.balance(COINS)).is_equal(1000)
+	assert_int(w.balance(GEMS)).is_equal(10)

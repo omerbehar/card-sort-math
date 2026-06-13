@@ -176,36 +176,23 @@ func test_hint_score_discard_relief_contributes_per_matching_discard_card() -> v
 
 func test_best_card_formula5_worked_example() -> void:
 	## Reproduces the Formula 5 worked example from the GDD:
-	##   Card 2 (result 7): routes_directly=1(200) opens=2(20) relief=0 → score 220  ← winner
+	##   Card 2 (result 7): routes_directly=1(200) opens=2(20) relief=0   → score 220  ← winner
 	##   Card 5 (result 9): routes_directly=0      opens=3(30) relief=1(5) → score 35
 	##   Card 8 (result 7): routes_directly=1(200) opens=0     relief=0    → score 200
 	##
-	## Construction:
-	## - Stacks start at [7, 9, 11, 13].
-	## - Card 2 (result 7) covers two unexposed cards each solely (opens=2).
-	## - Card 5 (result 9) covers three unexposed cards each solely (opens=3).
-	##   One card in discard has result 9 (relief=1).
-	## - Card 8 (result 7) covers nothing (opens=0).
-	## - Card 2 and card 8 both route directly to the "7" stack.
+	## Layout (queue [7, 11, 13, 17] seeds stacks 7/11/13/17 — deliberately NO "9"
+	## stack so the result-9 card 7 goes to discard and supplies card 5's relief=1):
 	##
-	## Card id allocations:
-	##   0–1:   hidden cards covered only by card 2  (results don't matter for this test)
-	##   2:     exposed, result 7, covers cards 0 and 1
-	##   3–5:   hidden cards covered only by card 5  (results irrelevant)
-	##   5:     also serves as the open card_id=5
-	##   6–8:   more open/hidden cards
-	## Let's use a clean flat layout to avoid off-by-one confusion:
-	##
-	## card_id | result | covered_by
-	##   0     |  99    |  [2]      ← hidden, solely by card 2
-	##   1     |  99    |  [2]      ← hidden, solely by card 2
-	##   2     |   7    |  []       ← exposed (the 220 card)
-	##   3     |  99    |  [5]      ← hidden, solely by card 5
-	##   4     |  99    |  [5]      ← hidden, solely by card 5
-	##   5     |   9    |  []       ← exposed (the 35 card) + 1 relief card in discard
-	##   6     |  99    |  [5]      ← hidden, solely by card 5 (gives opens=3)
-	##   7     |   9    |  []       ← will be discarded to set up relief for card 5
-	##   8     |   7    |  []       ← exposed (the 200 card)
+	## card_id | result | covered_by | role
+	##   0     |  99    |  [2]       | hidden, solely by card 2
+	##   1     |  99    |  [2]       | hidden, solely by card 2   → card 2 opens=2
+	##   2     |   7    |  []        | exposed; routes to stack 7 → score 220 (winner)
+	##   3     |  99    |  [5]       | hidden, solely by card 5
+	##   4     |  99    |  [5]       | hidden, solely by card 5
+	##   6     |  99    |  [5]       | hidden, solely by card 5   → card 5 opens=3
+	##   5     |   9    |  []        | exposed; no "9" stack (routes=0); relief=1 → score 35
+	##   7     |   9    |  []        | discarded below → relief card for result 9
+	##   8     |   7    |  []        | exposed; routes to stack 7 → score 200
 	var covered_by: Dictionary = {
 		0: [2] as Array[int],
 		1: [2] as Array[int],
@@ -218,35 +205,17 @@ func test_best_card_formula5_worked_example() -> void:
 		8: [] as Array[int],
 	}
 	var results: Array[int] = [99, 99, 7, 99, 99, 9, 99, 9, 7]
-	# Target queue: first 4 entries seed the stacks [7, 9, 11, 13].
-	var model := _board(results, covered_by, [7, 9, 11, 13])
-	# Discard card 7 (result 9) so it counts as relief for card 5.
-	model.tap_card(7)   # result 9, no stack match... wait, stack_target(1)==9, it routes!
-	# Card 7 has result 9 and stack 1 has target 9 → it routes, not discards.
-	# We need card 7 to go to discard. Change card 7's result to something that won't route.
-	# Let's rebuild with card 7 having result 9 and stacks NOT having 9 as first target.
-	# Alternative: use a queue where 9 is not one of the first 4 targets.
-	# Queue [7, 11, 13, 17] → stacks: 7, 11, 13, 17. Result-9 cards go to discard.
-	# But we need a stack target of 9 for card 5's routes_directly=0 → score=35.
-	# If stacks are [7,11,13,17] then card 5 (result 9) routes_directly=0.
-	# Card 2 (result 7) routes_directly=1 ✓.
-	# Card 8 (result 7) routes_directly=1 ✓.
-	# Card 7 (result 9) goes to discard → relief=1 for card 5. ✓
-	# Scores:
-	#   card 2: 200 + 2*10 + 0 = 220  ✓
-	#   card 5: 0   + 3*10 + 1*5 = 35 ✓
-	#   card 8: 200 + 0    + 0   = 200 ✓
-	var model2 := _board(results, covered_by, [7, 11, 13, 17])
-	model2.tap_card(7)   # result 9, no stack has target 9 → discard slot 0.
-	assert_int(model2.discard_card(0)).is_equal(7)  # verify card 7 is in discard
+	var model := _board(results, covered_by, [7, 11, 13, 17])
+	model.tap_card(7)   # result 9, no stack targets 9 → lands in discard slot 0.
+	assert_int(model.discard_card(0)).is_equal(7)  # precondition: card 7 supplies relief
 
 	# Verify individual scores.
-	assert_int(HintScore.score(model2, 2, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(220)
-	assert_int(HintScore.score(model2, 5, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(35)
-	assert_int(HintScore.score(model2, 8, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(200)
+	assert_int(HintScore.score(model, 2, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(220)
+	assert_int(HintScore.score(model, 5, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(35)
+	assert_int(HintScore.score(model, 8, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(200)
 
 	# best_card must select card 2 (score 220).
-	assert_int(HintScore.best_card(model2, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(2)
+	assert_int(HintScore.best_card(model, R_WEIGHT, O_WEIGHT, L_WEIGHT)).is_equal(2)
 
 
 func test_best_card_tie_break_returns_lowest_card_id() -> void:
