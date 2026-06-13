@@ -32,11 +32,10 @@ const _GLYPH_BLOCKED: Color = Color(0.20, 0.24, 0.34, 0.40)
 var _percent_label: Label
 var _level_label: Label
 
-# Per-booster widgets, kept so _refresh_boosters can restyle them on earn/spend.
+# Per-booster widgets, kept so _refresh_boosters can restyle them on stock changes.
 var _tiles: Array[NinePatchRect] = []
 var _glyphs: Array[Sprite2D] = []
-var _coins: Array[Sprite2D] = []
-var _cost_labels: Array[Label] = []
+var _count_labels: Array[Label] = []
 
 
 func _ready() -> void:
@@ -45,10 +44,13 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_header()
 	_build_booster_tray()
-	# Restyle the tray whenever a balance changes (earn/spend).
+	# Restyle the tray whenever a balance changes (earn/spend) or a booster's owned
+	# count changes (consume/grant/seed).
 	var wallet := get_node_or_null("/root/WalletService")
 	if wallet != null and wallet.has_signal("economy_event"):
 		wallet.economy_event.connect(func(_e: Variant) -> void: _refresh_boosters())
+	if wallet != null and wallet.has_signal("booster_stock_changed"):
+		wallet.booster_stock_changed.connect(func(_t: int, _n: int) -> void: _refresh_boosters())
 	_refresh_boosters()
 
 
@@ -85,40 +87,34 @@ func _build_booster_tray() -> void:
 		var btn := _bare_button(pos, Vector2(tile, tile))
 		var frame := UiFactory.nine_patch(btn, "kenney/slot_grey.png", Vector2.ZERO, Vector2(tile, tile), 16, _TILE_AFFORD)
 		var g := UiFactory.sprite(btn, data.icon, Vector2((tile - glyph) * 0.5, (tile - glyph) * 0.5 - 6), Vector2(glyph, glyph), _GLYPH_AFFORD)
-		# Cost badge (bottom-right): coin glyph + cost digits.
-		var coin := UiFactory.sprite(btn, "icons/coin_sm.svg", Vector2(tile - 44, tile - 24), Vector2(18, 18))
-		var cost_label := UiFactory.label(btn, str(_booster_cost(data.type)), Vector2(tile - 26, tile - 26), Vector2(24, 22), 15, Color.WHITE)
+		# Owned-count badge (bottom-right): the number you hold, or "+" when empty
+		# (a tap then opens the watch-ad / pay-coins top-up popup).
+		var count_label := UiFactory.label(btn, "", Vector2(tile - 30, tile - 26), Vector2(26, 22), 17, Color.WHITE)
+		count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		count_label.add_theme_color_override("font_outline_color", Color(0.12, 0.16, 0.26, 0.95))
+		count_label.add_theme_constant_override("outline_size", 5)
 		var btype: int = data.type
 		btn.pressed.connect(func() -> void: booster_pressed.emit(btype))
 		_tiles.append(frame)
 		_glyphs.append(g)
-		_coins.append(coin)
-		_cost_labels.append(cost_label)
+		_count_labels.append(count_label)
 
 
-# Reads the coin cost from WalletService (config-driven); 0 if the autoload is absent.
-func _booster_cost(booster_type: int) -> int:
-	var wallet := get_node_or_null("/root/WalletService")
-	if wallet != null and wallet.has_method("booster_coin_cost"):
-		return wallet.booster_coin_cost(booster_type)
-	return 0
-
-
-## Restyles each booster tile for the current coin balance (affordable vs not):
-## tile tint + glyph dim + a coin-with-slash badge — shape/luminance cues, not
-## hue-only (colorblind-safe).
+## Restyles each booster tile for its current owned count: a stocked buff reads
+## normal with its count; an empty buff dims and shows a warm "+" refill cue
+## (luminance + glyph change, not hue-only — colorblind-safe).
 func _refresh_boosters() -> void:
 	var wallet := get_node_or_null("/root/WalletService")
 	if wallet == null:
 		return
-	var coins: int = wallet.balance(COINS)
 	for i in _BOOSTERS.size():
-		var afford: bool = coins >= _booster_cost(_BOOSTERS[i].type)
-		_tiles[i].self_modulate = _TILE_AFFORD if afford else _TILE_BLOCKED
-		_glyphs[i].modulate = _GLYPH_AFFORD if afford else _GLYPH_BLOCKED
-		_coins[i].texture = load(UiFactory.UI_DIR + ("icons/coin_sm.svg" if afford else "icons/coin_unavailable_sm.svg"))
-		_cost_labels[i].add_theme_color_override(
-				"font_color", Color.WHITE if afford else Color(1, 1, 1, 0.5))
+		var count: int = wallet.booster_count(_BOOSTERS[i].type)
+		var has: bool = count > 0
+		_tiles[i].self_modulate = _TILE_AFFORD if has else _TILE_BLOCKED
+		_glyphs[i].modulate = _GLYPH_AFFORD if has else _GLYPH_BLOCKED
+		_count_labels[i].text = str(count) if has else "+"
+		_count_labels[i].add_theme_color_override(
+				"font_color", Color.WHITE if has else Color(1.0, 0.86, 0.4))
 
 
 # --- Widgets ----------------------------------------------------------------

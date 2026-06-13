@@ -399,10 +399,11 @@ func test_earn_source_enum_contains_all_registry_values() -> void:
 # EconomyEnums — FailReason
 # ---------------------------------------------------------------------------
 
-func test_fail_reason_enum_has_exactly_9_values() -> void:
+func test_fail_reason_enum_has_exactly_10_values() -> void:
 	# Picker replaced Hint (2026-06-13): the two Hint-only reasons
 	# (ALREADY_IN_PROGRESS, NO_EXPOSED_CARD) were dropped and INVALID_TARGET added.
-	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(9)
+	# NO_STOCK added for the prototype buff inventory (out-of-stock activation).
+	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(10)
 
 
 func test_fail_reason_enum_contains_all_expected_values() -> void:
@@ -416,6 +417,7 @@ func test_fail_reason_enum_contains_all_expected_values() -> void:
 		"DAILY_COIN_CAP",
 		"GEM_CONVERT_CAP",
 		"WALLET_FULL",
+		"NO_STOCK",
 	]
 	var actual: Array = EconomyEnums.FailReason.keys()
 	for name: String in expected:

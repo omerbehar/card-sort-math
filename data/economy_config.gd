@@ -135,3 +135,13 @@ extends Resource
 ## Coin spend amount at or above which a one-step confirmation dialog is shown
 ## before deducting (UI anti-misfire rule; §UI Requirements). Safe range: 60–500.
 @export var spend_confirm_threshold: int = 250
+
+# ---------------------------------------------------------------------------
+# Booster inventory (prototype: owned counts)
+# ---------------------------------------------------------------------------
+
+## How many of each booster a player starts a session with (prototype buff
+## inventory). Tapping a booster consumes one for free; at zero, the player is
+## offered a watch-ad / pay-coins top-up popup. Currently an in-memory, per-session
+## stock seeded by WalletService (persistence is a follow-up). Safe range: 0–10.
+@export var starting_booster_count: int = 3

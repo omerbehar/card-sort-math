@@ -667,3 +667,114 @@ func test_use_extra_discard_precondition_failure_does_not_increment_boosters() -
 	w.use_extra_discard(board)
 	assert_int(w.boosters_used_this_level).is_equal(0)
 	assert_bool(w.extra_discard_active).is_false()
+
+
+# ============================================================================
+# Booster inventory (prototype owned counts) + *_from_stock activation paths
+# ============================================================================
+
+func _config_with_start(count: int) -> EconomyConfig:
+	var cfg := EconomyConfig.new()
+	cfg.starting_booster_count = count
+	return cfg
+
+
+func test_booster_count_seeded_from_config() -> void:
+	var w = _make(0, 0, _config_with_start(3))
+	assert_int(w.booster_count(PICKER)).is_equal(3)
+	assert_int(w.booster_count(RESHUFFLE)).is_equal(3)
+	assert_int(w.booster_count(EXTRA_DISCARD)).is_equal(3)
+
+
+func test_consume_booster_decrements_and_returns_true() -> void:
+	var w = _make(0, 0, _config_with_start(2))
+	assert_bool(w.consume_booster(PICKER)).is_true()
+	assert_int(w.booster_count(PICKER)).is_equal(1)
+
+
+func test_consume_booster_at_zero_returns_false_no_underflow() -> void:
+	var w = _make(0, 0, _config_with_start(0))
+	assert_bool(w.consume_booster(PICKER)).is_false()
+	assert_int(w.booster_count(PICKER)).is_equal(0)
+
+
+func test_grant_booster_increments_and_emits_stock_changed() -> void:
+	var w = _make(0, 0, _config_with_start(0))
+	var seen: Array = []
+	w.booster_stock_changed.connect(func(t: int, n: int) -> void: seen.append([t, n]))
+	w.grant_booster(PICKER, 1)
+	assert_int(w.booster_count(PICKER)).is_equal(1)
+	assert_int(seen.size()).is_equal(1)
+	assert_int(seen[0][0]).is_equal(PICKER)
+	assert_int(seen[0][1]).is_equal(1)
+
+
+func test_use_picker_from_stock_consumes_count_and_does_not_spend_coins() -> void:
+	var covered_by: Dictionary = {0: [] as Array[int], 1: [0] as Array[int]}
+	var board := BoardModel.new([5, 7], covered_by, [7, 9, 11, 13])
+	var w = _make(500, 0, _config_with_start(1))
+	var events: Array = w.use_picker_from_stock(board, 1)
+	assert_bool(events.is_empty()).is_false()           # the pick produced board events
+	assert_bool(board.is_card_removed(1)).is_true()     # covered card played
+	assert_int(w.booster_count(PICKER)).is_equal(0)     # consumed one
+	assert_int(w.balance(COINS)).is_equal(500)          # NO coin spend
+	assert_int(w.boosters_used_this_level).is_equal(1)
+	assert_int(_event_of(EconomyEvent.Kind.BOOSTER_ACTIVATED).booster_type).is_equal(PICKER)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_use_picker_from_stock_with_no_stock_blocked_no_play() -> void:
+	var covered_by: Dictionary = {0: [] as Array[int], 1: [0] as Array[int]}
+	var board := BoardModel.new([5, 7], covered_by, [7, 9, 11, 13])
+	var w = _make(500, 0, _config_with_start(0))        # none owned
+	var events: Array = w.use_picker_from_stock(board, 1)
+	assert_bool(events.is_empty()).is_true()
+	assert_bool(board.is_card_removed(1)).is_false()
+	assert_int(w.balance(COINS)).is_equal(500)          # no spend
+	var pf := _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
+	assert_int(pf.booster_type).is_equal(PICKER)
+	assert_int(pf.reason).is_equal(EconomyEnums.FailReason.NO_STOCK)
+
+
+func test_use_reshuffle_from_stock_consumes_count_and_does_not_spend_coins() -> void:
+	var board := _flat_board(6)
+	var w = _make(500, 0, _config_with_start(1))
+	w.reset_level_state(42)
+	var assignment: Array = w.use_reshuffle_from_stock(board, _flat_placements(6))
+	assert_bool(assignment.is_empty()).is_false()
+	assert_int(w.booster_count(RESHUFFLE)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(500)          # NO coin spend
+	assert_int(w.reshuffle_count).is_equal(1)
+	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+
+
+func test_use_reshuffle_from_stock_with_no_stock_blocked() -> void:
+	var board := _flat_board(6)
+	var w = _make(500, 0, _config_with_start(0))
+	w.reset_level_state(1)
+	assert_bool(w.use_reshuffle_from_stock(board, _flat_placements(6)).is_empty()).is_true()
+	assert_int(w.reshuffle_count).is_equal(0)
+	assert_int(_event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED).reason) \
+		.is_equal(EconomyEnums.FailReason.NO_STOCK)
+
+
+func test_use_extra_discard_from_stock_consumes_count_and_does_not_spend_coins() -> void:
+	var board := _discard_board(4)
+	board.tap_card(0)
+	board.tap_card(1)
+	board.tap_card(2)                                   # room remains (3 of 5)
+	var w = _make(500, 0, _config_with_start(1))
+	assert_bool(w.use_extra_discard_from_stock(board)).is_true()
+	assert_int(board.active_discard_slots()).is_equal(6)
+	assert_int(w.booster_count(EXTRA_DISCARD)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(500)          # NO coin spend
+	assert_bool(w.extra_discard_active).is_true()
+
+
+func test_use_extra_discard_from_stock_with_no_stock_blocked() -> void:
+	var board := _discard_board(4)
+	var w = _make(500, 0, _config_with_start(0))
+	assert_bool(w.use_extra_discard_from_stock(board)).is_false()
+	assert_int(board.active_discard_slots()).is_equal(5)
+	assert_int(_event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED).reason) \
+		.is_equal(EconomyEnums.FailReason.NO_STOCK)

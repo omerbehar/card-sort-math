@@ -47,8 +47,12 @@ var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
 var _discard_cards: Array = []  # per slot: card_id, or -1 when empty
 var _input_locked: bool = false
 # Picker booster (S3-012): when armed, the next tapped card (covered or not) is
-# played via WalletService.use_picker instead of the normal tap.
+# played as a Picker. _picker_use_stock chooses the payment path for that play:
+# true → consume an owned Picker (free); false → spend coins (the popup "pay" path).
 var _picker_armed: bool = false
+var _picker_use_stock: bool = true
+# Active buff-restock popup (out-of-stock top-up); null when none is shown.
+var _buff_popup: UnlockPopup = null
 
 @onready var _overlay_layer: CanvasLayer = $Overlay
 
@@ -206,11 +210,15 @@ func _on_card_tapped(card_id: int) -> void:
 		return
 	if _input_locked or _model.is_game_over():
 		return
-	# Picker booster (S3-012): the next tap plays the chosen card (covered or not)
-	# through the wallet, then disarms.
+	# Picker booster (S3-012): the next tap plays the chosen card (covered or not),
+	# then disarms. The armed payment path decides whether it consumes an owned
+	# Picker (free) or spends coins.
 	if _picker_armed:
 		_picker_armed = false
-		await pick(card_id)
+		if _picker_use_stock:
+			await pick_from_stock(card_id)
+		else:
+			await pick(card_id)
 		return
 	var events := _model.tap_card(card_id)
 	if events.is_empty():
@@ -420,12 +428,13 @@ func expand_discard() -> void:
 
 
 ## Arms the Picker booster (S3-012): every surviving card becomes tappable so the
-## player can choose a covered (lower-layer) card; the next tap plays it via
-## [method pick]. The booster *button* is pending the economy-UI sprint.
-func arm_picker() -> void:
+## player can choose a covered (lower-layer) card; the next tap plays it.
+## [param use_stock] true consumes an owned Picker (free); false spends coins.
+func arm_picker(use_stock: bool = true) -> void:
 	if _model == null or _input_locked:
 		return
 	_picker_armed = true
+	_picker_use_stock = use_stock
 	_floor.set_pickable_all(_model)
 
 
@@ -436,6 +445,20 @@ func pick(card_id: int) -> void:
 	if _input_locked or _model.is_game_over():
 		return
 	var events: Array[GameEvent] = WalletService.use_picker(_model, card_id)
+	await _resolve_pick(events)
+
+
+## Picker played from owned stock (free), via [method WalletService.use_picker_from_stock].
+## No-op if the wallet rejects it (invalid target / no Picker owned).
+func pick_from_stock(card_id: int) -> void:
+	if _input_locked or _model.is_game_over():
+		return
+	var events: Array[GameEvent] = WalletService.use_picker_from_stock(_model, card_id)
+	await _resolve_pick(events)
+
+
+# Shared post-pick view sync + animation for both Picker payment paths.
+func _resolve_pick(events: Array[GameEvent]) -> void:
 	_floor.refresh_exposure(_model)          # drop picker-mode tappability
 	if events.is_empty():
 		return
@@ -448,17 +471,98 @@ func pick(card_id: int) -> void:
 	_input_locked = false
 
 
-## Routes a booster-tray button press (Hud.booster_pressed) to its activation.
+## Routes a booster-tray button press (Hud.booster_pressed). With an owned buff in
+## stock the tap uses it for free; at zero stock it opens the watch-ad / pay-coins
+## top-up popup (the buff parallel of the locked-deck unlock).
 func _on_booster_pressed(booster_type: int) -> void:
 	if _input_locked or _model == null or _model.is_game_over():
 		return
+	if is_instance_valid(_buff_popup):
+		return
+	if _wallet_booster_count(booster_type) > 0:
+		_use_booster_from_stock(booster_type)
+	else:
+		_show_buff_popup(booster_type)
+
+
+# Uses one owned buff (free): arms the Picker on stock, or fires the instant boosters.
+func _use_booster_from_stock(booster_type: int) -> void:
 	match booster_type:
 		EconomyEnums.BoosterType.PICKER:
-			arm_picker()
+			arm_picker(true)
 		EconomyEnums.BoosterType.RESHUFFLE:
-			reshuffle_now()
+			reshuffle_from_stock()
 		EconomyEnums.BoosterType.EXTRA_DISCARD:
-			buy_extra_discard()
+			extra_discard_from_stock()
+
+
+# Owned count of [param booster_type] from the wallet; 0 if the autoload is absent.
+func _wallet_booster_count(booster_type: int) -> int:
+	var wallet := get_node_or_null("/root/WalletService")
+	return wallet.booster_count(booster_type) if wallet != null else 0
+
+
+## Opens the out-of-stock top-up popup for [param booster_type]: watch a (stubbed)
+## ad or pay coins to get the buff and use it immediately. Reuses [UnlockPopup].
+func _show_buff_popup(booster_type: int) -> void:
+	var wallet := get_node_or_null("/root/WalletService")
+	if wallet == null:
+		return
+	var cost: int = wallet.booster_coin_cost(booster_type)
+	var coins: int = wallet.balance(EconomyEnums.Currency.COINS)
+
+	var popup := UnlockPopup.new()
+	popup.dismiss_on_backdrop = true            # tap-outside cancels (set before _ready)
+	_buff_popup = popup
+	_overlay_layer.add_child(popup)
+	# Prototype l10n: buff copy is built here (UnlockPopup._tr owns the deck strings).
+	popup.setup(cost, coins >= cost,
+		"OUT OF %s" % _buff_display_name(booster_type),
+		"Watch an ad or pay coins to use it now.")
+	popup.backdrop_pressed.connect(popup.close)
+	popup.closed.connect(func() -> void: _buff_popup = null)
+	popup.watch_ad_pressed.connect(func() -> void:
+		_dismiss_buff_popup()
+		_grant_and_use_buff(booster_type, false))
+	popup.pay_coins_pressed.connect(func() -> void:
+		_dismiss_buff_popup()
+		_grant_and_use_buff(booster_type, true))
+
+
+func _dismiss_buff_popup() -> void:
+	if is_instance_valid(_buff_popup):
+		_buff_popup.close()
+	_buff_popup = null
+
+
+# Resolves a buff top-up choice and uses the buff immediately. [param paid] true
+# spends coins via the existing coin-path methods; false is the watch-ad stub —
+# grant one free, then use it from stock.
+func _grant_and_use_buff(booster_type: int, paid: bool) -> void:
+	if _input_locked or _model == null or _model.is_game_over():
+		return
+	if paid:
+		match booster_type:
+			EconomyEnums.BoosterType.PICKER:
+				arm_picker(false)               # coins spent at pick via use_picker
+			EconomyEnums.BoosterType.RESHUFFLE:
+				reshuffle_now()
+			EconomyEnums.BoosterType.EXTRA_DISCARD:
+				buy_extra_discard()
+	else:
+		var wallet := get_node_or_null("/root/WalletService")
+		if wallet != null:
+			wallet.grant_booster(booster_type, 1)
+		_use_booster_from_stock(booster_type)
+
+
+# Display name for the buff top-up popup title (prototype l10n).
+func _buff_display_name(booster_type: int) -> String:
+	match booster_type:
+		EconomyEnums.BoosterType.PICKER: return "PICKER"
+		EconomyEnums.BoosterType.RESHUFFLE: return "RESHUFFLE"
+		EconomyEnums.BoosterType.EXTRA_DISCARD: return "EXTRA DISCARD"
+		_: return "BOOSTER"
 
 
 ## Buys the Extra Discard Slot booster through the wallet (spends coins), then
@@ -473,6 +577,17 @@ func buy_extra_discard() -> void:
 		_update_discard_warning()
 
 
+## Extra Discard Slot from owned stock (free), via [method WalletService.use_extra_discard_from_stock].
+## Syncs the view like [method buy_extra_discard]. No-op if rejected (at max / full / none owned).
+func extra_discard_from_stock() -> void:
+	if _model == null or _input_locked:
+		return
+	if WalletService.use_extra_discard_from_stock(_model):
+		_discard.set_slot_count(_model.active_discard_slots())
+		_discard_cards.append(-1)
+		_update_discard_warning()
+
+
 ## Activates the Reshuffle booster (S3-009): re-permutes floor coverage via
 ## [method WalletService.use_reshuffle] and re-lays the cards to the new layout.
 ## No-op if the wallet rejects it (won board / insufficient funds).
@@ -481,6 +596,21 @@ func reshuffle_now() -> void:
 		return
 	var placements := Layouts.get_layout(_config.layout_id)
 	var assignment: Array[int] = WalletService.use_reshuffle(_model, placements)
+	_apply_reshuffle(assignment, placements)
+
+
+## Reshuffle from owned stock (free), via [method WalletService.use_reshuffle_from_stock].
+## Re-lays the floor like [method reshuffle_now]. No-op if rejected (won board / none owned).
+func reshuffle_from_stock() -> void:
+	if _model == null or _input_locked:
+		return
+	var placements := Layouts.get_layout(_config.layout_id)
+	var assignment: Array[int] = WalletService.use_reshuffle_from_stock(_model, placements)
+	_apply_reshuffle(assignment, placements)
+
+
+# Shared re-lay of the floor to a new placement→card assignment (both Reshuffle paths).
+func _apply_reshuffle(assignment: Array[int], placements: Array) -> void:
 	if assignment.is_empty():
 		return
 	for p in assignment.size():

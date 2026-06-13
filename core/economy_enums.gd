@@ -68,4 +68,5 @@ enum FailReason {
 	DAILY_COIN_CAP,       ## Rewarded-ad earn blocked: daily_coins_cap reached (Rule 15, AC-C01).
 	GEM_CONVERT_CAP,      ## Gem→coin conversion blocked: daily_gem_convert_cap reached (Rule 21, AC-GC02).
 	WALLET_FULL,          ## Earn blocked: balance already at the per-currency hard cap (coins_max/gems_max).
+	NO_STOCK,             ## Booster activated from stock with an empty count (prototype buff inventory).
 }

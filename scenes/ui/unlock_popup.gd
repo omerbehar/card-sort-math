@@ -38,9 +38,13 @@ const _INK := Color(0.12, 0.14, 0.22)
 
 ## Builds the prompt for an unlock costing [param cost] coins and plays the open
 ## animation. [param can_afford] greys/disables the pay button when the player
-## cannot cover the cost (the ad option stays available). Call once after instancing
-## and after adding to the tree.
-func setup(cost: int, can_afford: bool) -> void:
+## cannot cover the cost (the ad option stays available). [param title] and
+## [param subtitle] override the default locked-deck copy so the same modal can
+## front the buff-restock flow; empty strings keep the deck defaults. Call once
+## after instancing and after adding to the tree.
+func setup(cost: int, can_afford: bool, title: String = "", subtitle: String = "") -> void:
+	var title_text: String = title if title != "" else _tr("unlock_title")
+	var subtitle_text: String = subtitle if subtitle != "" else _tr("unlock_subtitle")
 	var pw: float = 336.0
 	var ph: float = 300.0
 	var px: float = (_VIEWPORT_W - pw) * 0.5
@@ -57,7 +61,7 @@ func setup(cost: int, can_afford: bool) -> void:
 	header.position = Vector2(px, py)
 	header.size = Vector2(pw, 64.0)
 	body().add_child(header)
-	UiFactory.label(body(), _tr("unlock_title"), Vector2(px, py),
+	UiFactory.label(body(), title_text, Vector2(px, py),
 		Vector2(pw, 64.0), 28, Color.WHITE)
 
 	# Close (X) at the panel's top-right corner → dismiss (no unlock).
@@ -67,7 +71,7 @@ func setup(cost: int, can_afford: bool) -> void:
 
 	# Big "+" deck glyph + one-line subtext (mirrors the reference "Add 1 box").
 	UiFactory.label(body(), "➕", Vector2(px, py + 74.0), Vector2(pw, 84.0), 52, _GREEN)
-	UiFactory.label(body(), _tr("unlock_subtitle"), Vector2(px, py + 158.0),
+	UiFactory.label(body(), subtitle_text, Vector2(px, py + 158.0),
 		Vector2(pw, 26.0), 17, Color(0.32, 0.30, 0.36))
 
 	# Two side-by-side options (REVIVE / PLAY ON layout): WATCH AD | PAY <cost>.
