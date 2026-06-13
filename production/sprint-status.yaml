@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-13"  # 6 Must-Haves + S3-008 (earn triggers) done. S3-006 + Nice-to-Haves remain.
+updated: "2026-06-13"  # 6 Must-Haves + S3-008 + S3-006 done. Both Should-Haves complete; Nice-to-Haves remain.
 
 stories:
   - id: "S3-001"
@@ -75,11 +75,11 @@ stories:
     name: "Extra Discard Slot booster (ADR-0010 BoardModel change)"
     file: "core/board_model.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gdscript-specialist + gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-13"
   - id: "S3-008"
     name: "Earn triggers: level-win coins + clean-clear bonus (flat fallback)"
     file: "autoloads/wallet_service.gd"

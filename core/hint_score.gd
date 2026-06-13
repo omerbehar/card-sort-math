@@ -79,7 +79,9 @@ static func _routes_directly(board: BoardModel, r: int) -> bool:
 # relief reflects future board flexibility, not immediate routing.
 static func _discard_relief(board: BoardModel, r: int) -> int:
 	var count: int = 0
-	for slot: int in BoardModel.DISCARD_SLOTS:
+	# Live discard capacity, not the base constant (ADR-0010): the Extra Discard Slot
+	# booster can grow the row, and relief must count cards in the expanded slots too.
+	for slot: int in board.active_discard_slots():
 		var cid: int = board.discard_card(slot)
 		if cid != -1 and board.result_of(cid) == r:
 			count += 1

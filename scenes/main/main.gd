@@ -8,9 +8,9 @@ const CARD_FLY: float = 0.28
 # them, the floor pile in the central play area, tool bar at the bottom.
 const STACK_XS: Array[float] = [14.0, 108.0, 202.0, 296.0]
 const STACK_Y: float = 112.0
-const DISCARD_ORIGIN: Vector2 = Vector2(7, 250)
+const DISCARD_ORIGIN: Vector2 = Vector2(195, 240)  # screen-centre x; DiscardRow self-centres its slots
 const FLOOR_ORIGIN: Vector2 = Layouts.FLOOR_ORIGIN
-const DISCARD_WARN_AT: int = 4
+const DISCARD_WARN_FREE_SLOTS: int = 1   # tint red when this many (or fewer) slots remain free
 # Offset from a stack's origin to its centre, where the clear burst spawns.
 const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 
@@ -243,7 +243,10 @@ func _into_discard(card_id: int, slot: int) -> void:
 	_discard_cards[slot] = card_id
 	var card := _floor.get_card(card_id)
 	if card != null:
-		await card.fly_to(_discard.slot_global_position(slot), CARD_FLY)
+		# Shrink the card to the (smaller) discard slot so it no longer overhangs
+		# (S3-006). A later PULL flies it back at full scale via _into_stack.
+		var slot_scale: float = DiscardRow.SLOT_W / Card.W
+		await card.fly_to(_discard.slot_global_position(slot), CARD_FLY, slot_scale)
 
 
 func _clear_stack(stack_index: int, new_target: int) -> void:
@@ -308,7 +311,25 @@ func _update_discard_warning() -> void:
 	for card_id: int in _discard_cards:
 		if card_id != -1:
 			filled += 1
-	_discard.set_warning(filled >= DISCARD_WARN_AT)
+	# Warn when only DISCARD_WARN_FREE_SLOTS (or fewer) empty slots remain. Scales
+	# with the live capacity so the Extra Discard Slot booster pushes the warning
+	# later (e.g. 4/5 at base, 6/7 once expanded) rather than firing at a fixed 4.
+	var free_slots: int = _discard_cards.size() - filled
+	_discard.set_warning(free_slots <= DISCARD_WARN_FREE_SLOTS)
+
+
+## Grows the discard buffer by one slot — the Extra Discard Slot booster's
+## model→view path (S3-006 / ADR-0010). Expands [BoardModel], mirrors the new
+## capacity in the [DiscardRow] view, and extends the per-slot bookkeeping.
+## NOTE: the booster *button* in the HUD is pending the economy-UI sprint; the
+## eventual WalletService.use_extra_discard() success path drives this method.
+func expand_discard() -> void:
+	if _model == null:
+		return
+	_model.expand_discard()
+	_discard.set_slot_count(_model.active_discard_slots())
+	_discard_cards.append(-1)
+	_update_discard_warning()
 
 
 func _open_pause() -> void:

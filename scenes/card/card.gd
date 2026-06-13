@@ -91,8 +91,13 @@ func _on_input_event(_viewport: Node, event: InputEvent, _shape_idx: int) -> voi
 
 
 ## Tweens the card to [param target] (global, top-left) and awaits completion.
-func fly_to(target: Vector2, duration: float) -> void:
-	var tween := create_tween()
+## [param target_scale] tweens the card's scale alongside the move — used to shrink
+## a card into the smaller discard slots (S3-006) and restore it to full size when
+## pulled back onto a stack. Defaults to full size (1.0).
+func fly_to(target: Vector2, duration: float, target_scale: float = 1.0) -> void:
+	var tween := create_tween().set_parallel(true)
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(self, "global_position", target, duration)
+	if not is_equal_approx(scale.x, target_scale):
+		tween.tween_property(self, "scale", Vector2(target_scale, target_scale), duration)
 	await tween.finished

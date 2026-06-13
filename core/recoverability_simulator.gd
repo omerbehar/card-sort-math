@@ -20,6 +20,11 @@ static func run(config: LevelConfig, mistake_turn: int = -1) -> Dictionary:
 	if turn_of_mistake < 0:
 		turn_of_mistake = config.target_queue.size() / 2
 
+	# ADR-0010: this and the two other BoardModel.DISCARD_SLOTS reads in this file
+	# (the headroom calc below and _discard_occupancy) intentionally use the BASE
+	# constant, NOT board.active_discard_slots(). Generation-time recoverability must
+	# be proven at base capacity (5) — the level must be solvable WITHOUT the player
+	# buying runtime Extra Discard slots. Do not route these through active_discard_slots().
 	var min_headroom: int = BoardModel.DISCARD_SLOTS
 	var mistake_done: bool = false
 	var turn: int = 0
@@ -44,6 +49,7 @@ static func run(config: LevelConfig, mistake_turn: int = -1) -> Dictionary:
 			card_id = _greedy_card(board, exposed)
 
 		board.tap_card(card_id)
+		# Base DISCARD_SLOTS by design (ADR-0010) — recoverability at base capacity.
 		min_headroom = mini(min_headroom, BoardModel.DISCARD_SLOTS - _discard_occupancy(board))
 		turn += 1
 
@@ -100,6 +106,7 @@ static func _has_open_stack(board: BoardModel, result: int) -> bool:
 
 static func _discard_occupancy(board: BoardModel) -> int:
 	var used: int = 0
+	# Base DISCARD_SLOTS by design (ADR-0010) — generation-time scan at base capacity.
 	for slot in BoardModel.DISCARD_SLOTS:
 		if board.discard_card(slot) != -1:
 			used += 1

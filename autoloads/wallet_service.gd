@@ -438,6 +438,42 @@ func notify_hint_consumed() -> void:
 	_hint_in_progress = false
 
 
+## Activates the Extra Discard Slot booster on [param board] (Core Rule 11, ADR-0010).
+## [b]Purchase-ahead-only:[/b] a proactive buy made while room remains — deliberately
+## NOT a one-tap-from-LOSE rescue.
+##
+## Precondition checks (in order — no spend before any precondition fails):
+## 1. At cap: [method BoardModel.active_discard_slots] >= [member EconomyConfig.max_discard_slots]
+##    → [code]BOOSTER_PRECONDITION_FAILED(EXTRA_DISCARD, AT_MAX)[/code] (EC-07, AC-E04).
+## 2. Row full: [method BoardModel.occupied_discard_count] >= active slots
+##    → [code]BOOSTER_PRECONDITION_FAILED(EXTRA_DISCARD, DISCARD_FULL)[/code] (EC-06, AC-E05).
+## 3. [method spend] — deducts [member EconomyConfig.extra_discard_cost_coins].
+##
+## The cap lives here, not in [BoardModel] ([method BoardModel.expand_discard] is uncapped) so
+## [code]core/[/code] stays free of economy config (ADR-0010). On success: appends one slot,
+## sets [member extra_discard_active], increments [member boosters_used_this_level], emits
+## [code]BOOSTER_ACTIVATED(EXTRA_DISCARD)[/code]. Returns [code]true[/code] on success, else false.
+## Source: design/gdd/deck-economy.md Core Rule 11, EC-06/07, AC-E01/E03/E04/E05/E06; ADR-0010.
+func use_extra_discard(board: BoardModel) -> bool:
+	if board.active_discard_slots() >= _config.max_discard_slots:
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.EXTRA_DISCARD,
+				EconomyEnums.FailReason.AT_MAX))
+		return false  # EC-07 / AC-E04: coins unchanged
+	if board.occupied_discard_count() >= board.active_discard_slots():
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.EXTRA_DISCARD,
+				EconomyEnums.FailReason.DISCARD_FULL))
+		return false  # EC-06 / AC-E05: purchase-ahead-only, no rescue
+	if not spend(EconomyEnums.Currency.COINS, _config.extra_discard_cost_coins):
+		return false  # insufficient -> SPEND_FAILED already emitted by spend()
+	board.expand_discard()
+	extra_discard_active = true
+	boosters_used_this_level += 1
+	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.EXTRA_DISCARD))
+	return true
+
+
 ## Clears the per-level economy state. Called on a new level (GameManager.level_started,
 ## connected at runtime) and directly by tests. Accepts an optional level argument so it
 ## can be bound straight to the [code]level_started(level: int)[/code] signal.
