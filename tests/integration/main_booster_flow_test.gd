@@ -105,60 +105,126 @@ func test_extra_discard_grows_the_discard_row_in_scene() -> void:
 
 # --- terminal states (WIN / LOSE) ------------------------------------------
 
-# An exposed card that will NOT route to any open stack (so a tap discards it).
-func _exposed_discardable(main: Variant) -> int:
-	var model = main._model
-	for cid in model.exposed_cards():
-		var r: int = model.result_of(cid)
-		var routes := false
-		for s in BoardModel.STACK_COUNT:
-			if not model.is_stack_locked(s) and model.stack_target(s) == r \
-					and model.stack_count(s) < BoardModel.STACK_CAPACITY:
-				routes = true
-				break
-		if not routes:
-			return cid
-	return -1
+# A guaranteed-losable level: 12 cards all result 9, stacks open on 1/2/3/4 — so
+# nothing ever routes; every tap discards. After the 5 base slots fill, the next
+# tap overflows the discard → LOSE. Deterministic, independent of the real level.
+func _losable_config() -> LevelConfig:
+	var cfg := LevelConfig.new()
+	cfg.level_id = 1
+	cfg.layout_id = 0
+	cfg.target_queue = [1, 2, 3, 4] as Array[int]   # no stack ever targets 9
+	var placements := Layouts.get_layout(0)
+	var pool: Array[CardData] = []
+	for slot in 12:
+		pool.append(CardData.create(4, 5, int(placements[slot].layer), slot))  # 4+5 = 9
+	cfg.card_pool = pool
+	return cfg
 
 
-func test_losing_in_scene_shows_result_and_does_not_advance() -> void:
-	# Real play: keep discarding non-routing cards until the discard row overflows
-	# (LOSE). Assert the controller surfaces the result screen and progression does
-	# NOT advance (a loss leaves GameManager.current_level unchanged).
+func test_losing_real_play_in_scene_shows_result_and_does_not_advance() -> void:
+	# Real play to a LOSE: load the controlled losable level, tap exposed cards
+	# (all discard) until the discard overflows, then assert the result screen shows
+	# and progression does NOT advance (a loss leaves current_level unchanged).
 	var runner = await _boot()
 	var main = runner.scene()
+	main.load_level_config(_losable_config(), BoardModel.STACK_COUNT)
+	await runner.simulate_frames(5)
 	var model = main._model
 	var level_before: int = GameManager.current_level
 
 	var guard := 0
-	while not model.is_game_over() and guard < 40:
-		var cid: int = _exposed_discardable(main)
-		if cid == -1:
+	while not model.is_game_over() and guard < 20:
+		var exposed: Array[int] = model.exposed_cards()
+		if exposed.is_empty():
 			break
-		main._on_card_tapped(cid)
+		main._on_card_tapped(exposed[0])
 		var wait := 0
-		while main.is_input_locked() and not model.is_game_over() and wait < 25:
+		while main.is_input_locked() and not model.is_game_over() and wait < 80:
 			wait += 1
-			await runner.simulate_frames(3)
+			await runner.simulate_frames(2, 32)
 		guard += 1
-	await runner.simulate_frames(10)
+	# The terminal tap's event chain (route/clear → WIN, or → LOSE) finishes on its
+	# own coroutine; wait for the controller to surface the result screen.
+	var settle := 0
+	while not is_instance_valid(main._result_screen) and settle < 150:
+		settle += 1
+		await runner.simulate_frames(2, 32)
 
 	assert_bool(model.is_lost()).is_true()
 	assert_object(main._result_screen).is_not_null()
 	assert_int(GameManager.current_level).is_equal(level_before)   # loss does not advance
 
 
-func test_winning_in_scene_shows_result_and_advances() -> void:
-	# A full real-level win is layout/economy dependent, so we drive the controller's
-	# terminal WIN handling directly with a WIN GameEvent (the same event BoardModel
-	# emits when the floor empties). Asserts the controller shows the result screen
-	# and advances progression via GameManager.complete_level.
+# A trivially-winnable level: 12 cards all result 5, with exactly four 5s in the
+# queue (solvability: 12 == 3×4). With all four stacks open on 5, every card routes
+# — a guaranteed win by tapping whatever is exposed, no RNG, no discards.
+func _winnable_config() -> LevelConfig:
+	var cfg := LevelConfig.new()
+	cfg.level_id = 1
+	cfg.layout_id = 0                       # 12 placements (Layouts.SLOT_COUNTS[0])
+	cfg.target_queue = [5, 5, 5, 5] as Array[int]
+	var placements := Layouts.get_layout(0)
+	var pool: Array[CardData] = []
+	for slot in 12:
+		pool.append(CardData.create(2, 3, int(placements[slot].layer), slot))  # 2+3 = 5
+	cfg.card_pool = pool
+	return cfg
+
+
+func test_winning_real_play_in_scene_advances() -> void:
+	# Real play to a WIN: load the controlled winnable level (all 4 stacks open),
+	# tap exposed cards until the floor empties, then assert the result screen shows
+	# and progression advances (GameManager.complete_level).
 	var runner = await _boot()
 	var main = runner.scene()
+	main.load_level_config(_winnable_config(), BoardModel.STACK_COUNT)
+	await runner.simulate_frames(5)
+	var model = main._model
 	var level_before: int = GameManager.current_level
 
-	await main._play_event(GameEvent.win())
-	await runner.simulate_frames(10)
+	var guard := 0
+	while not model.is_game_over() and guard < 60:
+		var exposed: Array[int] = model.exposed_cards()
+		if exposed.is_empty():
+			break
+		main._on_card_tapped(exposed[0])
+		var wait := 0
+		while main.is_input_locked() and not model.is_game_over() and wait < 80:
+			wait += 1
+			await runner.simulate_frames(2, 32)
+		guard += 1
+	# The terminal tap's event chain (route/clear → WIN, or → LOSE) finishes on its
+	# own coroutine; wait for the controller to surface the result screen.
+	var settle := 0
+	while not is_instance_valid(main._result_screen) and settle < 150:
+		settle += 1
+		await runner.simulate_frames(2, 32)
 
+	assert_bool(model.is_won()).is_true()
 	assert_object(main._result_screen).is_not_null()
 	assert_int(GameManager.current_level).is_equal(level_before + 1)   # win advances
+
+
+func test_adding_a_deck_unlocks_a_stack_in_scene() -> void:
+	# The prototype opens one stack; the rest are locked "decks" bought in-game.
+	# Tapping a locked deck (via the unlock request) adds it: the stack unlocks and
+	# draws its target from the queue.
+	var runner = await _boot()
+	var main = runner.scene()
+	var model = main._model
+	var locked := -1
+	for s in BoardModel.STACK_COUNT:
+		if model.is_stack_locked(s):
+			locked = s
+			break
+	assert_int(locked).is_not_equal(-1)             # there is a locked deck to add
+
+	main._on_unlock_requested(locked)
+	var wait := 0
+	while main.is_input_locked() and wait < 30:
+		wait += 1
+		await runner.simulate_frames(3)
+	await runner.simulate_frames(5)
+
+	assert_bool(model.is_stack_locked(locked)).is_false()                 # deck added
+	assert_int(model.stack_target(locked)).is_not_equal(BoardModel.NO_TARGET)  # drew a target

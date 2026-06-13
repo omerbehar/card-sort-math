@@ -96,15 +96,33 @@ func _build_board() -> void:
 
 ## (Re)starts level [param n]: rebuilds the model and floor, resets the view.
 func start_level(n: int) -> void:
-	_config = LevelData.get_level(n)
-	_model = BoardModel.from_config(_config, PROTO_OPEN_COUNT)
 	GameManager.start_level(n)
+	_setup_board(LevelData.get_level(n), PROTO_OPEN_COUNT)
+	_arm_tutorial(n)
+
+
+## Test/tool seam: rebuilds the board from an explicit [param config] (bypassing
+## [LevelData]) with [param open_count] stacks open. Used by integration tests to
+## load a controlled, winnable level. Does not re-fire [method GameManager.start_level]
+## or the tutorial.
+func load_level_config(config: LevelConfig, open_count: int = PROTO_OPEN_COUNT) -> void:
+	_setup_board(config, open_count)
+
+
+# Builds the model + view for [param config]. Shared by start_level (real levels)
+# and load_level_config (test/tool configs).
+func _setup_board(config: LevelConfig, open_count: int) -> void:
+	_config = config
+	_model = BoardModel.from_config(config, open_count)
 
 	for cards in _stack_cards:
 		cards.clear()
-	for i in _discard_cards.size():
-		_discard_cards[i] = -1
+	_discard.set_slot_count(BoardModel.DISCARD_SLOTS)
+	_discard_cards.clear()
+	for _i in BoardModel.DISCARD_SLOTS:
+		_discard_cards.append(-1)
 	_input_locked = false
+	_picker_armed = false
 
 	_floor.spawn(_config)
 	for i in _stacks.size():
@@ -115,8 +133,6 @@ func start_level(n: int) -> void:
 	_floor.refresh_exposure(_model)
 	if _hud != null:
 		_hud.refresh()
-
-	_arm_tutorial(n)
 
 
 ## Arms the first-time tutorial coach on level [param n] if the player has not
