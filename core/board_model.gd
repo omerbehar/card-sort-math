@@ -12,6 +12,9 @@ const STACK_COUNT: int = 4
 const STACK_CAPACITY: int = 3
 const DISCARD_SLOTS: int = 5
 const NO_TARGET: int = -1
+## Max permutations the Reshuffle booster tries to satisfy the routable-card
+## guarantee (Core Rule 10 / AC-R09) before falling back to the last layout.
+const RESHUFFLE_TRIES: int = 32
 
 # --- immutable level data ---
 var _result_of: Array[int] = []        # card_id -> printed result
@@ -178,7 +181,100 @@ func tap_card(card_id: int) -> Array[GameEvent]:
 		return []
 	if not is_exposed(card_id):
 		return []
+	return _resolve_play(card_id)
 
+
+## Picker booster: plays a [b]covered[/b] card regardless of coverage — the only
+## way to act on a card that is not yet exposed. Resolution is identical to a tap
+## (route to a matching open stack, else discard, then cascade); only the exposure
+## precondition is skipped. A no-op when the card is gone or the game is over.
+## The economy layer ([method WalletService.use_picker]) gates this behind a spend.
+## Source: design/gdd/deck-economy.md (Picker booster — replaces Hint).
+func pick_card(card_id: int) -> Array[GameEvent]:
+	if is_game_over():
+		return []
+	if _removed.has(card_id):
+		return []
+	return _resolve_play(card_id)
+
+
+## Reshuffle booster (Core Rule 10 / Formula 6): re-permutes the coverage of the
+## cards still on the floor. Preserves results, target queue, removed set, stacks,
+## discard, and draw index (AC-R01/R02); solvability is preserved trivially since
+## results and queue are untouched (AC-R03).
+##
+## [param placements] is the level's layout ([code]{pos, layer}[/code] per card_id —
+## passed in because [code]core/[/code] never loads resources). [param rng] is a
+## caller-seeded generator ([ReshuffleSeed.mix] → [code]rng.seed[/code]) so the
+## permutation is deterministic and platform-stable (AC-R04/R08). The layout is
+## re-rolled up to [constant RESHUFFLE_TRIES] times to guarantee at least one
+## exposed card routes directly or opens coverage (AC-R09), so the board is never
+## immediately stuck after a reshuffle.
+##
+## Returns the new placement→card assignment ([code]Array[int][/code], index =
+## placement, value = card_id, [code]-1[/code] = empty/removed) so callers and
+## tests can compare layouts across seeds.
+func reshuffle(placements: Array, rng: RandomNumberGenerator) -> Array[int]:
+	var occupied: Array[int] = []          # placement indices still holding a floor card
+	for i in _result_of.size():
+		if not _removed.has(i):
+			occupied.append(i)
+	var placement_cover: Dictionary = Exposure.compute_covered_by(placements)
+	var applied: Array[int] = []
+	for _attempt in RESHUFFLE_TRIES:
+		var cards: Array[int] = occupied.duplicate()
+		_shuffle_ints(cards, rng)
+		var card_at: Dictionary = {}        # placement index -> card_id now there
+		for k in occupied.size():
+			card_at[occupied[k]] = cards[k]
+		var new_cov: Dictionary = {}
+		for i in _result_of.size():
+			new_cov[i] = [] as Array[int]
+		for p in occupied:
+			var coverers: Array[int] = []
+			for q in (placement_cover[p] as Array):
+				if card_at.has(q):          # only occupied placements still cover
+					coverers.append(card_at[q])
+			new_cov[card_at[p]] = coverers
+		_covered_by = new_cov
+		applied = _assignment_array(card_at)
+		if _has_routable_move():
+			return applied
+	return applied                          # fallback: last layout (best effort)
+
+
+# Seeded Fisher–Yates in-place shuffle (gameplay-code rule: no global RNG in core/).
+func _shuffle_ints(arr: Array[int], rng: RandomNumberGenerator) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: int = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
+
+
+# Builds a placement→card_id array (−1 where the placement is empty/removed).
+func _assignment_array(card_at: Dictionary) -> Array[int]:
+	var out: Array[int] = []
+	for p in _result_of.size():
+		out.append(card_at.get(p, -1))
+	return out
+
+
+# True when at least one currently-exposed card can make a meaningful move: it
+# routes to an open stack, or removing it would expose a covered card (AC-R09).
+func _has_routable_move() -> bool:
+	for cid in exposed_cards():
+		if _find_open_stack(_result_of[cid]) != -1:
+			return true
+		if newly_exposed_count(cid) > 0:
+			return true
+	return false
+
+
+# Shared play resolution for [method tap_card] (exposed) and [method pick_card]
+# (covered): route the card to a matching open stack, else discard it (or LOSE if
+# the discard is full), then run the cascade and the win check.
+func _resolve_play(card_id: int) -> Array[GameEvent]:
 	var events: Array[GameEvent] = []
 	var result: int = _result_of[card_id]
 	var stack_index: int = _find_open_stack(result)

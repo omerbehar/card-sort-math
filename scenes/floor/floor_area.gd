@@ -62,5 +62,29 @@ func refresh_exposure(model: BoardModel) -> void:
 			card.set_exposed(model.is_exposed(card_id))
 
 
+## Picker mode (S3-012): makes every surviving card tappable — including covered
+## ones — so the player can choose a lower-layer card to play. The controller calls
+## [method refresh_exposure] afterwards to return to normal tappability.
+func set_pickable_all(model: BoardModel) -> void:
+	for card_id: int in _cards:
+		if not model.is_card_removed(card_id):
+			(_cards[card_id] as Card).input_pickable = true
+
+
+## Repositions [param card_id] to a placement (used by the Reshuffle re-layout).
+## Tweens over [param duration]s (instant when 0).
+func place_card_at(card_id: int, pos: Vector2, layer: int, duration: float) -> void:
+	var card: Card = _cards.get(card_id)
+	if card == null:
+		return
+	card.z_index = layer
+	if duration <= 0.0:
+		card.position = pos
+		return
+	var tween := card.create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(card, "position", pos, duration)
+
+
 func _on_card_tapped(card_id: int) -> void:
 	card_tapped.emit(card_id)

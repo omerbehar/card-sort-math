@@ -7,14 +7,15 @@
 > **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (accepted) 2026-06-12 — cleared for programmer handoff. 4 accepted concerns: streak reset loss-aversion risk; "double reward" ad framing (keep quiet/dismissible in UX); Hint routing-info leak (acknowledged as intentional, note added); Reshuffle-into-stuck feels unfair.
 > **Independent /design-review (2026-06-12)**: NEEDS REVISION → revised. Resolutions: efficiency bonus now mechanized (`CLEAN_CLEAR_BONUS`); streak reset softened to a day-3 floor; Extra Discard Slot reframed purchase-ahead-only (no rescue); Reshuffle now guarantees a routable card; canonical `EconomyEvent` type introduced; `ComplianceService` method names corrected to `is_restricted()`; Undo replay approach specified against the real `BoardModel`; Hint ceiling corrected 585→405; streak average corrected 37→39; rollback uses a pre-spend snapshot; `DAILY_COINS_CAP` scope declared (ad-earn only).
 > **Scope change (2026-06-12)**: **Undo booster removed** by design decision. The booster set is now **three** — Hint, Reshuffle, Extra Discard Slot. All Undo rules, costs, edge cases, acceptance criteria, and registry constants are struck; Core Rule 9 is tombstoned to keep `Core Rule N` cross-references stable. Rationale and full ripple list recorded in `design/gdd/reviews/deck-economy-review-log.md`. The surviving pre-implementation decisions are ratified in **ADR-0008** (`EconomyEvent` type), **ADR-0009** (injectable `TimeProvider` seam — still required for Reshuffle determinism + daily caps/streaks), and **ADR-0010** (Extra Discard Slot board change).
+> **Scope change (2026-06-13)**: **Hint booster replaced by Picker.** The booster set is **Picker, Reshuffle, Extra Discard Slot**. Picker lets the player play any covered (lower-layer) card immediately (`BoardModel.pick_card` / `WalletService.use_picker`), bypassing coverage but never revealing the arithmetic answer (Core Rule 12 holds). Removed with Hint: the `hint_score` formula and its `ROUTES/OPENS/RELIEF_WEIGHT` knobs, the `HINT_RESULT` event, the `_hint_in_progress` double-tap path (`ALREADY_IN_PROGRESS`/`NO_EXPOSED_CARD` reasons), and `HINT_COST_*` (now `PICKER_COST_*`). `BoosterType.HINT → PICKER`; new `FailReason.INVALID_TARGET`.
 
 ## Overview
 
 The Deck Economy is CardSortMath's currency and booster layer: a two-currency model
 (**Coins**, soft; **Gems**, hard) underpinned by a pure, node-free `WalletData` record
 persisted via `SaveService`. Coins are earned passively through play — level wins, daily
-challenges, rewarded ads — and spent on three consumable boosters: **Hint** (highlights the
-single most productive tap without revealing the arithmetic answer), **Reshuffle**
+challenges, rewarded ads — and spent on three consumable boosters: **Picker** (plays a
+covered lower-layer card the player chooses, without revealing the arithmetic answer), **Reshuffle**
 (redistributes cards across the floor while preserving the solvability invariant), and
 **Extra Discard Slot** (adds a temporary sixth discard buffer for the current level). Gems are the premium currency, acquired via IAP or milestone gifts,
 and spent on cosmetics, currency conversion, and booster bundles. From the player's
@@ -47,7 +48,7 @@ calm for future floors, not grinding to stay playable on the current one. This i
 toolbox of a craftsperson, not the power-up queue of an action game.
 
 Critically: all three boosters act on **board state** (layout, buffer capacity), never on
-the **equation**. Hint highlights a productive *tap destination*; the player still computes `7 + 6`.
+the **equation**. Picker grants *access* to a covered card; the player still computes `7 + 6`.
 Reshuffle changes *coverage*; the card values are unchanged. Extra Discard Slot buys *buffer space* — purchased
 ahead, while the player still has room, as a deliberate "give me more thinking space" choice,
 not a panic-button when the discard is already full; the player still matches every result themselves. Because the tools act on arrangement and the player acts on
@@ -121,26 +122,20 @@ as playing without them. The edu value prop survives every spend.
    AND the player can afford it. The UI shows it greyed-out if unaffordable but the
    precondition is met, so players know it exists without feeling blocked.
 
-8. **Hint.** Precondition: ≥1 exposed card. Effect: highlight the exposed card with the
-   highest `hint_score` (see Formulas). The highlight is a visual cue only — it does
-   NOT reveal the result, does NOT auto-tap, and does NOT show a sum. The player still
-   computes the arithmetic and still makes the tap. Duration: until the next tap or level
-   end, whichever comes first.
-   *Design note (intentional):* the Hint surfaces **routing** information — "this card
-   belongs on a stack that's currently open" — without surfacing computation. An attentive
-   player can infer which open targets exist from the stack row, but they must still compute
-   the card's result to confirm and route it. This is deliberate: Hint is a planning aid,
-   not an arithmetic aid. Any change that causes the view to display the card's result value
-   as part of the hint highlight violates this design intent and must be rejected.
-   *Degenerate-case watch (recommended guard, calibrate at M3):* on a board with a single exposed
-   card and a single open stack, Hint collapses to a complete "tap this" routing solution. The
-   arithmetic is still the player's, but the planning layer vanishes. If M3 data shows Hint
-   purchased disproportionately in these trivial states, add a precondition that suppresses Hint
-   when the productive tap is unambiguous (e.g. ≤1 exposed card). Tracked as a tuning watch, not a
-   launch blocker.
+8. **Picker (replaces Hint, 2026-06-13).** Precondition: the chosen card is still on the
+   floor and the board is not over. Effect: the player selects any **covered (lower-layer)**
+   card and it is played immediately — routed to a matching open stack, or sent to discard if
+   none — exactly as a normal tap would resolve, but bypassing the coverage rule. This is the
+   only way to act on a card that is not yet exposed. Any depth is reachable.
+   *Design note (intentional):* the Picker grants **access**, not **answers**. The player still
+   reads the card's equation and the board still routes it by its computed result; the booster
+   only lifts the coverage restriction so a buried card can be played now. It NEVER reveals or
+   displays the card's arithmetic result — the no-arithmetic-solving pillar (Core Rule 12) holds.
+   *Why it replaced Hint:* Hint surfaced routing information via a scored highlight; the Picker is
+   a more direct, player-driven dig tool with no scoring heuristic to tune.
 
 9. **~~Undo~~ — REMOVED (2026-06-12).** The Undo booster was cut from the design. The booster
-   set is **Hint, Reshuffle, Extra Discard Slot**. This rule number is retained as a tombstone so
+   set is **Picker, Reshuffle, Extra Discard Slot** (Hint replaced by Picker 2026-06-13). This rule number is retained as a tombstone so
    that `Core Rule N` cross-references elsewhere in the document stay stable; there is no Undo
    precondition, cost, event, replay coordinator, or `tap_history` in the economy. See the
    scope-change note in the Status block and `design/gdd/reviews/deck-economy-review-log.md` for
@@ -183,8 +178,8 @@ as playing without them. The edu value prop survives every spend.
     precondition fails (at max, or discard full), `BOOSTER_PRECONDITION_FAILED` is returned
     without deducting coins.
 
-12. **No booster touches arithmetic.** This is the hard constraint. Hint routes the tap;
-    the player computes. Reshuffle reshuffles positions; card values are unchanged. Extra
+12. **No booster touches arithmetic.** This is the hard constraint. Picker grants access to a
+    covered card; the player computes. Reshuffle reshuffles positions; card values are unchanged. Extra
     Discard widens the buffer; the math remains the player's own. Any future booster idea
     that reveals a result, auto-routes a card, or solves an exercise must be rejected.
 
@@ -207,7 +202,6 @@ to that signal. The canonical event names are:
 | `BOOSTER_ACTIVATED` | a booster successfully activated | `booster_type` |
 | `BOOSTER_PRECONDITION_FAILED` | a booster precondition was unmet (no spend) | `booster_type`, `reason` |
 | `BOOSTER_PURCHASE_FAILED` | a purchase was rejected (e.g. double-tap) | `booster_type`, `reason` |
-| `HINT_RESULT` | a Hint resolved to a target card | `card_id` **only** (no result/operands — see AC-M01a) |
 | `IAP_BLOCKED` | a restricted user's IAP attempt was blocked | `sku`, `reason` |
 
 The Acceptance Criteria use shorthand (`SPENT(...)`, `EARNED(...)`, etc.); these map 1:1 to the
@@ -230,7 +224,7 @@ ratified by the ADR candidate in Open Questions.
     is the concrete, testable reward that makes choosing *not* to spend its own positive outcome
     rather than a mere absence of cost — the reserve grows *faster* when you solve bare-handed.
     The bonus is forfeited the moment any coin- or gem-cost booster is activated during the
-    level (Hint/Reshuffle/Extra Discard). It does not stack per-booster (it is binary:
+    level (Picker/Reshuffle/Extra Discard). It does not stack per-booster (it is binary:
     clean or not). Tuning knob: `CLEAN_CLEAR_BONUS` (see Tuning Knobs).
 
 14. **Daily challenge coin earn.** **150 coins** for completing the daily challenge (once
@@ -283,14 +277,14 @@ ratified by the ADR candidate in Open Questions.
 #### Spend Rates (provisional — calibrate from playtest)
 
 19. **Booster coin costs** (ordered by power / disruption, ascending):
-    - Hint: **120 coins**
+    - Picker: **120 coins**
     - Reshuffle: **250 coins**
     - Extra Discard Slot: **350 coins**
-    At ~750 coins/day engaged income, a non-paying player can afford roughly 1 Hint every
+    At ~750 coins/day engaged income, a non-paying player can afford roughly 1 Picker every
     2.4 days or 1 Extra Discard Slot every 7 days of play — occasional, not routine.
 
 20. **Booster gem costs** (premium convenience; 1 gem ≈ 35 coin equivalent):
-    - Hint: **3 gems**
+    - Picker: **3 gems**
     - Reshuffle: **7 gems**
     - Extra Discard Slot: **10 gems**
 
@@ -317,7 +311,7 @@ ratified by the ADR candidate in Open Questions.
     | Gem Pack M | $4.99 | 280 gems |
     | Gem Pack L | $9.99 | 600 gems |
     | Gem Pack XL | $19.99 | 1,400 gems |
-    | Booster 5-Pack | $1.99 | 5× Hint OR 5× Reshuffle OR mixed |
+    | Booster 5-Pack | $1.99 | 5× Picker OR 5× Reshuffle OR mixed |
     | Premium Bundle | $4.99 | Remove Ads + 150 gems + 2,000 coins |
 
     All prices are USD base; localized price points applied at store level.
@@ -435,7 +429,7 @@ At that income, time-to-afford for each booster:
 
 | Booster | Cost | Days of play |
 |---------|------|-------------|
-| Hint | 120 | 0.16 (every ~2.4 days; ~4 per session if saving) |
+| Picker | 120 | 0.16 (every ~2.4 days; ~4 per session if saving) |
 | Reshuffle | 250 | 0.33 |
 | Extra Discard Slot | 350 | 0.47 |
 
@@ -485,48 +479,15 @@ The earn transaction is defined as:
 
 ---
 
-### 5. Hint scoring function
+### 5. ~~Hint scoring function~~ — REMOVED (Picker replaced Hint, 2026-06-13)
 
-The hint score is defined as:
+The Picker booster has **no scoring function** — the *player* chooses which covered card to
+play, so there is no heuristic to compute or tune. The former `hint_score` formula and its
+`ROUTES_WEIGHT` / `OPENS_WEIGHT` / `RELIEF_WEIGHT` knobs are struck.
 
-`hint_score(card_id, board_state) = routes_directly(r, board_state) × ROUTES_WEIGHT`
-`                                  + opens_new_cards(card_id, board_state) × OPENS_WEIGHT`
-`                                  + discard_relief(r, board_state) × RELIEF_WEIGHT`
-
-Where:
-- `r = board_state.result_of(card_id)`
-- `routes_directly(r, bs)` = 1 if at least one stack has `target == r` AND `count < STACK_CAPACITY`; else 0
-- `opens_new_cards(card_id, bs)` = count of cards that become newly exposed if `card_id` is removed (cards for which card_id is the last remaining coverer)
-- `discard_relief(r, bs)` = count of cards in discard whose result == r (they'll be pulled free when this result's stack clears)
-
-**Tie-break:** lowest `card_id` (deterministic).
-
-**Variables:**
-
-| Variable | Type | Range | Description |
-|----------|------|-------|-------------|
-| `r` | int | level result domain | Arithmetic result of this card |
-| `routes_directly` | bool→int | {0, 1} | 1 if this card can directly fill an open stack slot right now |
-| `opens_new_cards` | int | 0 – MAX_COVERAGE_DEPTH | Cards that become exposed by removing this card. The theoretical `total_floor_cards` max is geometrically unreachable; the real per-tap max is a small layout constant (~1–4, the generator's layer count) |
-| `discard_relief` | int | 0 – DISCARD_SLOTS | Matching cards in discard that would eventually be freed |
-| `ROUTES_WEIGHT` | int | 200 (tuning knob) | Strongly prefers a directly-routing card |
-| `OPENS_WEIGHT` | int | 10 (tuning knob) | Each newly exposed card adds value |
-| `RELIEF_WEIGHT` | int | 5 (tuning knob) | Each discard card with matching result adds modest value |
-
-**`card_id` definition (determinism):** `card_id` must be the stable `LevelConfig`-assigned card
-identifier (not a scene-instance handle), so the lowest-`card_id` tie-break is deterministic
-across saves, restarts, and reshuffles.
-
-**Output Range:** 0 (no useful tap: no routing, no exposure gain) to `200 + (total_floor_cards × 10) + (DISCARD_SLOTS × 5)`. At default weights on an 18-card board the *theoretical* ceiling is `200 + 18×10 + 5×5 = 405`; the *practical* operating ceiling is far lower (~255) because `opens_new_cards` rarely exceeds the layer count. Score is purely ordinal — magnitude has no meaning outside comparison.
-
-**Weight-interaction note:** Hint's routing preference holds only while `ROUTES_WEIGHT > opens_new_cards × OPENS_WEIGHT`. At default weights (200 / 10) routing dominates unless a card opens ≥ 21 cards (unreachable). At `OPENS_WEIGHT = 30` (max), routing preference flips once `opens_new_cards ≥ 7` (achievable) — tune the two weights as a pair, not independently.
-
-**Example:** Board has 3 exposed cards.
-- Card 2 (result 7): routes_directly=1 (200), opens 2 cards (20), 0 in discard (0) → **score = 220** ← selected
-- Card 5 (result 9): routes_directly=0 (0), opens 3 cards (30), 1 in discard (5) → score = 35
-- Card 8 (result 7): routes_directly=1 (200), opens 0 cards (0), 0 in discard (0) → score = 200
-
-Winner: Card 2 (220). Hint highlights card 2.
+Picker behaviour is fully specified by Core Rule 8 and resolves through `BoardModel.pick_card`,
+which reuses the normal tap resolution (route to a matching open stack, else discard) but skips
+the exposure check. No new math; determinism is inherited from the deterministic board model.
 
 ---
 
@@ -611,7 +572,7 @@ guard). Conversion-coins count against `DAILY_GEM_CONVERT_CAP` (50 gems), NOT `D
 
 ## Edge Cases
 
-- **EC-01 — Zero balance, buy attempt:** If `coins = 0` and player taps Hint (120 coins): `WalletData.spend(COINS, 120)` guard fails → `SPEND_FAILED(COINS, 120, 0)` emitted → `WalletService` does NOT call any board mutation → UI shows "not enough coins" toast. Board state is unchanged.
+- **EC-01 — Zero balance, buy attempt:** If `coins = 0` and player buys the Picker (120 coins): `WalletData.spend(COINS, 120)` guard fails → `SPEND_FAILED(COINS, 120, 0)` emitted → `WalletService` does NOT call any board mutation → UI shows "not enough coins" toast. Board state is unchanged.
 
 - **EC-02 — _(removed: Undo cut 2026-06-12)_**
 - **EC-03 — _(removed: Undo cut 2026-06-12)_**
@@ -623,7 +584,7 @@ guard). Conversion-coins count against `DAILY_GEM_CONVERT_CAP` (50 gems), NOT `D
 
 - **EC-07 — Extra Discard Slot at maximum (already expanded twice):** If `_active_discard_slots == MAX_DISCARD_SLOTS (7)`: `BOOSTER_PRECONDITION_FAILED` returned. `spend` is not called. Coins unchanged. The UI button is greyed out with a visual indicator that maximum slots have been reached.
 
-- **EC-08 — Two simultaneous Hint requests (double-tap):** If `_hint_in_progress == true` when a second Hint tap arrives: the second request is rejected before `spend` is called. No second coin deduction. No second computation. `BOOSTER_PURCHASE_FAILED` with reason `ALREADY_IN_PROGRESS` is emitted for the second tap. `_hint_in_progress` clears when the view signals the first result is consumed.
+- **EC-08 — Picker invalid target:** If the player activates the Picker and the chosen card is no longer on the floor (already removed) or the board is over, `use_picker` rejects it **before** `spend` is called: `BOOSTER_PRECONDITION_FAILED(PICKER, INVALID_TARGET)` is emitted, no coins are deducted, no board mutation occurs. (The Picker plays immediately, so there is no in-progress/double-tap state — the former Hint `ALREADY_IN_PROGRESS` path no longer exists.)
 
 - **EC-09 — Transaction failure mid-level (atomic rollback via snapshot):** If `spend(COINS, 250)` returns `true` (coins deducted for a Reshuffle) but the board mutation subsequently raises an unexpected error: `WalletService` restores the balance by **direct assignment** `wallet.coins = pre_spend_balance` (the value captured before the deduction) → emits `TRANSACTION_ROLLED_BACK(COINS, 250)` → board mutation is not applied → board remains in its pre-activation state → error is logged. **Rollback must NOT use `earn()`** — near `MAX_BALANCE` the clamp would silently truncate the re-credit and the player would lose coins (see AC-W05b). Snapshot assignment restores the exact pre-spend value regardless of proximity to the cap.
 
@@ -666,7 +627,7 @@ guard). Conversion-coins count against `DAILY_GEM_CONVERT_CAP` (50 gems), NOT `D
 | **Ad Service** (planned, M4) | Hard | `AdService` calls `WalletService.earn(COINS, amount, SOURCE_REWARDED_AD)` after a completed rewarded ad. Rate and daily cap defined here. |
 | **Analytics** (planned, M5) | Soft | Economy emits `GameEvent`s (`booster_activated`, `currency_earned`, `currency_spent`) that the analytics layer subscribes to. |
 | **HUD / UI** (`scenes/ui/`) | Soft | Wallet balance displayed in HUD. Booster buttons in game UI. UI reads `WalletService.data`; never mutates wallet directly. |
-| **First-Time Tutorial** (`core/tutorial_logic.gd`) | Soft | Tutorial may introduce Hint at a scripted moment (see `first-time-tutorial.md`). Economy must be live for tutorial to demonstrate it. |
+| **First-Time Tutorial** (`core/tutorial_logic.gd`) | Soft | Tutorial may introduce the Picker at a scripted moment (see `first-time-tutorial.md`). Economy must be live for tutorial to demonstrate it. |
 
 **Provisional assumptions** (undesigned dependencies):
 - *Scoring/Stars GDD* is not yet written. The coin-per-star rate used in this GDD is a starting proposal, not a final figure.
@@ -698,10 +659,10 @@ All economy values live in an `EconomyConfig` resource (`assets/data/economy_con
 
 | Knob | Default | Safe Range | What breaks at extremes |
 |------|---------|-----------|------------------------|
-| `HINT_COST_COINS` | 120 | 60–250 | Low → every-board Hint use (boosters feel free, not earned); High → never used, system dead |
+| `PICKER_COST_COINS` | 120 | 60–250 | Low → every-board Picker use (boosters feel free, not earned); High → never used, system dead |
 | `RESHUFFLE_COST_COINS` | 250 | 100–500 | Low → Reshuffle is the default response to any difficulty; High → never purchased |
 | `EXTRA_DISCARD_COST_COINS` | 350 | 150–600 | Low → discard pressure loses teeth as a mechanic; High → "rescue at any cost" moment feels predatory |
-| `HINT_COST_GEMS` | 3 | 1–10 | Gem costs should scale at ~1 gem : 35 coins parity rate |
+| `PICKER_COST_GEMS` | 3 | 1–10 | Gem costs should scale at ~1 gem : 35 coins parity rate |
 | `RESHUFFLE_COST_GEMS` | 7 | 3–20 | — |
 | `EXTRA_DISCARD_COST_GEMS` | 10 | 5–25 | — |
 | `GEM_TO_COIN_RATE` | 25 | 10–35 | Must stay below booster-parity rate (35); above 35 = gems to coins is better than buying boosters directly (breaks IAP value) |
@@ -714,13 +675,10 @@ All economy values live in an `EconomyConfig` resource (`assets/data/economy_con
 | `GEMS_MAX` | 9,999 | 1,000–unbounded | Very low → IAP whale is blocked; no gameplay effect above ~5,000 |
 | `MAX_DISCARD_SLOTS` | 7 | 6–8 | 6 = one extra slot ever; 8 = player can stack 3 extra slots (very forgiving) |
 
-### Hint algorithm weights
+### ~~Hint algorithm weights~~ — REMOVED (Picker has no scoring, 2026-06-13)
 
-| Knob | Default | Safe Range | What breaks at extremes |
-|------|---------|-----------|------------------------|
-| `ROUTES_WEIGHT` | 200 | 100–500 | Low → Hint may highlight an exposure-chaining card over a directly routing one; High → Hint always picks a routing card even if a non-routing move is strategically better |
-| `OPENS_WEIGHT` | 10 | 5–30 | Low → exposure gain becomes irrelevant; High → Hint prefers uncovering over routing |
-| `RELIEF_WEIGHT` | 5 | 1–15 | Low → discard relief never factors in; High → Hint over-focuses on discard pressure |
+The `ROUTES_WEIGHT` / `OPENS_WEIGHT` / `RELIEF_WEIGHT` knobs are struck — the Picker is
+player-driven and has no scoring heuristic to tune.
 
 ### Milestone coin gift table (one-time)
 
@@ -752,15 +710,15 @@ directly; it emits `GameEvent`s that the view layer and audio layer respond to.
 - Coin earn: a brief "+N coins" float-up label and coin icon, played at the earn source (stack
   clear, level-complete screen, ad completion).
 - Coin spend (booster purchase): a brief "−N coins" label near the booster button.
-- Hint highlight: a visual indicator on the target card (glow, pulse, or arrow) — must be
-  distinguishable in colorblind mode (shape cue, not color-only).
+- Picker activation: an arming cue, then the chosen covered card lifts out and flies to its
+  stack/discard (the played-card animation) — must read in colorblind mode (shape/motion cue).
 - Reshuffle activation: a shuffle/deal animation as cards reposition to the new layout.
 - Extra Discard Slot activation: the discard row expands to show the new slot.
 
 **Audio** (owned by the Audio GDD when authored):
 - Booster purchase: a satisfying "spend" SFX distinct from the level-clear SFX.
 - Insufficient funds: a gentle negative tone (not harsh; respects the calm tone).
-- Hint activation: a soft highlight chime.
+- Picker activation: a soft "select / lift" chime.
 
 No new art assets or shaders are required by the economy model itself.
 
@@ -768,22 +726,22 @@ No new art assets or shaders are required by the economy model itself.
 
 ### Wallet HUD (in-game)
 - **Coin balance display:** visible during gameplay in the HUD (top bar). Shows current coin count with a coin icon. Updates in real-time on earn/spend. No Gem balance displayed during gameplay (gems are a menu-layer currency).
-- **Booster tray:** three booster buttons in the HUD (Hint / Reshuffle / Extra Discard Slot). Each button shows:
+- **Booster tray:** three booster buttons in the HUD (Picker / Reshuffle / Extra Discard Slot). Each button shows:
   - Icon for the booster type
   - Coin cost label
   - Greyed-out state if coin balance < cost (but button is still visible — player knows it exists)
   - Disabled state if the precondition is unmet (e.g. Reshuffle greyed out on a won board; Extra Discard greyed out at MAX_DISCARD_SLOTS or when the discard row is full)
-  - Active indicator while Hint is in-progress (preventing double-tap)
+  - Armed indicator while the Picker is awaiting the player's card selection
 - **Spend confirmation (anti-misfire).** Boosters costing **≥ 250 coins** (Reshuffle, Extra
   Discard Slot) require a one-step confirm ("Spend 250 coins? [Confirm] [Cancel]") before
-  deduction. Hint (120) is one-tap (low cost). Threshold lives in `EconomyConfig`
+  deduction. Picker (120) is one-tap (low cost). Threshold lives in `EconomyConfig`
   (`SPEND_CONFIRM_THRESHOLD = 250`). This protects the
   "deliberate, occasional" spend feel and prevents fat-finger loss of a half-day's coins.
 - **Distinguishable failure feedback.** Greyed buttons must communicate *why*: an **unaffordable**
   booster (balance < cost) shows a coin-tinted grey + "not enough coins" on tap; a
   **precondition-failed** booster (discard full / at max slots / won board) shows a neutral
-  grey + a context message on tap. The two states must be visually distinct, and a double-tap on
-  an in-progress Hint gives a brief pulse (EC-08) — no failure is silent.
+  grey + a context message on tap. The two states must be visually distinct, and tapping an
+  invalid Picker target gives a brief pulse (EC-08) — no failure is silent.
 - **HUD layout budget (must be solved by the UX spec, not the single top bar).** Three 44×44pt
   booster buttons (132pt) + a 6-digit coin balance (~100pt at large-text scale) + padding exceed
   a 390pt-wide portrait bar once safe-area insets apply. The booster tray therefore moves to the
@@ -812,7 +770,7 @@ No new art assets or shaders are required by the economy model itself.
 - **Remove Ads SKU** displayed prominently if ads are currently showing; de-listed if already purchased (no need to surface what the player already owns).
 
 ### Accessibility requirements
-- Hint highlight must use a shape/motion cue, not only color (colorblind accessibility — consistent with `StackPalette` Okabe-Ito pattern in `data/stack_palette.gd`).
+- Picker arming + selection must use a shape/motion cue, not only color (colorblind accessibility — consistent with `StackPalette` Okabe-Ito pattern in `data/stack_palette.gd`).
 - Booster buttons must have minimum 44×44pt tap targets (mobile touch accessibility).
 - Coin and gem amounts must use large-text-mode-compatible font scaling.
 - "Insufficient funds" feedback must not be silent — a toast or icon pulse ensures the player understands why the booster didn't activate.
@@ -836,7 +794,7 @@ No new art assets or shaders are required by the economy model itself.
 `[B]` = BLOCKING (automated unit/integration test). `[A]` = ADVISORY (manual check or playtest).
 
 > **Event-name convention:** AC shorthand (`SPENT(...)`, `EARNED(...)`, `SPEND_FAILED(...)`,
-> `TRANSACTION_ROLLED_BACK(...)`, `HINT_RESULT(...)`, etc.) maps 1:1 to the `EconomyEvent.Kind`
+> `TRANSACTION_ROLLED_BACK(...)`, `BOOSTER_ACTIVATED(...)`, etc.) maps 1:1 to the `EconomyEvent.Kind`
 > names defined in Detailed Design §Economy Events. Tests assert against those canonical enum
 > values (a separate type from board `GameEvent`).
 
@@ -867,13 +825,13 @@ No new art assets or shaders are required by the economy model itself.
 - **AC-C02 [B]** GIVEN daily REWARDED_AD coins at 460 (cap = 500), WHEN 60 REWARDED_AD coins attempted, THEN only 40 coins credited, `EARNED(COINS, 40, REWARDED_AD, ...)` emitted.
 - **AC-C03 [B]** GIVEN daily REWARDED_AD coins at cap, WHEN `earn(COINS, 55, LEVEL_WIN)`, THEN 55 coins credited without cap interference (LEVEL_WIN is uncapped).
 
-### Hint booster
+### Picker booster (replaces Hint, 2026-06-13)
 
-- **AC-H01 [B]** GIVEN a board with 3 exposed cards with hint_scores 220, 35, 200 (per Section D worked example), WHEN `use_booster(HINT)` is called, THEN `HINT_RESULT(card_id=2)` emitted and 120 coins deducted.
-- **AC-H02 [B]** GIVEN two exposed cards with identical hint_scores, WHEN Hint is used, THEN the card with the lower `card_id` is returned (deterministic tiebreak).
-- **AC-H03 [B]** GIVEN 0 exposed cards (edge case), WHEN `use_booster(HINT)`, THEN `BOOSTER_PRECONDITION_FAILED` returned, coins unchanged.
-- **AC-H04 [B]** GIVEN Hint is in-progress (`_hint_in_progress == true`), WHEN a second Hint activation arrives, THEN no second cost deducted, no second event emitted, `BOOSTER_PURCHASE_FAILED(ALREADY_IN_PROGRESS)` emitted.
-- **AC-H05 [B]** GIVEN a card whose result matches an open stack target, WHEN `hint_score` is computed, THEN `routes_directly` component contributes exactly `ROUTES_WEIGHT` (default 200) to the total score.
+- **AC-P01 [B]** GIVEN a covered card whose result matches an open stack target and ≥120 coins, WHEN `use_picker(board, card_id)` is called, THEN the card is played (routed), `BOOSTER_ACTIVATED(PICKER)` emitted, 120 coins deducted, and the board `GameEvent`s are returned for the view.
+- **AC-P02 [B]** GIVEN a covered card with no matching open stack, WHEN `use_picker` is called, THEN the card is played to discard (or LOSE if the discard is full) — the same resolution as a tap, bypassing coverage only.
+- **AC-P03 [B]** GIVEN the target card is already removed (or the board is over), WHEN `use_picker` is called, THEN `BOOSTER_PRECONDITION_FAILED(PICKER, INVALID_TARGET)` is returned and coins are unchanged.
+- **AC-P04 [B]** GIVEN coins < `PICKER_COST_COINS`, WHEN `use_picker` is called, THEN `SPEND_FAILED` is emitted, no card is played, and `boosters_used_this_level` is unchanged.
+- **AC-P05 [B]** GIVEN any board state, WHEN the Picker plays a card, THEN no arithmetic result/operands/solution is emitted or displayed — only board `GameEvent`s (route/discard) flow (no-arithmetic-solving pillar holds).
 
 ### Undo booster — REMOVED (2026-06-12)
 
@@ -938,8 +896,8 @@ _Undo was cut from the design. AC-U01–U07 are withdrawn. No Undo behaviour is 
 
 ### No-arithmetic-solving constraint (hard rule)
 
-- **AC-M01a [B]** GIVEN any board state, WHEN Hint is used, THEN the `HINT_RESULT` event payload contains only `card_id: int` — no `result`, no `operands`, no `solution_text` field.
-- **AC-M01b [A]** Visual gate: the hint highlight in the view layer does not display the card's computed result value. Screenshot + lead sign-off in `production/qa/evidence/`.
+- **AC-M01a [B]** GIVEN any board state, WHEN the Picker plays a card, THEN no economy event carries a `result`, `operands`, or `solution_text` field (the `EconomyEvent` class has no such field); only board route/discard `GameEvent`s flow.
+- **AC-M01b [A]** Visual gate: activating the Picker does not display any card's computed result value (covered cards show their equation, never the answer). Screenshot + lead sign-off in `production/qa/evidence/`.
 - **AC-M02 [A]** Code-review gate (advisory): no `WalletService`, `WalletData`, or booster activation path reads or exposes `CardData.result` to the player. Any future booster that would require reading `result` to determine its effect must be rejected at design review.
 
 ## Open Questions
@@ -956,7 +914,7 @@ _Undo was cut from the design. AC-U01–U07 are withdrawn. No Undo behaviour is 
 
 - **Extra Discard Slot BoardModel change — RESOLVED in ADR-0010.** `BoardModel` currently uses `const DISCARD_SLOTS = 5` in **three** instance-capacity loops (init, `_first_empty_discard`, `_pull_matching`); all three iterate the mutable `_active_discard_slots`, and `BoardModel` gains an `expand_discard()` method. The **three** additional `DISCARD_SLOTS` reads in `core/recoverability_simulator.gd` (lines 23/47/103) deliberately **stay** on the base constant (generation-time recoverability is evaluated at base capacity). Mutable field + uncapped `expand_discard()` on `BoardModel`, with `WalletService` enforcing `MAX_DISCARD_SLOTS` (keeps `BoardModel` free of economy-config knowledge). Ratified by ADR-0010.
 
-- **Gem drip calibration** — the gem milestone table is provisional. At ~715 lifetime gems for a year-one non-payer, they can buy 7–14 cosmetics or ~238 Hints. If this feels too generous (devalues IAP gem packs), reduce the every-10-levels drip from 5 gems to 3. If too stingy (players feel blocked from cosmetics), increase. Real calibration requires M3 store conversion data. Owner: economy-designer.
+- **Gem drip calibration** — the gem milestone table is provisional. At ~715 lifetime gems for a year-one non-payer, they can buy 7–14 cosmetics or ~238 Pickers. If this feels too generous (devalues IAP gem packs), reduce the every-10-levels drip from 5 gems to 3. If too stingy (players feel blocked from cosmetics), increase. Real calibration requires M3 store conversion data. Owner: economy-designer.
 
 - **Child-mode daily challenge and streak access** — this GDD allows CHILD users to access daily challenges and streak bonuses (coins only, no ads, no IAP). Confirm with the compliance review at M4 that daily-challenge mechanics do not trigger "excessive frequency of engagement" concerns under GDPR-K or COPPA. Owner: legal review, pre-M4.
 

@@ -25,9 +25,9 @@ func test_defaults_coins_win_flat_fallback() -> void:
 	assert_int(cfg.coins_win_flat_fallback).is_equal(50)
 
 
-func test_defaults_hint_cost_coins() -> void:
+func test_defaults_picker_cost_coins() -> void:
 	var cfg := EconomyConfig.new()
-	assert_int(cfg.hint_cost_coins).is_equal(120)
+	assert_int(cfg.picker_cost_coins).is_equal(120)
 
 
 func test_defaults_reshuffle_cost_coins() -> void:
@@ -58,21 +58,6 @@ func test_defaults_coins_max() -> void:
 func test_defaults_gems_max() -> void:
 	var cfg := EconomyConfig.new()
 	assert_int(cfg.gems_max).is_equal(9999)
-
-
-func test_defaults_routes_weight() -> void:
-	var cfg := EconomyConfig.new()
-	assert_int(cfg.routes_weight).is_equal(200)
-
-
-func test_defaults_opens_weight() -> void:
-	var cfg := EconomyConfig.new()
-	assert_int(cfg.opens_weight).is_equal(10)
-
-
-func test_defaults_relief_weight() -> void:
-	var cfg := EconomyConfig.new()
-	assert_int(cfg.relief_weight).is_equal(5)
 
 
 func test_defaults_spend_confirm_threshold() -> void:
@@ -120,9 +105,9 @@ func test_defaults_max_ads_per_day() -> void:
 	assert_int(cfg.max_ads_per_day).is_equal(3)
 
 
-func test_defaults_hint_cost_gems() -> void:
+func test_defaults_picker_cost_gems() -> void:
 	var cfg := EconomyConfig.new()
-	assert_int(cfg.hint_cost_gems).is_equal(3)
+	assert_int(cfg.picker_cost_gems).is_equal(3)
 
 
 func test_defaults_reshuffle_cost_gems() -> void:
@@ -155,9 +140,9 @@ func test_tres_coins_win_flat_fallback_matches_default() -> void:
 	assert_int(cfg.coins_win_flat_fallback).is_equal(50)
 
 
-func test_tres_hint_cost_coins_matches_default() -> void:
+func test_tres_picker_cost_coins_matches_default() -> void:
 	var cfg := load("res://assets/data/economy_config.tres") as EconomyConfig
-	assert_int(cfg.hint_cost_coins).is_equal(120)
+	assert_int(cfg.picker_cost_coins).is_equal(120)
 
 
 func test_tres_max_discard_slots_matches_default() -> void:

@@ -87,8 +87,8 @@ extends Resource
 # Booster costs
 # ---------------------------------------------------------------------------
 
-## Coin cost of the Hint booster (Rule 19). Safe range: 60–250.
-@export var hint_cost_coins: int = 120
+## Coin cost of the Picker booster (plays a chosen covered card). Safe range: 60–250.
+@export var picker_cost_coins: int = 120
 
 ## Coin cost of the Reshuffle booster (Rule 19). Safe range: 100–500.
 @export var reshuffle_cost_coins: int = 250
@@ -96,8 +96,8 @@ extends Resource
 ## Coin cost of the Extra Discard Slot booster (Rule 19). Safe range: 150–600.
 @export var extra_discard_cost_coins: int = 350
 
-## Gem cost of the Hint booster (Rule 20). Safe range: 1–10.
-@export var hint_cost_gems: int = 3
+## Gem cost of the Picker booster (Rule 20). Safe range: 1–10.
+@export var picker_cost_gems: int = 3
 
 ## Gem cost of the Reshuffle booster (Rule 20). Safe range: 3–20.
 @export var reshuffle_cost_gems: int = 7
@@ -127,23 +127,6 @@ extends Resource
 ## Default 5-slot board can be expanded at most (max - 5) times per level.
 ## Safe range: 6–8.
 @export var max_discard_slots: int = 7
-
-# ---------------------------------------------------------------------------
-# Hint algorithm weights (Formula 5)
-# ---------------------------------------------------------------------------
-
-## Score weight for the routes_directly component (Formula 5).
-## Routing preference holds while ROUTES_WEIGHT > opens_new_cards * OPENS_WEIGHT.
-## Tune as a pair with opens_weight. Safe range: 100–500.
-@export var routes_weight: int = 200
-
-## Score weight per newly-exposed card in the opens_new_cards component
-## (Formula 5). Safe range: 5–30.
-@export var opens_weight: int = 10
-
-## Score weight per discard-matching card in the discard_relief component
-## (Formula 5). Safe range: 1–15.
-@export var relief_weight: int = 5
 
 # ---------------------------------------------------------------------------
 # Miscellaneous

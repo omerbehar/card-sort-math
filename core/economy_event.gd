@@ -16,11 +16,10 @@ extends RefCounted
 ## Sentinel values: [code]-1[/code] when a field is not applicable for a given
 ## [enum Kind]; [code]amount[/code] defaults to [code]0[/code].
 ##
-## [b]AC-M01a (hard rule):[/b] [method hint_result] sets ONLY [member card_id].
-## No [code]result[/code], [code]operands[/code], or [code]solution_text[/code]
-## field exists on this class. This is a structural compile-time guardrail for
-## the no-arithmetic-solving pillar — the Hint booster must never expose the
-## card's computed answer.
+## [b]No-arithmetic-solving pillar:[/b] no [code]result[/code], [code]operands[/code],
+## or [code]solution_text[/code] field exists on this class. The Picker booster (which
+## replaced Hint) plays a card the player chose via [GameEvent]s on the board channel;
+## it never routes an arithmetic answer through this economy event type.
 ##
 ## Source: design/gdd/deck-economy.md §Economy Events (canonical table);
 ##         ADR-0008 (Key Interfaces); design/registry/entities.yaml.
@@ -36,8 +35,7 @@ enum Kind {
 	TRANSACTION_ROLLED_BACK,     ## A mid-transaction error restored the pre-spend balance. Payload: currency, amount.
 	BOOSTER_ACTIVATED,           ## A booster successfully activated (after spend). Payload: booster_type.
 	BOOSTER_PRECONDITION_FAILED, ## A booster precondition was unmet; no spend occurred. Payload: booster_type, reason.
-	BOOSTER_PURCHASE_FAILED,     ## A purchase was rejected (e.g. double-tap). Payload: booster_type, reason.
-	HINT_RESULT,                 ## Hint resolved to a target card. Payload: card_id ONLY (AC-M01a).
+	BOOSTER_PURCHASE_FAILED,     ## A purchase was rejected. Payload: booster_type, reason.
 	IAP_BLOCKED,                 ## A restricted user's IAP attempt was blocked. Payload: sku, reason.
 }
 
@@ -55,9 +53,6 @@ var new_balance: int = -1
 var booster_type: int = -1
 ## Failure reason. Indexes [EconomyEnums.FailReason]. [code]-1[/code] when N/A.
 var reason: int = -1
-## Card identifier for HINT_RESULT. [code]-1[/code] when N/A.
-## [b]This is the ONLY field set by [method hint_result] (AC-M01a).[/b]
-var card_id: int = -1
 ## Internal SKU token for IAP_BLOCKED. Plain int (Sku enum deferred to M4 IAP work). [code]-1[/code] when N/A.
 var sku: int = -1
 
@@ -178,20 +173,6 @@ static func booster_purchase_failed(p_booster_type: int, p_reason: int) -> Econo
 	return e
 
 
-## Emitted when the Hint booster resolves to a target card.
-## [b]AC-M01a (HARD RULE):[/b] sets ONLY [member card_id].
-## All other payload fields remain at their sentinel defaults (-1 / 0).
-## This factory is the structural compile-time guardrail ensuring the
-## no-arithmetic-solving pillar: no result, operands, or solution_text
-## can be emitted by this event kind.
-## [param p_card_id]: the stable LevelConfig-assigned card identifier of the hint target.
-static func hint_result(p_card_id: int) -> EconomyEvent:
-	var e := EconomyEvent.new()
-	e.kind = Kind.HINT_RESULT
-	e.card_id = p_card_id
-	return e
-
-
 ## Emitted when a restricted user's IAP attempt is blocked by ComplianceService.
 ## [param p_sku]: internal SKU token (int; Sku enum deferred to M4 IAP work).
 ## [param p_reason]: [EconomyEnums.FailReason] value (typically COMPLIANCE_RESTRICTED).
@@ -205,8 +186,8 @@ static func iap_blocked(p_sku: int, p_reason: int) -> EconomyEvent:
 
 ## Returns a human-readable representation for debugging. Mirrors GameEvent._to_string().
 func _to_string() -> String:
-	return "EconomyEvent(%s currency=%d amount=%d source=%d new_balance=%d booster_type=%d reason=%d card_id=%d sku=%d)" % [
+	return "EconomyEvent(%s currency=%d amount=%d source=%d new_balance=%d booster_type=%d reason=%d sku=%d)" % [
 		Kind.keys()[kind],
 		currency, amount, source, new_balance,
-		booster_type, reason, card_id, sku,
+		booster_type, reason, sku,
 	]

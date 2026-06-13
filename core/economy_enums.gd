@@ -38,10 +38,12 @@ enum EarnSource {
 }
 
 
-## The three consumable boosters. Undo was removed from the design (2026-06-12).
-## See design/gdd/deck-economy.md §Core Rule 9 (tombstone) and the review log.
+## The three consumable boosters. Undo was removed from the design (2026-06-12);
+## Hint was replaced by Picker (2026-06-13). The Picker plays a covered (lower-layer)
+## card the player chooses — it never reveals an arithmetic answer, so the
+## no-arithmetic-solving pillar holds. See design/gdd/deck-economy.md.
 enum BoosterType {
-	HINT,          ## Highlights the most productive tap without revealing the arithmetic result (Rule 8).
+	PICKER,        ## Plays a covered (lower-layer) card the player chooses (bypasses coverage; no answer reveal).
 	RESHUFFLE,     ## Re-generates the floor layout while preserving cards and queue (Rule 10).
 	EXTRA_DISCARD, ## Adds one temporary discard slot for the current level (Rule 11).
 }
@@ -57,8 +59,7 @@ enum BoosterType {
 ## the EARN_CAP_REACHED variants apart (e.g. "watched max ads today" vs "daily coin
 ## cap reached" vs "wallet full") — all three otherwise share source REWARDED_AD.
 enum FailReason {
-	ALREADY_IN_PROGRESS,  ## A Hint is already computing; double-tap rejected (EC-08, AC-H04).
-	NO_EXPOSED_CARD,      ## Hint precondition: zero exposed cards on the board (AC-H03).
+	INVALID_TARGET,       ## Picker: the chosen card is already gone or the board is over.
 	DISCARD_FULL,         ## Extra Discard precondition: discard row is already full (EC-06, AC-E05).
 	AT_MAX,               ## Extra Discard precondition: already at MAX_DISCARD_SLOTS (EC-07, AC-E04).
 	WON_BOARD,            ## Reshuffle precondition: board is already in WIN state (EC-15, AC-R05).

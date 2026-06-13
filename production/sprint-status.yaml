@@ -90,14 +90,26 @@ stories:
     blocker: ""
     completed: "2026-06-13"
   - id: "S3-009"
-    name: "Reshuffle booster (LevelGenerator.reshuffle helper + use_booster)"
-    file: "core/level_generator.gd"
+    name: "Reshuffle booster (BoardModel.reshuffle coverage re-permute + use_reshuffle)"
+    file: "core/board_model.gd"
     priority: nice-to-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-13"
+  # Picker booster (2026-06-13 design change): replaces the Hint booster (S3-007).
+  # BoardModel.pick_card + WalletService.use_picker; Hint/HintScore removed.
+  # Code + tests done; GDD/registry Hint→Picker doc sync still pending.
+  - id: "S3-012"
+    name: "Picker booster (replaces Hint): pick_card + use_picker"
+    file: "core/board_model.gd"
+    priority: should-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 1.0
+    blocker: "GDD/registry Hint→Picker doc sync pending"
+    completed: "2026-06-13"
   - id: "S3-010"
     name: "Streak + milestone earn math (TimeProvider-driven)"
     file: "core/economy_earn.gd"
