@@ -336,8 +336,8 @@ func test_use_reshuffle_success_deducts_and_increments_count() -> void:
 	var board := _flat_board(6)
 	var w = _make(300)
 	w.reset_level_state(42)                          # captures level id + clock
-	var ok: bool = w.use_reshuffle(board, _flat_placements(6))
-	assert_bool(ok).is_true()
+	var assignment: Array = w.use_reshuffle(board, _flat_placements(6))
+	assert_bool(assignment.is_empty()).is_false()    # returns the new layout
 	assert_int(w.balance(COINS)).is_equal(50)        # 300 - 250
 	assert_int(w.reshuffle_count).is_equal(1)
 	assert_int(w.boosters_used_this_level).is_equal(1)
@@ -354,8 +354,8 @@ func test_use_reshuffle_on_won_board_blocked_no_spend() -> void:
 	assert_bool(board.is_won()).is_true()
 	var w = _make(500)
 	w.reset_level_state(1)
-	var ok: bool = w.use_reshuffle(board, _flat_placements(4))
-	assert_bool(ok).is_false()
+	var assignment: Array = w.use_reshuffle(board, _flat_placements(4))
+	assert_bool(assignment.is_empty()).is_true()
 	assert_int(w.balance(COINS)).is_equal(500)       # no deduction
 	var pf := _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
 	assert_object(pf).is_not_null()
@@ -368,7 +368,7 @@ func test_use_reshuffle_insufficient_coins_returns_false() -> void:
 	var board := _flat_board(6)
 	var w = _make(0)                                 # Reshuffle costs 250
 	w.reset_level_state(1)
-	assert_bool(w.use_reshuffle(board, _flat_placements(6))).is_false()
+	assert_bool(w.use_reshuffle(board, _flat_placements(6)).is_empty()).is_true()
 	assert_int(w.reshuffle_count).is_equal(0)
 	assert_int(w.boosters_used_this_level).is_equal(0)
 	assert_object(_event_of(EconomyEvent.Kind.SPEND_FAILED)).is_not_null()

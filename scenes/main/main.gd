@@ -42,6 +42,9 @@ var _result_screen: ResultScreen = null
 var _stack_cards: Array = []    # per stack: Array of card_ids currently shown
 var _discard_cards: Array = []  # per slot: card_id, or -1 when empty
 var _input_locked: bool = false
+# Picker booster (S3-012): when armed, the next tapped card (covered or not) is
+# played via WalletService.use_picker instead of the normal tap.
+var _picker_armed: bool = false
 
 @onready var _overlay_layer: CanvasLayer = $Overlay
 
@@ -177,6 +180,12 @@ func _on_card_tapped(card_id: int) -> void:
 	if is_instance_valid(_result_screen):
 		return
 	if _input_locked or _model.is_game_over():
+		return
+	# Picker booster (S3-012): the next tap plays the chosen card (covered or not)
+	# through the wallet, then disarms.
+	if _picker_armed:
+		_picker_armed = false
+		await pick(card_id)
 		return
 	var events := _model.tap_card(card_id)
 	if events.is_empty():
@@ -330,6 +339,52 @@ func expand_discard() -> void:
 	_discard.set_slot_count(_model.active_discard_slots())
 	_discard_cards.append(-1)
 	_update_discard_warning()
+
+
+## Arms the Picker booster (S3-012): every surviving card becomes tappable so the
+## player can choose a covered (lower-layer) card; the next tap plays it via
+## [method pick]. The booster *button* is pending the economy-UI sprint.
+func arm_picker() -> void:
+	if _model == null or _input_locked:
+		return
+	_picker_armed = true
+	_floor.set_pickable_all(_model)
+
+
+## Plays [param card_id] through [method WalletService.use_picker] (covered or not),
+## animating the returned board events. Spends picker_cost_coins; no-op if the
+## wallet rejects it (insufficient funds / invalid target).
+func pick(card_id: int) -> void:
+	if _input_locked or _model.is_game_over():
+		return
+	var events: Array[GameEvent] = WalletService.use_picker(_model, card_id)
+	_floor.refresh_exposure(_model)          # drop picker-mode tappability
+	if events.is_empty():
+		return
+	_input_locked = true
+	await _play_events(events)
+	if is_instance_valid(_result_screen):
+		return
+	_floor.refresh_exposure(_model)
+	_update_discard_warning()
+	_input_locked = false
+
+
+## Activates the Reshuffle booster (S3-009): re-permutes floor coverage via
+## [method WalletService.use_reshuffle] and re-lays the cards to the new layout.
+## No-op if the wallet rejects it (won board / insufficient funds).
+func reshuffle_now() -> void:
+	if _model == null or _input_locked:
+		return
+	var placements := Layouts.get_layout(_config.layout_id)
+	var assignment: Array[int] = WalletService.use_reshuffle(_model, placements)
+	if assignment.is_empty():
+		return
+	for p in assignment.size():
+		var cid: int = assignment[p]
+		if cid != -1:
+			_floor.place_card_at(cid, placements[p].pos, placements[p].layer, 0.3)
+	_floor.refresh_exposure(_model)
 
 
 func _open_pause() -> void:

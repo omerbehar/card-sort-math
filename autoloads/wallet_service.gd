@@ -425,10 +425,11 @@ func use_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
 
 ## Activates the Reshuffle booster on [param board] (Core Rule 10, Formula 6, ADR-0009).
 ## [param placements] is the level layout (passed in — autoloads load it, [code]core/[/code]
-## does not). Returns [code]true[/code] on success.
+## does not). Returns the new placement→card assignment ([code]Array[int][/code]) on success
+## so the view can re-place cards, or an [b]empty array[/b] on failure.
 ##
 ## Precondition: the board must not be in a WIN state (EC-15, AC-R05) — else
-## [code]BOOSTER_PRECONDITION_FAILED(RESHUFFLE, WON_BOARD)[/code], no spend.
+## [code]BOOSTER_PRECONDITION_FAILED(RESHUFFLE, WON_BOARD)[/code], no spend, [code][][/code].
 ## On success: increments [member reshuffle_count], spends
 ## [member EconomyConfig.reshuffle_cost_coins], derives the seed via
 ## [method ReshuffleSeed.mix] (level_id + captured level_start_timestamp +
@@ -436,22 +437,22 @@ func use_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
 ## [method BoardModel.reshuffle] (routable-card guarantee, AC-R09), and emits
 ## [code]BOOSTER_ACTIVATED(RESHUFFLE)[/code]. The timestamp comes from the injected
 ## [TimeProvider] (AC-R04/R08) captured in [method reset_level_state].
-func use_reshuffle(board: BoardModel, placements: Array) -> bool:
+func use_reshuffle(board: BoardModel, placements: Array) -> Array[int]:
 	if board.is_won():
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.RESHUFFLE,
 				EconomyEnums.FailReason.WON_BOARD))
-		return false  # EC-15 / AC-R05
+		return []  # EC-15 / AC-R05
 	if not spend(EconomyEnums.Currency.COINS, _config.reshuffle_cost_coins):
-		return false  # insufficient -> SPEND_FAILED already emitted
+		return []  # insufficient -> SPEND_FAILED already emitted
 	reshuffle_count += 1
 	var seed: int = ReshuffleSeed.mix(_level_id, _level_start_ts, reshuffle_count)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
-	board.reshuffle(placements, rng)
+	var assignment: Array[int] = board.reshuffle(placements, rng)
 	boosters_used_this_level += 1
 	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.RESHUFFLE))
-	return true
+	return assignment
 
 
 ## Activates the Extra Discard Slot booster on [param board] (Core Rule 11, ADR-0010).

@@ -7,13 +7,8 @@
 # Source: design/gdd/deck-economy.md
 
 formulas:
-  - name: hint_score
-    source: design/gdd/deck-economy.md
-    description: Scores exposed cards to identify the most productive tap for the Hint booster
-    variables: [routes_directly, opens_new_cards, discard_relief, ROUTES_WEIGHT, OPENS_WEIGHT, RELIEF_WEIGHT]
-    output_range: "0–405 (ordinal only; practical upper bound at default weights on 18-card board)"
-    referenced_by: []
-
+  # hint_score removed 2026-06-13 — Hint booster replaced by Picker (no scoring;
+  # the player chooses which covered card to play). See deck-economy.md review log.
   - name: reshuffle_seed
     source: design/gdd/deck-economy.md
     description: Deterministic seed for a board reshuffle, keyed on level+session+count. Derived by an EXPLICIT integer mix (ADR-0009), NOT GDScript hash() — hash() is banned for rng.seed by ADR-0007 (platform/version-unstable). level_start_timestamp comes from the injectable TimeProvider seam (ADR-0009).
@@ -79,10 +74,11 @@ constants:
     description: Penalised downward conversion rate; must remain below booster-parity rate (35)
     referenced_by: []
 
-  - name: HINT_COST_COINS
+  - name: PICKER_COST_COINS
     source: design/gdd/deck-economy.md
     value: 120
     unit: coins
+    description: Coin cost of the Picker booster (replaced HINT_COST_COINS 2026-06-13).
     referenced_by: []
 
   # UNDO_COST_COINS removed 2026-06-12 — Undo booster cut from deck-economy.md (see review log).
@@ -99,10 +95,11 @@ constants:
     unit: coins
     referenced_by: []
 
-  - name: HINT_COST_GEMS
+  - name: PICKER_COST_GEMS
     source: design/gdd/deck-economy.md
     value: 3
     unit: gems
+    description: Gem cost of the Picker booster (replaced HINT_COST_GEMS 2026-06-13).
     referenced_by: []
 
   # UNDO_COST_GEMS removed 2026-06-12 — Undo booster cut from deck-economy.md (see review log).
@@ -119,24 +116,8 @@ constants:
     unit: gems
     referenced_by: []
 
-  - name: ROUTES_WEIGHT
-    source: design/gdd/deck-economy.md
-    value: 200
-    unit: score_points
-    description: Weight for hint_score routes_directly component; determines whether routing dominates over exposure gain
-    referenced_by: []
-
-  - name: OPENS_WEIGHT
-    source: design/gdd/deck-economy.md
-    value: 10
-    unit: "score_points per card"
-    referenced_by: []
-
-  - name: RELIEF_WEIGHT
-    source: design/gdd/deck-economy.md
-    value: 5
-    unit: "score_points per discard card"
-    referenced_by: []
+  # ROUTES_WEIGHT / OPENS_WEIGHT / RELIEF_WEIGHT removed 2026-06-13 — these were
+  # hint_score weights; the Picker booster has no scoring (player chooses the card).
 
   - name: MAX_DISCARD_SLOTS
     source: design/gdd/deck-economy.md
@@ -193,7 +174,7 @@ items:
   - name: EconomyEvent
     type: enum
     source: design/gdd/deck-economy.md
-    values: [CURRENCY_EARNED, CURRENCY_SPENT, SPEND_FAILED, EARN_CAP_REACHED, TRANSACTION_ROLLED_BACK, BOOSTER_ACTIVATED, BOOSTER_PRECONDITION_FAILED, BOOSTER_PURCHASE_FAILED, HINT_RESULT, IAP_BLOCKED]
+    values: [CURRENCY_EARNED, CURRENCY_SPENT, SPEND_FAILED, EARN_CAP_REACHED, TRANSACTION_ROLLED_BACK, BOOSTER_ACTIVATED, BOOSTER_PRECONDITION_FAILED, BOOSTER_PURCHASE_FAILED, IAP_BLOCKED]  # HINT_RESULT removed 2026-06-13 (Picker replaced Hint)
     description: "Economy event kind — a SEPARATE core/ type from board GameEvent (different payload/owner). Emitted by WalletService as typed signals; HUD + Analytics subscribe."
     referenced_by: []
 
