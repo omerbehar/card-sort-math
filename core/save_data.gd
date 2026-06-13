@@ -8,10 +8,13 @@ extends RefCounted
 ## unit-testable (see [code]tests/test_save_data.gd[/code]) per ADR-0001.
 ##
 ## Persisted fields: [member schema_version], [member current_level],
-## [member age_band], [member settings], [member tutorial_seen].
+## [member age_band], [member settings], [member tutorial_seen],
+## [member wallet_coins], [member wallet_gems],
+## [member daily_key], [member ad_coins_today],
+## [member ads_watched_today], [member gems_converted_today].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 1
+const CURRENT_SCHEMA_VERSION: int = 3
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -28,6 +31,32 @@ var settings: Settings = Settings.new()
 ## old saves correctly default to [code]false[/code] (they have not seen the tutorial).
 var tutorial_seen: bool = false
 
+## Coin balance (soft currency). Persisted from [WalletData.coins].
+## Added in schema v2 (S3-002 / design/gdd/deck-economy.md §Core Rule 3).
+## Clamped to >= 0 in [method from_dict]; upper cap applied by WalletService (S3-004).
+var wallet_coins: int = 0
+
+## Gem balance (hard currency). Persisted from [WalletData.gems].
+## Added in schema v2 (S3-002 / design/gdd/deck-economy.md §Core Rule 3).
+## Clamped to >= 0 in [method from_dict]; upper cap applied by WalletService (S3-004).
+var wallet_gems: int = 0
+
+## The UTC day key ([method TimeProvider.utc_day_key]) these daily counters belong to.
+## Value 0 means uninitialised (no counters recorded yet). Added in schema v3 (S3-005).
+var daily_key: int = 0
+
+## Coins earned from rewarded ads today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 15 / Formula 8).
+var ad_coins_today: int = 0
+
+## Number of rewarded ads watched today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 15 / Formula 8).
+var ads_watched_today: int = 0
+
+## Gems converted to coins today (resets when [member daily_key] advances).
+## Added in schema v3 (S3-005 / design/gdd/deck-economy.md Rule 21 / Formula 7).
+var gems_converted_today: int = 0
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -42,6 +71,12 @@ func to_dict() -> Dictionary:
 		"age_band": int(age_band),
 		"settings": settings.to_dict(),
 		"tutorial_seen": tutorial_seen,
+		"wallet_coins": wallet_coins,
+		"wallet_gems": wallet_gems,
+		"daily_key": daily_key,
+		"ad_coins_today": ad_coins_today,
+		"ads_watched_today": ads_watched_today,
+		"gems_converted_today": gems_converted_today,
 	}
 
 
@@ -58,6 +93,12 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.age_band = _parse_age_band(migrated.get("age_band", AgeBand.UNKNOWN))
 	data.settings = Settings.from_dict(migrated.get("settings", {}))
 	data.tutorial_seen = bool(migrated.get("tutorial_seen", false))
+	data.wallet_coins = maxi(0, _safe_int(migrated.get("wallet_coins", 0)))
+	data.wallet_gems = maxi(0, _safe_int(migrated.get("wallet_gems", 0)))
+	data.daily_key = maxi(0, _safe_int(migrated.get("daily_key", 0)))
+	data.ad_coins_today = maxi(0, _safe_int(migrated.get("ad_coins_today", 0)))
+	data.ads_watched_today = maxi(0, _safe_int(migrated.get("ads_watched_today", 0)))
+	data.gems_converted_today = maxi(0, _safe_int(migrated.get("gems_converted_today", 0)))
 	return data
 
 
@@ -68,11 +109,30 @@ static func from_dict(dict: Dictionary) -> SaveData:
 static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 	var out: Dictionary = dict.duplicate(true)
 	var version: int = from_version
-	# Example (future): migrating v1 -> v2 would go here.
-	# if version == 1:
-	#     out["new_field"] = <default>
-	#     version = 2
+	# v1 → v2: wallet fields introduced (S3-002, design/gdd/deck-economy.md §Dependencies Save Service).
+	if version == 1:
+		out["wallet_coins"] = 0
+		out["wallet_gems"] = 0
+		version = 2
+	# v2 → v3: daily cap counters introduced (S3-005, design/gdd/deck-economy.md Rule 15/21).
+	if version == 2:
+		out["daily_key"] = 0
+		out["ad_coins_today"] = 0
+		out["ads_watched_today"] = 0
+		out["gems_converted_today"] = 0
+		version = 3
 	return out
+
+
+# Coerces a Variant to int, treating null and non-numeric values as 0.
+# Required because int(null) raises in GDScript — a save with an explicit JSON null
+# for a numeric field must not crash (mirrors the null-guard in _parse_age_band).
+static func _safe_int(value: Variant) -> int:
+	if value == null:
+		return 0
+	if value is int or value is float:
+		return int(value)
+	return 0
 
 
 # Accepts an int / float / enum value; null, non-numeric, or out-of-range -> UNKNOWN.

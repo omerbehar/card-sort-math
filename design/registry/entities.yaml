@@ -16,9 +16,9 @@ formulas:
 
   - name: reshuffle_seed
     source: design/gdd/deck-economy.md
-    description: Deterministic seed for a board reshuffle, keyed on level+session+count
+    description: Deterministic seed for a board reshuffle, keyed on level+session+count. Derived by an EXPLICIT integer mix (ADR-0009), NOT GDScript hash() — hash() is banned for rng.seed by ADR-0007 (platform/version-unstable). level_start_timestamp comes from the injectable TimeProvider seam (ADR-0009).
     variables: [level_id, level_start_timestamp, reshuffle_count]
-    output_range: "GDScript hash() int"
+    output_range: "non-negative 63-bit int [0, 2^63-1]"
     referenced_by: []
 
   - name: daily_income_model
@@ -85,11 +85,7 @@ constants:
     unit: coins
     referenced_by: []
 
-  - name: UNDO_COST_COINS
-    source: design/gdd/deck-economy.md
-    value: 180
-    unit: coins
-    referenced_by: []
+  # UNDO_COST_COINS removed 2026-06-12 — Undo booster cut from deck-economy.md (see review log).
 
   - name: RESHUFFLE_COST_COINS
     source: design/gdd/deck-economy.md
@@ -109,11 +105,7 @@ constants:
     unit: gems
     referenced_by: []
 
-  - name: UNDO_COST_GEMS
-    source: design/gdd/deck-economy.md
-    value: 5
-    unit: gems
-    referenced_by: []
+  # UNDO_COST_GEMS removed 2026-06-12 — Undo booster cut from deck-economy.md (see review log).
 
   - name: RESHUFFLE_COST_GEMS
     source: design/gdd/deck-economy.md
