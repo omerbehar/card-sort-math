@@ -176,7 +176,7 @@ func test_earn_cap_reached_sets_kind_correctly() -> void:
 
 
 func test_earn_cap_reached_sets_source_only() -> void:
-	# Arrange/Act
+	# Arrange/Act (single-arg form: reason defaults to the -1 sentinel)
 	var e: EconomyEvent = EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.REWARDED_AD)
 	# Assert: source set
 	assert_int(e.source).is_equal(EconomyEnums.EarnSource.REWARDED_AD)
@@ -186,6 +186,21 @@ func test_earn_cap_reached_sets_source_only() -> void:
 	assert_int(e.new_balance).is_equal(-1)
 	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.reason).is_equal(-1)
+	assert_int(e.card_id).is_equal(-1)
+	assert_int(e.sku).is_equal(-1)
+
+
+func test_earn_cap_reached_carries_optional_reason() -> void:
+	# The optional reason disambiguates which cap blocked the earn (HUD messaging).
+	var e: EconomyEvent = EconomyEvent.earn_cap_reached(
+			EconomyEnums.EarnSource.REWARDED_AD, EconomyEnums.FailReason.AD_COUNT_CAP)
+	assert_int(e.source).is_equal(EconomyEnums.EarnSource.REWARDED_AD)
+	assert_int(e.reason).is_equal(EconomyEnums.FailReason.AD_COUNT_CAP)
+	# Everything else still at sentinel.
+	assert_int(e.currency).is_equal(-1)
+	assert_int(e.amount).is_equal(0)
+	assert_int(e.new_balance).is_equal(-1)
+	assert_int(e.booster_type).is_equal(-1)
 	assert_int(e.card_id).is_equal(-1)
 	assert_int(e.sku).is_equal(-1)
 
@@ -433,8 +448,10 @@ func test_earn_source_enum_contains_all_registry_values() -> void:
 # EconomyEnums — FailReason
 # ---------------------------------------------------------------------------
 
-func test_fail_reason_enum_has_exactly_6_values() -> void:
-	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(6)
+func test_fail_reason_enum_has_exactly_10_values() -> void:
+	# 6 original + 4 earn-cap disambiguation reasons (AD_COUNT_CAP, DAILY_COIN_CAP,
+	# GEM_CONVERT_CAP, WALLET_FULL) added so the HUD can tell EARN_CAP_REACHED apart.
+	assert_int(EconomyEnums.FailReason.keys().size()).is_equal(10)
 
 
 func test_fail_reason_enum_contains_all_expected_values() -> void:
@@ -445,6 +462,10 @@ func test_fail_reason_enum_contains_all_expected_values() -> void:
 		"AT_MAX",
 		"WON_BOARD",
 		"COMPLIANCE_RESTRICTED",
+		"AD_COUNT_CAP",
+		"DAILY_COIN_CAP",
+		"GEM_CONVERT_CAP",
+		"WALLET_FULL",
 	]
 	var actual: Array = EconomyEnums.FailReason.keys()
 	for name: String in expected:

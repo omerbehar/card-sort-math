@@ -12,6 +12,14 @@ extends Resource
 ##         design/registry/entities.yaml (constants entries).
 ## Instance: assets/data/economy_config.tres (loaded by autoloads; never
 ## load()'d from core/).
+##
+## [b]Source of truth:[/b] the canonical default values live here as the
+## [code]@export[/code] defaults. [code]economy_config.tres[/code] is intentionally
+## an empty override sheet (script reference only, no stored values) — it inherits
+## every default from this script, so there is exactly one place to read or change
+## a default and no risk of the [code].tres[/code] drifting out of sync. A designer
+## overrides a knob by setting it in the inspector (which then writes that single
+## value into the [code].tres[/code]); unset knobs continue to track the script.
 
 # ---------------------------------------------------------------------------
 # Earn rates

@@ -52,11 +52,14 @@ func set_balance(currency: int, value: int) -> void:
 			gems = maxi(0, value)
 
 
-## Returns an independent copy of this wallet record.
-## Used by [code]WalletService[/code] to capture the pre-spend snapshot for
-## atomic rollback (EC-09 / AC-W05b): if a board mutation fails mid-transaction,
-## the service restores the original balance via direct assignment from this copy
-## rather than via [code]earn()[/code] (which would silently truncate near MAX_BALANCE).
+## Returns an independent copy of this wallet record (deep value copy).
+##
+## A general-purpose snapshot utility for callers/tests that need to compare or
+## restore whole-wallet state. [b]Note:[/b] [code]WalletService.spend()[/code]'s
+## EC-09 rollback does NOT use this — it snapshots the single affected balance as
+## a plain [int] and restores it via [method set_balance] (cheaper, and the spend
+## only ever touches one currency). The exact-restore guarantee (never via
+## [code]earn()[/code], which would truncate near the cap) holds either way.
 func duplicate_wallet() -> WalletData:
 	var copy := WalletData.new()
 	copy.coins = coins

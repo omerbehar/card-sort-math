@@ -125,6 +125,8 @@ func _cap_for(currency: int) -> int:
 ##
 ## Policy routing (S3-005 / design/gdd/deck-economy.md Rule 15, Rule 21):
 ## - [constant EconomyEnums.EarnSource.REWARDED_AD] → compliance + daily-cap gate via [method _earn_rewarded_ad].
+##   [b]Rewarded ads always pay out in COINS[/b]: the [param currency] argument is
+##   ignored on this path (the GDD has no gem-paying ad). Callers pass COINS.
 ## - All other sources (LEVEL_WIN, DAILY_CHALLENGE, MILESTONE_GIFT, GEM_CONVERT, IAP) → raw,
 ##   uncapped, ungated (AC-C03 / AC-CH01).
 func earn(currency: int, amount: int, source: int) -> int:
@@ -179,7 +181,8 @@ func _earn_rewarded_ad(amount: int) -> int:
 	# Count cap: max rewarded ads per day (Formula 8).
 	if _save != null and _save.data != null \
 			and _save.data.ads_watched_today >= _config.max_ads_per_day:
-		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.REWARDED_AD))
+		economy_event.emit(EconomyEvent.earn_cap_reached(
+				EconomyEnums.EarnSource.REWARDED_AD, EconomyEnums.FailReason.AD_COUNT_CAP))
 		return 0
 	# Coin cap: daily_coins_cap applies to REWARDED_AD income only (Rule 15 canonical scope).
 	var remaining: int = 0
@@ -188,13 +191,20 @@ func _earn_rewarded_ad(amount: int) -> int:
 	else:
 		remaining = _config.daily_coins_cap
 	if remaining <= 0:
-		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.REWARDED_AD))
+		economy_event.emit(EconomyEvent.earn_cap_reached(
+				EconomyEnums.EarnSource.REWARDED_AD, EconomyEnums.FailReason.DAILY_COIN_CAP))
 		return 0  # AC-C01
 	# Partial cap earn: clamp to remaining headroom (AC-C02 / EC-11).
 	var credited: int = _earn_raw(
 			EconomyEnums.Currency.COINS,
 			mini(amount, remaining),
 			EconomyEnums.EarnSource.REWARDED_AD)
+	# Wallet hard cap (coins_max) can swallow the credit even with daily headroom left.
+	# Don't consume an ad view for nothing — surface WALLET_FULL and leave counters be.
+	if credited <= 0:
+		economy_event.emit(EconomyEvent.earn_cap_reached(
+				EconomyEnums.EarnSource.REWARDED_AD, EconomyEnums.FailReason.WALLET_FULL))
+		return 0
 	if _save != null and _save.data != null:
 		_save.data.ad_coins_today += credited
 		_save.data.ads_watched_today += 1
@@ -207,7 +217,9 @@ func _earn_rewarded_ad(amount: int) -> int:
 ##
 ## Failure paths (no balance change on false return):
 ## - [param gems_amount] <= 0 → false, no event (EC-14).
-## - daily_gem_convert_cap exceeded → false, [code]EARN_CAP_REACHED(GEM_CONVERT)[/code] (AC-GC02 / EC-13).
+## - daily_gem_convert_cap exceeded → false, [code]EARN_CAP_REACHED(GEM_CONVERT, GEM_CONVERT_CAP)[/code] (AC-GC02 / EC-13).
+## - coin wallet too full to hold the full payout → false, [code]EARN_CAP_REACHED(GEM_CONVERT, WALLET_FULL)[/code].
+##   Checked [b]before[/b] the gem spend so gems are never burned for a truncated payout.
 ## - insufficient gem balance → false, [code]SPEND_FAILED[/code] (AC-GC03).
 ##
 ## On success: gems spent, coins credited, [member SaveData.gems_converted_today] incremented.
@@ -219,13 +231,21 @@ func convert_gems_to_coins(gems_amount: int) -> bool:
 	# Daily gem conversion cap (Rule 21 / Formula 7). Uses its own cap, NOT daily_coins_cap.
 	if _save != null and _save.data != null \
 			and _save.data.gems_converted_today + gems_amount > _config.daily_gem_convert_cap:
-		economy_event.emit(EconomyEvent.earn_cap_reached(EconomyEnums.EarnSource.GEM_CONVERT))
+		economy_event.emit(EconomyEvent.earn_cap_reached(
+				EconomyEnums.EarnSource.GEM_CONVERT, EconomyEnums.FailReason.GEM_CONVERT_CAP))
 		return false  # AC-GC02 / EC-13
+	# Coin-wallet headroom check BEFORE spending gems: the conversion must be atomic in
+	# value terms. If coins_max can't hold the full penalised payout, abort without
+	# burning gems (the gems-spent-then-coins-truncated path would silently lose value).
+	var coins: int = gems_amount * _config.gem_to_coin_rate
+	if balance(EconomyEnums.Currency.COINS) + coins > _cap_for(EconomyEnums.Currency.COINS):
+		economy_event.emit(EconomyEvent.earn_cap_reached(
+				EconomyEnums.EarnSource.GEM_CONVERT, EconomyEnums.FailReason.WALLET_FULL))
+		return false
 	# Atomic spend first — insufficient gems emits SPEND_FAILED (AC-GC03).
 	if not spend(EconomyEnums.Currency.GEMS, gems_amount):
 		return false
 	# Credit coins at the penalised rate (GEM_CONVERT is NOT subject to daily_coins_cap — AC-C03).
-	var coins: int = gems_amount * _config.gem_to_coin_rate
 	_earn_raw(EconomyEnums.Currency.COINS, coins, EconomyEnums.EarnSource.GEM_CONVERT)
 	if _save != null and _save.data != null:
 		_save.data.gems_converted_today += gems_amount
@@ -251,6 +271,11 @@ func initiate_iap(sku: int) -> bool:
 ## Returns whether a rewarded ad earn is currently available (Formula 8 / Rule 15).
 ## True only when the player is not restricted, has not hit the ad count cap, and
 ## has not hit the daily coin cap. Intended for HUD availability checks.
+##
+## [b]Side effect:[/b] runs [method _roll_day_if_needed] first, so on a UTC day
+## boundary this query resets the daily counters and persists the save. The write
+## is idempotent (at most once per day), but callers should be aware this is not a
+## pure read.
 ## Source: design/gdd/deck-economy.md Formula 8, AC-C01.
 func is_ad_earn_available() -> bool:
 	_roll_day_if_needed()
