@@ -101,3 +101,64 @@ func test_extra_discard_grows_the_discard_row_in_scene() -> void:
 	# Model and view both reflect the extra slot.
 	assert_int(main._model.active_discard_slots()).is_equal(6)
 	assert_int(main._discard.slot_count()).is_equal(6)
+
+
+# --- terminal states (WIN / LOSE) ------------------------------------------
+
+# An exposed card that will NOT route to any open stack (so a tap discards it).
+func _exposed_discardable(main: Variant) -> int:
+	var model = main._model
+	for cid in model.exposed_cards():
+		var r: int = model.result_of(cid)
+		var routes := false
+		for s in BoardModel.STACK_COUNT:
+			if not model.is_stack_locked(s) and model.stack_target(s) == r \
+					and model.stack_count(s) < BoardModel.STACK_CAPACITY:
+				routes = true
+				break
+		if not routes:
+			return cid
+	return -1
+
+
+func test_losing_in_scene_shows_result_and_does_not_advance() -> void:
+	# Real play: keep discarding non-routing cards until the discard row overflows
+	# (LOSE). Assert the controller surfaces the result screen and progression does
+	# NOT advance (a loss leaves GameManager.current_level unchanged).
+	var runner = await _boot()
+	var main = runner.scene()
+	var model = main._model
+	var level_before: int = GameManager.current_level
+
+	var guard := 0
+	while not model.is_game_over() and guard < 40:
+		var cid: int = _exposed_discardable(main)
+		if cid == -1:
+			break
+		main._on_card_tapped(cid)
+		var wait := 0
+		while main.is_input_locked() and not model.is_game_over() and wait < 25:
+			wait += 1
+			await runner.simulate_frames(3)
+		guard += 1
+	await runner.simulate_frames(10)
+
+	assert_bool(model.is_lost()).is_true()
+	assert_object(main._result_screen).is_not_null()
+	assert_int(GameManager.current_level).is_equal(level_before)   # loss does not advance
+
+
+func test_winning_in_scene_shows_result_and_advances() -> void:
+	# A full real-level win is layout/economy dependent, so we drive the controller's
+	# terminal WIN handling directly with a WIN GameEvent (the same event BoardModel
+	# emits when the floor empties). Asserts the controller shows the result screen
+	# and advances progression via GameManager.complete_level.
+	var runner = await _boot()
+	var main = runner.scene()
+	var level_before: int = GameManager.current_level
+
+	await main._play_event(GameEvent.win())
+	await runner.simulate_frames(10)
+
+	assert_object(main._result_screen).is_not_null()
+	assert_int(GameManager.current_level).is_equal(level_before + 1)   # win advances
