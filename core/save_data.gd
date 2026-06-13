@@ -11,10 +11,12 @@ extends RefCounted
 ## [member age_band], [member settings], [member tutorial_seen],
 ## [member wallet_coins], [member wallet_gems],
 ## [member daily_key], [member ad_coins_today],
-## [member ads_watched_today], [member gems_converted_today], [member wins_today].
+## [member ads_watched_today], [member gems_converted_today], [member wins_today],
+## [member boosters_picker], [member boosters_reshuffle], [member boosters_extra_discard],
+## [member boosters_seeded].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 4
+const CURRENT_SCHEMA_VERSION: int = 5
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -63,6 +65,22 @@ var gems_converted_today: int = 0
 ## Formula 1, AC-EF01/EF02).
 var wins_today: int = 0
 
+## Owned Picker booster count (prototype buff inventory). Consumed for free on use;
+## at zero a watch-ad / pay-coins top-up popup is offered. Added in schema v5.
+## Clamped to >= 0 in [method from_dict]; seeded once by WalletService (see [member boosters_seeded]).
+var boosters_picker: int = 0
+
+## Owned Reshuffle booster count (prototype buff inventory). Added in schema v5.
+var boosters_reshuffle: int = 0
+
+## Owned Extra Discard Slot booster count (prototype buff inventory). Added in schema v5.
+var boosters_extra_discard: int = 0
+
+## Whether WalletService has seeded the starting booster stock into the counts above.
+## False on a fresh/migrated save so first load grants the configured starting stock
+## exactly once (distinguishes "new player" from "spent everything to 0"). Added in schema v5.
+var boosters_seeded: bool = false
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -84,6 +102,10 @@ func to_dict() -> Dictionary:
 		"ads_watched_today": ads_watched_today,
 		"gems_converted_today": gems_converted_today,
 		"wins_today": wins_today,
+		"boosters_picker": boosters_picker,
+		"boosters_reshuffle": boosters_reshuffle,
+		"boosters_extra_discard": boosters_extra_discard,
+		"boosters_seeded": boosters_seeded,
 	}
 
 
@@ -107,6 +129,10 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.ads_watched_today = maxi(0, _safe_int(migrated.get("ads_watched_today", 0)))
 	data.gems_converted_today = maxi(0, _safe_int(migrated.get("gems_converted_today", 0)))
 	data.wins_today = maxi(0, _safe_int(migrated.get("wins_today", 0)))
+	data.boosters_picker = maxi(0, _safe_int(migrated.get("boosters_picker", 0)))
+	data.boosters_reshuffle = maxi(0, _safe_int(migrated.get("boosters_reshuffle", 0)))
+	data.boosters_extra_discard = maxi(0, _safe_int(migrated.get("boosters_extra_discard", 0)))
+	data.boosters_seeded = bool(migrated.get("boosters_seeded", false))
 	return data
 
 
@@ -133,6 +159,14 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 	if version == 3:
 		out["wins_today"] = 0
 		version = 4
+	# v4 → v5: prototype buff inventory (owned booster counts + seed flag). Seeded=false so
+	# WalletService grants the starting stock once on the next load (existing players included).
+	if version == 4:
+		out["boosters_picker"] = 0
+		out["boosters_reshuffle"] = 0
+		out["boosters_extra_discard"] = 0
+		out["boosters_seeded"] = false
+		version = 5
 	return out
 
 

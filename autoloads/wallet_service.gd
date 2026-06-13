@@ -13,6 +13,12 @@ extends Node
 ## autoload coupling — mirroring [GameManager]/[ComplianceService]. In normal play they
 ## resolve to the autoloads in [method _ready].
 ##
+## [b]Booster inventory (prototype):[/b] owned per-booster counts persist in [SaveData]
+## ([code]boosters_picker/reshuffle/extra_discard[/code]), seeded once from
+## [member EconomyConfig.starting_booster_count]. A buff is consumed for free on use;
+## at zero the UI offers a watch-ad / pay-coins top-up. This diverges from the GDD's
+## coins-per-use booster model — see design/gdd/deck-economy.md §Prototype Addendum.
+##
 ## [b]Atomicity / rollback (EC-09):[/b] [method spend] takes an optional [code]on_committed[/code]
 ## [Callable] — the board mutation the spend pays for. GDScript has no exceptions, so a
 ## board mutation that "raises" (GDD EC-09) is modelled as the Callable returning [code]false[/code].
@@ -41,12 +47,16 @@ var _config: EconomyConfig = null   # tuning knobs (coins_max/gems_max here)
 # --- wallet state ---
 var _wallet: WalletData = WalletData.new()
 
-# --- booster inventory (prototype: in-memory, per-session owned counts) ---
+# --- booster inventory (prototype: owned counts) ---
 # Each booster is consumed for free on use; at zero the UI offers a watch-ad /
-# pay-coins top-up. Seeded from EconomyConfig.starting_booster_count. Persistence
-# (a SaveData field) is a follow-up — see design/gdd/deck-economy.md (divergence note).
-var _booster_stock: Dictionary = {}
-var _booster_stock_seeded: bool = false
+# pay-coins top-up. Counts persist in SaveData (boosters_picker/reshuffle/extra_discard),
+# seeded once from EconomyConfig.starting_booster_count (SaveData.boosters_seeded gate).
+# Maps each EconomyEnums.BoosterType to its SaveData field name.
+const _BOOSTER_FIELD: Dictionary = {
+	EconomyEnums.BoosterType.PICKER: "boosters_picker",
+	EconomyEnums.BoosterType.RESHUFFLE: "boosters_reshuffle",
+	EconomyEnums.BoosterType.EXTRA_DISCARD: "boosters_extra_discard",
+}
 
 # --- per-level economy state (cleared on level boundary) ---
 var reshuffle_count: int = 0
@@ -145,43 +155,50 @@ func booster_coin_cost(booster_type: int) -> int:
 
 # --- booster inventory (prototype: owned counts) ---------------------------
 
-# Seeds each booster's owned count from EconomyConfig.starting_booster_count, once
-# per session. In-memory only (no persistence yet); idempotent within a session.
+# Seeds each booster's owned count from EconomyConfig.starting_booster_count, exactly
+# once per save (SaveData.boosters_seeded gate) so a new/migrated player gets the
+# starting stock but a player who spent down to 0 is not topped back up. Persists.
 func _seed_booster_stock() -> void:
-	if _booster_stock_seeded:
+	if _save == null or _save.data == null or _save.data.boosters_seeded:
 		return
 	var start: int = _config.starting_booster_count if _config != null else 0
-	for type: int in [EconomyEnums.BoosterType.PICKER,
-			EconomyEnums.BoosterType.RESHUFFLE,
-			EconomyEnums.BoosterType.EXTRA_DISCARD]:
-		_booster_stock[type] = start
-	_booster_stock_seeded = true
+	for type: int in _BOOSTER_FIELD:
+		_save.data.set(_BOOSTER_FIELD[type], maxi(0, start))
+	_save.data.boosters_seeded = true
+	_persist()
 
 
 ## Owned count of [param booster_type] (an [EconomyEnums.BoosterType]). Drives the
 ## HUD count badge and the "tap → use for free vs. show top-up popup" decision.
+## Persisted in SaveData; 0 when no save is wired.
 func booster_count(booster_type: int) -> int:
-	return int(_booster_stock.get(booster_type, 0))
+	if _save == null or _save.data == null or not _BOOSTER_FIELD.has(booster_type):
+		return 0
+	return maxi(0, int(_save.data.get(_BOOSTER_FIELD[booster_type])))
 
 
 ## Adds [param n] to the owned count of [param booster_type] (e.g. a watch-ad reward
-## or a coin purchase). Emits [signal booster_stock_changed]. No-op for n <= 0.
+## or a coin purchase). Persists and emits [signal booster_stock_changed]. No-op for
+## n <= 0 or when no save is wired.
 func grant_booster(booster_type: int, n: int = 1) -> void:
-	if n <= 0:
+	if n <= 0 or _save == null or _save.data == null or not _BOOSTER_FIELD.has(booster_type):
 		return
-	_booster_stock[booster_type] = booster_count(booster_type) + n
-	booster_stock_changed.emit(booster_type, _booster_stock[booster_type])
+	var new_count: int = booster_count(booster_type) + n
+	_save.data.set(_BOOSTER_FIELD[booster_type], new_count)
+	_persist()
+	booster_stock_changed.emit(booster_type, new_count)
 
 
 ## Decrements the owned count of [param booster_type] by one if any are owned.
 ## Returns true if a unit was consumed; false when the count is already zero.
-## Emits [signal booster_stock_changed] on success.
+## Persists and emits [signal booster_stock_changed] on success.
 func consume_booster(booster_type: int) -> bool:
 	var have: int = booster_count(booster_type)
 	if have <= 0:
 		return false
-	_booster_stock[booster_type] = have - 1
-	booster_stock_changed.emit(booster_type, _booster_stock[booster_type])
+	_save.data.set(_BOOSTER_FIELD[booster_type], have - 1)
+	_persist()
+	booster_stock_changed.emit(booster_type, have - 1)
 	return true
 
 

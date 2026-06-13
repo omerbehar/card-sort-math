@@ -140,8 +140,8 @@ extends Resource
 # Booster inventory (prototype: owned counts)
 # ---------------------------------------------------------------------------
 
-## How many of each booster a player starts a session with (prototype buff
-## inventory). Tapping a booster consumes one for free; at zero, the player is
-## offered a watch-ad / pay-coins top-up popup. Currently an in-memory, per-session
-## stock seeded by WalletService (persistence is a follow-up). Safe range: 0–10.
+## How many of each booster a player starts with (prototype buff inventory).
+## Tapping a booster consumes one for free; at zero, the player is offered a
+## watch-ad / pay-coins top-up popup. Seeded once into the persisted SaveData
+## counts by WalletService (SaveData.boosters_seeded gate). Safe range: 0–10.
 @export var starting_booster_count: int = 3

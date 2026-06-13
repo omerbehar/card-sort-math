@@ -172,9 +172,10 @@ func test_tutorial_seen_does_not_bump_schema_version() -> void:
 # design/gdd/deck-economy.md §Dependencies → Save Service
 # ---------------------------------------------------------------------------
 
-func test_schema_version_is_4() -> void:
-	# Bumped 2 → 3 (S3-005 daily cap counters), then 3 → 4 (S3-008 daily win counter).
-	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(4)
+func test_schema_version_is_5() -> void:
+	# Bumped 2 → 3 (S3-005 daily cap counters), 3 → 4 (S3-008 daily win counter),
+	# then 4 → 5 (prototype buff inventory: owned booster counts + seed flag).
+	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(5)
 
 
 func test_defaults_include_wallet_fields_at_zero() -> void:
@@ -493,3 +494,76 @@ func test_from_dict_null_wins_today_clamped_to_zero() -> void:
 func test_from_dict_negative_wins_today_clamped_to_zero() -> void:
 	var data := SaveData.from_dict({"schema_version": 4, "wins_today": -3})
 	assert_int(data.wins_today).is_equal(0)
+
+
+# ---------------------------------------------------------------------------
+# Schema v5 — prototype buff inventory (owned booster counts + seed flag)
+# ---------------------------------------------------------------------------
+
+func test_defaults_include_booster_counts_at_zero_unseeded() -> void:
+	var data := SaveData.defaults()
+	assert_int(data.boosters_picker).is_equal(0)
+	assert_int(data.boosters_reshuffle).is_equal(0)
+	assert_int(data.boosters_extra_discard).is_equal(0)
+	assert_bool(data.boosters_seeded).is_false()
+
+
+func test_to_dict_contains_booster_keys() -> void:
+	var keys: Array = SaveData.new().to_dict().keys()
+	for key: String in ["boosters_picker", "boosters_reshuffle",
+			"boosters_extra_discard", "boosters_seeded"]:
+		assert_bool(keys.has(key)).is_true()
+
+
+func test_v5_dict_round_trips_booster_fields() -> void:
+	var original := SaveData.new()
+	original.boosters_picker = 2
+	original.boosters_reshuffle = 5
+	original.boosters_extra_discard = 1
+	original.boosters_seeded = true
+	var restored := SaveData.from_dict(original.to_dict())
+	assert_int(restored.boosters_picker).is_equal(2)
+	assert_int(restored.boosters_reshuffle).is_equal(5)
+	assert_int(restored.boosters_extra_discard).is_equal(1)
+	assert_bool(restored.boosters_seeded).is_true()
+
+
+func test_migrate_v4_to_v5_sets_booster_fields_and_unseeded() -> void:
+	# A v4 save migrates to v5: booster counts default to 0 and boosters_seeded is
+	# false so WalletService seeds the starting stock on the next load. Other fields preserved.
+	var data := SaveData.from_dict({
+		"schema_version": 4,
+		"current_level": 6,
+		"wallet_coins": 300,
+		"wins_today": 2,
+	})
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.boosters_picker).is_equal(0)
+	assert_int(data.boosters_reshuffle).is_equal(0)
+	assert_int(data.boosters_extra_discard).is_equal(0)
+	assert_bool(data.boosters_seeded).is_false()
+	assert_int(data.wallet_coins).is_equal(300)   # preserved across the bump
+	assert_int(data.current_level).is_equal(6)
+
+
+func test_migrate_v1_flows_all_the_way_to_v5() -> void:
+	var data := SaveData.from_dict({"schema_version": 1, "current_level": 9})
+	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
+	assert_int(data.boosters_picker).is_equal(0)
+	assert_bool(data.boosters_seeded).is_false()
+	assert_int(data.current_level).is_equal(9)
+
+
+func test_from_dict_missing_booster_count_defaults_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 5, "wallet_coins": 10})
+	assert_int(data.boosters_picker).is_equal(0)
+
+
+func test_from_dict_null_booster_count_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 5, "boosters_picker": null})
+	assert_int(data.boosters_picker).is_equal(0)
+
+
+func test_from_dict_negative_booster_count_clamped_to_zero() -> void:
+	var data := SaveData.from_dict({"schema_version": 5, "boosters_reshuffle": -4})
+	assert_int(data.boosters_reshuffle).is_equal(0)

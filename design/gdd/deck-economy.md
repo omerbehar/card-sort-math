@@ -8,6 +8,7 @@
 > **Independent /design-review (2026-06-12)**: NEEDS REVISION → revised. Resolutions: efficiency bonus now mechanized (`CLEAN_CLEAR_BONUS`); streak reset softened to a day-3 floor; Extra Discard Slot reframed purchase-ahead-only (no rescue); Reshuffle now guarantees a routable card; canonical `EconomyEvent` type introduced; `ComplianceService` method names corrected to `is_restricted()`; Undo replay approach specified against the real `BoardModel`; Hint ceiling corrected 585→405; streak average corrected 37→39; rollback uses a pre-spend snapshot; `DAILY_COINS_CAP` scope declared (ad-earn only).
 > **Scope change (2026-06-12)**: **Undo booster removed** by design decision. The booster set is now **three** — Hint, Reshuffle, Extra Discard Slot. All Undo rules, costs, edge cases, acceptance criteria, and registry constants are struck; Core Rule 9 is tombstoned to keep `Core Rule N` cross-references stable. Rationale and full ripple list recorded in `design/gdd/reviews/deck-economy-review-log.md`. The surviving pre-implementation decisions are ratified in **ADR-0008** (`EconomyEvent` type), **ADR-0009** (injectable `TimeProvider` seam — still required for Reshuffle determinism + daily caps/streaks), and **ADR-0010** (Extra Discard Slot board change).
 > **Scope change (2026-06-13)**: **Hint booster replaced by Picker.** The booster set is **Picker, Reshuffle, Extra Discard Slot**. Picker lets the player play any covered (lower-layer) card immediately (`BoardModel.pick_card` / `WalletService.use_picker`), bypassing coverage but never revealing the arithmetic answer (Core Rule 12 holds). Removed with Hint: the `hint_score` formula and its `ROUTES/OPENS/RELIEF_WEIGHT` knobs, the `HINT_RESULT` event, the `_hint_in_progress` double-tap path (`ALREADY_IN_PROGRESS`/`NO_EXPOSED_CARD` reasons), and `HINT_COST_*` (now `PICKER_COST_*`). `BoosterType.HINT → PICKER`; new `FailReason.INVALID_TARGET`.
+> **Scope change (2026-06-13b)**: **Prototype locked-deck unlock + buff inventory added.** Locked stacks are added via a two-option watch-ad / pay-coins popup (`UnlockPopup`); boosters gain a persisted owned count (`SaveData` schema **v5**) consumed for free on use, with the same watch-ad / pay-coins top-up at zero stock. New `FailReason.NO_STOCK`; new `EconomyConfig.starting_booster_count`; `WalletService` gains `booster_count` / `grant_booster` / `consume_booster` / `*_from_stock` + a `booster_stock_changed` signal. Partially diverges from Rule 19 (coins-per-use) — see the **Prototype Addendum** section for full rules, edge cases, and open items.
 
 ## Overview
 
@@ -899,6 +900,134 @@ _Undo was cut from the design. AC-U01–U07 are withdrawn. No Undo behaviour is 
 - **AC-M01a [B]** GIVEN any board state, WHEN the Picker plays a card, THEN no economy event carries a `result`, `operands`, or `solution_text` field (the `EconomyEvent` class has no such field); only board route/discard `GameEvent`s flow.
 - **AC-M01b [A]** Visual gate: activating the Picker does not display any card's computed result value (covered cards show their equation, never the answer). Screenshot + lead sign-off in `production/qa/evidence/`.
 - **AC-M02 [A]** Code-review gate (advisory): no `WalletService`, `WalletData`, or booster activation path reads or exposes `CardData.result` to the player. Any future booster that would require reading `result` to determine its effect must be rejected at design review.
+
+## Prototype Addendum — Locked Decks & Buff Inventory
+
+> **Status**: Prototype (implemented 2026-06-13, this branch). Two player-facing
+> additions that sit *beside* the core rules above and partially diverge from them.
+> Documented here for traceability; **to be reconciled into the main rules (and an
+> ADR opened) when these leave prototype.** Both are validated by automated tests
+> (`tests/test_wallet_service.gd`, `tests/test_save_data.gd`,
+> `tests/integration/main_booster_flow_test.gd`) and screenshot evidence.
+
+### Addendum Overview
+
+1. **Locked-deck unlock.** A level opens with only `PROTO_OPEN_COUNT` stacks active;
+   the remaining stacks render as locked "decks." Tapping a locked deck opens a
+   two-option modal (`UnlockPopup`): **Watch Ad** (prototype stub — free unlock; no
+   ad SDK yet) or **Pay** `UNLOCK_COST` coins (real, atomic `WalletService.spend`).
+2. **Buff inventory.** The three boosters (Picker / Reshuffle / Extra Discard) now
+   have a **persisted owned count** instead of being purely coins-per-use. A tap
+   consumes one for **free**; at **zero count** the same two-option modal appears
+   (**Watch Ad** → grant +1 free; **Pay** `booster_coin_cost` → coin path) and the
+   buff is **granted and used immediately**.
+
+### Addendum Player Fantasy
+
+The toolbox metaphor (Player Fantasy, above) is preserved and sharpened: you *hold*
+tools, you don't rent them per use. Running out is a gentle, opt-in moment — "grab
+one more" via an ad or a small coin spend — never a hard wall. Locked decks frame
+extra stacks as an *earned expansion* of your sorting space, not a paywall: the ad
+path means a player is never blocked for lack of coins.
+
+### Addendum Detailed Rules
+
+**Locked decks**
+- LD-1. Stacks `[0, PROTO_OPEN_COUNT)` start open; the rest start locked
+  (`BoardModel.is_stack_locked`). A locked deck shows a "+" with the coin price.
+- LD-2. Tapping a locked deck emits `Stack.unlock_requested`; the controller opens
+  `UnlockPopup` (one at a time; suppressed while input is locked or a result screen is up).
+- LD-3. **Watch Ad** unlocks for free (stub). **Pay** spends `UNLOCK_COST` coins via
+  `WalletService.spend(COINS, UNLOCK_COST, on_committed)`; the deck is added inside
+  `on_committed` so a rejected spend leaves the board untouched (Core Rule 4).
+- LD-4. The Pay button is disabled when `coins < UNLOCK_COST`; Watch Ad stays available.
+- LD-5. No compliance gate on the ad option yet (deferred — see Addendum Open Items).
+
+**Buff inventory**
+- BI-1. Each booster has a persisted count (`SaveData.boosters_picker` /
+  `_reshuffle` / `_extra_discard`), seeded **once** from
+  `EconomyConfig.starting_booster_count` (gated by `SaveData.boosters_seeded`).
+- BI-2. The HUD tile shows the owned count; an empty buff dims and shows a "+" cue.
+- BI-3. **Tap with count > 0:** consume one for free (`WalletService.consume_booster`)
+  and activate via the `*_from_stock` path (no coin spend). `boosters_used_this_level`
+  still increments (clean-clear bonus forfeited — Formula 1b holds).
+- BI-4. **Tap at count 0:** open `UnlockPopup`. **Watch Ad** → `grant_booster(+1)`
+  then activate from stock (net free use). **Pay** → the coin path (`use_picker` /
+  `use_reshuffle` / `use_extra_discard`) spends `booster_coin_cost` and activates now.
+- BI-5. Activation precondition checks (INVALID_TARGET / WON_BOARD / AT_MAX /
+  DISCARD_FULL) run *before* any consume or spend, exactly as in Core Rules 8/10/11.
+  An empty-stock `*_from_stock` call emits `BOOSTER_PRECONDITION_FAILED(NO_STOCK)`.
+- BI-6. **Divergence note:** for normal taps this *replaces* the coins-per-use model
+  (Rule 19). Rule 19's per-booster coin costs are retained and now serve as the
+  **top-up "Pay" price** at zero stock. The coin-spend `use_*` methods are unchanged.
+
+### Addendum Formulas
+
+| Value | Symbol | Default | Source |
+|-------|--------|---------|--------|
+| Locked-deck unlock price | `UNLOCK_COST` | 100 coins | `scenes/main/main.gd` (prototype constant — not yet an `EconomyConfig` knob) |
+| Open stacks at level start | `PROTO_OPEN_COUNT` | 1 | `scenes/main/main.gd` |
+| Starting buff count (each) | `starting_booster_count` | 3 | `EconomyConfig` |
+| Buff top-up "Pay" price | `booster_coin_cost(type)` | 120 / 250 / 350 | Rule 19 (`EconomyConfig`) |
+
+Buff top-up uses the existing spend transaction (Formula 3). Locked-deck Pay:
+`can_unlock = coins ≥ UNLOCK_COST`; on success `coins' = coins − UNLOCK_COST`.
+
+### Addendum Edge Cases
+
+- **EC-LD1 — Pay with insufficient coins:** Pay button disabled; if reached anyway,
+  `WalletService.spend` returns false (`SPEND_FAILED`), board untouched, popup dismissed.
+- **EC-LD2 — Dismiss without choosing:** backdrop tap or ✕ closes the popup; the deck
+  stays locked; no spend, no board change.
+- **EC-BI1 — Consume at zero:** `consume_booster` returns false (no underflow); UI never
+  reaches this because a zero count routes to the popup instead.
+- **EC-BI2 — `*_from_stock` with empty stock (defensive):** emits
+  `BOOSTER_PRECONDITION_FAILED(NO_STOCK)`, no activation.
+- **EC-BI3 — Seed-once:** a player who spends all of a buff to 0 is **not** re-granted on
+  reload (`boosters_seeded` stays true). A v4→v5 migrated (or fresh) save is seeded once.
+- **EC-BI4 — Pay-path precondition fail (e.g. Extra Discard row full):** no coins spent,
+  no count change (preconditions run before payment).
+
+### Addendum Dependencies
+
+| System | Direction | Interface |
+|--------|-----------|-----------|
+| **SaveService** (`core/save_data.gd`) | Writes to | Booster counts persist in `SaveData` (schema **v5**: `boosters_picker/reshuffle/extra_discard` + `boosters_seeded`); migrated from v4 with a seed-on-next-load step. |
+| **HUD** (`scenes/ui/hud.gd`) | Reads from | Tile count badge from `WalletService.booster_count`; refreshed on the `booster_stock_changed` signal. |
+| **BoardModel** | Commands | `is_stack_locked` / `unlock_stack` (locked decks); `*_from_stock` activation reuses the same board effects as the coin path. |
+
+### Addendum Tuning Knobs
+
+- `starting_booster_count` (`EconomyConfig`, default 3, safe 0–10) — buffs each player
+  starts with. 0 makes every first use go through the top-up popup.
+- `UNLOCK_COST` / `PROTO_OPEN_COUNT` (prototype constants in `main.gd`) — promote to
+  `EconomyConfig` when locked decks leave prototype.
+
+### Addendum Acceptance Criteria
+
+- **AC-LD1 [Logic]** Tapping a locked deck shows `UnlockPopup` and does NOT unlock until a
+  choice is made (`test_adding_a_deck_unlocks_a_stack_in_scene`).
+- **AC-LD2 [Logic]** Choosing Pay debits exactly `UNLOCK_COST` and unlocks the stack
+  (`test_paying_coins_unlocks_a_deck_and_deducts_the_cost`).
+- **AC-BI1 [Logic]** A buff with stock is used for free (count −1, coins unchanged)
+  (`test_buff_with_stock_is_used_for_free`).
+- **AC-BI2 [Logic]** At zero stock, the popup shows; Watch Ad grants and uses the buff
+  (`test_buff_at_zero_opens_popup_and_watch_ad_uses_it`); Pay spends `booster_coin_cost`
+  and uses it (`test_buff_at_zero_pay_coins_uses_it_and_deducts`).
+- **AC-BI3 [Logic]** Counts persist across a WalletService reload and are not re-seeded
+  after spending to zero (`test_booster_counts_persist_in_savedata_and_survive_reload`,
+  `test_seed_does_not_re_grant_after_spending_to_zero`).
+- **AC-BI4 [Logic]** Save schema migrates v4→v5 with counts at 0 and `boosters_seeded`
+  false (`test_migrate_v4_to_v5_sets_booster_fields_and_unseeded`).
+
+### Addendum Open Items
+
+- **Promote prototype constants** (`UNLOCK_COST`, `PROTO_OPEN_COUNT`) to `EconomyConfig`.
+- **Compliance gate the ad option** (ADR-0005) for restricted/child users before the ad
+  SDK lands (M4) — currently ungated.
+- **Reconcile with Rule 19** and open an ADR: decide whether buffs are inventory-first
+  (this prototype) or coins-per-use (original) for production, and update the core rules.
+- **Locked-deck unlock cost balance** is unauthored (placeholder 100); needs a design pass.
 
 ## Open Questions
 

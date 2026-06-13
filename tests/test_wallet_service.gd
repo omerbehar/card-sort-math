@@ -684,6 +684,31 @@ func test_booster_count_seeded_from_config() -> void:
 	assert_int(w.booster_count(PICKER)).is_equal(3)
 	assert_int(w.booster_count(RESHUFFLE)).is_equal(3)
 	assert_int(w.booster_count(EXTRA_DISCARD)).is_equal(3)
+	assert_bool(_save_stub.data.boosters_seeded).is_true()   # seed gate set
+
+
+func test_booster_counts_persist_in_savedata_and_survive_reload() -> void:
+	# Counts live in SaveData and are restored on a fresh WalletService over the same save.
+	var w = _make(0, 0, _config_with_start(3))
+	w.consume_booster(PICKER)
+	w.grant_booster(RESHUFFLE, 2)
+	assert_int(_save_stub.data.boosters_picker).is_equal(2)
+	assert_int(_save_stub.data.boosters_reshuffle).is_equal(5)
+
+	var w2 = auto_free(WALLET.new())
+	w2.configure(_save_stub, StubCompliance.new(), FixedTimeProvider.new(), _config_with_start(3))
+	assert_int(w2.booster_count(PICKER)).is_equal(2)         # not re-seeded
+	assert_int(w2.booster_count(RESHUFFLE)).is_equal(5)
+
+
+func test_seed_does_not_re_grant_after_spending_to_zero() -> void:
+	# An already-seeded save with 0 stock must NOT be topped back up on reload.
+	var w = _make(0, 0, _config_with_start(1))
+	w.consume_booster(PICKER)                                # picker now 0, seeded=true
+	assert_int(w.booster_count(PICKER)).is_equal(0)
+	var w2 = auto_free(WALLET.new())
+	w2.configure(_save_stub, StubCompliance.new(), FixedTimeProvider.new(), _config_with_start(1))
+	assert_int(w2.booster_count(PICKER)).is_equal(0)         # stays 0, not re-seeded to 1
 
 
 func test_consume_booster_decrements_and_returns_true() -> void:
