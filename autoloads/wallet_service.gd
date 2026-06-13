@@ -13,6 +13,12 @@ extends Node
 ## autoload coupling — mirroring [GameManager]/[ComplianceService]. In normal play they
 ## resolve to the autoloads in [method _ready].
 ##
+## [b]Booster inventory (prototype):[/b] owned per-booster counts persist in [SaveData]
+## ([code]boosters_picker/reshuffle/extra_discard[/code]), seeded once from
+## [member EconomyConfig.starting_booster_count]. A buff is consumed for free on use;
+## at zero the UI offers a watch-ad / pay-coins top-up. This diverges from the GDD's
+## coins-per-use booster model — see design/gdd/deck-economy.md §Prototype Addendum.
+##
 ## [b]Atomicity / rollback (EC-09):[/b] [method spend] takes an optional [code]on_committed[/code]
 ## [Callable] — the board mutation the spend pays for. GDScript has no exceptions, so a
 ## board mutation that "raises" (GDD EC-09) is modelled as the Callable returning [code]false[/code].
@@ -26,6 +32,10 @@ extends Node
 ## The single typed economy signal. HUD + Analytics subscribe; never carries board state.
 signal economy_event(event: EconomyEvent)
 
+## Emitted when an owned booster count changes (grant / consume / seed). Lets the HUD
+## refresh the per-booster count badge. Prototype buff inventory; see [member _booster_stock].
+signal booster_stock_changed(booster_type: int, new_count: int)
+
 const DEFAULT_CONFIG_PATH: String = "res://assets/data/economy_config.tres"
 
 # --- injected dependencies (resolve to autoloads in _ready if not configured) ---
@@ -36,6 +46,17 @@ var _config: EconomyConfig = null   # tuning knobs (coins_max/gems_max here)
 
 # --- wallet state ---
 var _wallet: WalletData = WalletData.new()
+
+# --- booster inventory (prototype: owned counts) ---
+# Each booster is consumed for free on use; at zero the UI offers a watch-ad /
+# pay-coins top-up. Counts persist in SaveData (boosters_picker/reshuffle/extra_discard),
+# seeded once from EconomyConfig.starting_booster_count (SaveData.boosters_seeded gate).
+# Maps each EconomyEnums.BoosterType to its SaveData field name.
+const _BOOSTER_FIELD: Dictionary = {
+	EconomyEnums.BoosterType.PICKER: "boosters_picker",
+	EconomyEnums.BoosterType.RESHUFFLE: "boosters_reshuffle",
+	EconomyEnums.BoosterType.EXTRA_DISCARD: "boosters_extra_discard",
+}
 
 # --- per-level economy state (cleared on level boundary) ---
 var reshuffle_count: int = 0
@@ -57,6 +78,7 @@ func _ready() -> void:
 	if _config == null:
 		_config = load(DEFAULT_CONFIG_PATH)
 	_load_wallet()
+	_seed_booster_stock()
 	_connect_game_manager()
 
 
@@ -69,6 +91,7 @@ func configure(save: Object, compliance: Object, time: TimeProvider, config: Eco
 	_time = time
 	_config = config
 	_load_wallet()
+	_seed_booster_stock()
 
 
 # Builds the in-memory wallet from the persisted SaveData fields.
@@ -128,6 +151,55 @@ func booster_coin_cost(booster_type: int) -> int:
 			return _config.extra_discard_cost_coins
 		_:
 			return 0
+
+
+# --- booster inventory (prototype: owned counts) ---------------------------
+
+# Seeds each booster's owned count from EconomyConfig.starting_booster_count, exactly
+# once per save (SaveData.boosters_seeded gate) so a new/migrated player gets the
+# starting stock but a player who spent down to 0 is not topped back up. Persists.
+func _seed_booster_stock() -> void:
+	if _save == null or _save.data == null or _save.data.boosters_seeded:
+		return
+	var start: int = _config.starting_booster_count if _config != null else 0
+	for type: int in _BOOSTER_FIELD:
+		_save.data.set(_BOOSTER_FIELD[type], maxi(0, start))
+	_save.data.boosters_seeded = true
+	_persist()
+
+
+## Owned count of [param booster_type] (an [EconomyEnums.BoosterType]). Drives the
+## HUD count badge and the "tap → use for free vs. show top-up popup" decision.
+## Persisted in SaveData; 0 when no save is wired.
+func booster_count(booster_type: int) -> int:
+	if _save == null or _save.data == null or not _BOOSTER_FIELD.has(booster_type):
+		return 0
+	return maxi(0, int(_save.data.get(_BOOSTER_FIELD[booster_type])))
+
+
+## Adds [param n] to the owned count of [param booster_type] (e.g. a watch-ad reward
+## or a coin purchase). Persists and emits [signal booster_stock_changed]. No-op for
+## n <= 0 or when no save is wired.
+func grant_booster(booster_type: int, n: int = 1) -> void:
+	if n <= 0 or _save == null or _save.data == null or not _BOOSTER_FIELD.has(booster_type):
+		return
+	var new_count: int = booster_count(booster_type) + n
+	_save.data.set(_BOOSTER_FIELD[booster_type], new_count)
+	_persist()
+	booster_stock_changed.emit(booster_type, new_count)
+
+
+## Decrements the owned count of [param booster_type] by one if any are owned.
+## Returns true if a unit was consumed; false when the count is already zero.
+## Persists and emits [signal booster_stock_changed] on success.
+func consume_booster(booster_type: int) -> bool:
+	var have: int = booster_count(booster_type)
+	if have <= 0:
+		return false
+	_save.data.set(_BOOSTER_FIELD[booster_type], have - 1)
+	_persist()
+	booster_stock_changed.emit(booster_type, have - 1)
+	return true
 
 
 # Per-currency hard cap from the tuning config (Formula 4).
@@ -424,13 +496,40 @@ func spend(currency: int, amount: int, on_committed := Callable()) -> bool:
 ## [b]No-arithmetic-solving:[/b] the pick resolves to board [GameEvent]s (route /
 ## discard); no arithmetic answer is ever computed or revealed.
 func use_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
+	if not _picker_target_valid(board, card_id):
+		return []
+	if not spend(EconomyEnums.Currency.COINS, _config.picker_cost_coins):
+		return []  # insufficient -> SPEND_FAILED already emitted by spend()
+	return _activate_picker(board, card_id)
+
+
+## Picker activated from the owned-stock count (prototype buff inventory) instead of
+## paying coins: consumes one Picker and plays the chosen covered card. Returns the
+## board [GameEvent]s, or [] if the target is invalid or no Picker is owned.
+func use_picker_from_stock(board: BoardModel, card_id: int) -> Array[GameEvent]:
+	if not _picker_target_valid(board, card_id):
+		return []
+	if not consume_booster(EconomyEnums.BoosterType.PICKER):
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.PICKER, EconomyEnums.FailReason.NO_STOCK))
+		return []
+	return _activate_picker(board, card_id)
+
+
+# Picker precondition (EC-08): valid only while the board is live and the chosen
+# card is still on the floor. Emits INVALID_TARGET on failure.
+func _picker_target_valid(board: BoardModel, card_id: int) -> bool:
 	if board.is_game_over() or board.is_card_removed(card_id):
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.PICKER,
 				EconomyEnums.FailReason.INVALID_TARGET))
-		return []
-	if not spend(EconomyEnums.Currency.COINS, _config.picker_cost_coins):
-		return []  # insufficient -> SPEND_FAILED already emitted by spend()
+		return false
+	return true
+
+
+# Shared Picker activation (no payment): counts the use and plays the card. Never
+# reveals an arithmetic answer — board.pick_card resolves to route/discard events.
+func _activate_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
 	boosters_used_this_level += 1
 	var events: Array[GameEvent] = board.pick_card(card_id)
 	economy_event.emit(EconomyEvent.booster_activated(EconomyEnums.BoosterType.PICKER))
@@ -452,13 +551,39 @@ func use_picker(board: BoardModel, card_id: int) -> Array[GameEvent]:
 ## [code]BOOSTER_ACTIVATED(RESHUFFLE)[/code]. The timestamp comes from the injected
 ## [TimeProvider] (AC-R04/R08) captured in [method reset_level_state].
 func use_reshuffle(board: BoardModel, placements: Array) -> Array[int]:
+	if not _reshuffle_allowed(board):
+		return []  # EC-15 / AC-R05
+	if not spend(EconomyEnums.Currency.COINS, _config.reshuffle_cost_coins):
+		return []  # insufficient -> SPEND_FAILED already emitted
+	return _activate_reshuffle(board, placements)
+
+
+## Reshuffle activated from the owned-stock count (prototype buff inventory) instead
+## of paying coins: consumes one Reshuffle and re-permutes the floor. Returns the new
+## placement→card assignment, or [] if the board is won or no Reshuffle is owned.
+func use_reshuffle_from_stock(board: BoardModel, placements: Array) -> Array[int]:
+	if not _reshuffle_allowed(board):
+		return []
+	if not consume_booster(EconomyEnums.BoosterType.RESHUFFLE):
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.RESHUFFLE, EconomyEnums.FailReason.NO_STOCK))
+		return []
+	return _activate_reshuffle(board, placements)
+
+
+# Reshuffle precondition (EC-15 / AC-R05): not allowed on an already-won board.
+func _reshuffle_allowed(board: BoardModel) -> bool:
 	if board.is_won():
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.RESHUFFLE,
 				EconomyEnums.FailReason.WON_BOARD))
-		return []  # EC-15 / AC-R05
-	if not spend(EconomyEnums.Currency.COINS, _config.reshuffle_cost_coins):
-		return []  # insufficient -> SPEND_FAILED already emitted
+		return false
+	return true
+
+
+# Shared Reshuffle activation (no payment): derives the deterministic seed (Formula 6),
+# re-permutes coverage (routable-card guarantee), and counts the use.
+func _activate_reshuffle(board: BoardModel, placements: Array) -> Array[int]:
 	reshuffle_count += 1
 	var seed: int = ReshuffleSeed.mix(_level_id, _level_start_ts, reshuffle_count)
 	var rng := RandomNumberGenerator.new()
@@ -486,18 +611,44 @@ func use_reshuffle(board: BoardModel, placements: Array) -> Array[int]:
 ## [code]BOOSTER_ACTIVATED(EXTRA_DISCARD)[/code]. Returns [code]true[/code] on success, else false.
 ## Source: design/gdd/deck-economy.md Core Rule 11, EC-06/07, AC-E01/E03/E04/E05/E06; ADR-0010.
 func use_extra_discard(board: BoardModel) -> bool:
+	if not _extra_discard_allowed(board):
+		return false
+	if not spend(EconomyEnums.Currency.COINS, _config.extra_discard_cost_coins):
+		return false  # insufficient -> SPEND_FAILED already emitted by spend()
+	return _activate_extra_discard(board)
+
+
+## Extra Discard activated from the owned-stock count (prototype buff inventory)
+## instead of paying coins: consumes one and appends a discard slot. Returns true on
+## success, false if a precondition fails (at max / row full) or none is owned.
+func use_extra_discard_from_stock(board: BoardModel) -> bool:
+	if not _extra_discard_allowed(board):
+		return false
+	if not consume_booster(EconomyEnums.BoosterType.EXTRA_DISCARD):
+		economy_event.emit(EconomyEvent.booster_precondition_failed(
+				EconomyEnums.BoosterType.EXTRA_DISCARD, EconomyEnums.FailReason.NO_STOCK))
+		return false
+	return _activate_extra_discard(board)
+
+
+# Extra Discard preconditions (EC-06/07): not at the slot cap, and the row is not
+# already full (purchase-ahead-only — no one-tap-from-LOSE rescue).
+func _extra_discard_allowed(board: BoardModel) -> bool:
 	if board.active_discard_slots() >= _config.max_discard_slots:
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.EXTRA_DISCARD,
 				EconomyEnums.FailReason.AT_MAX))
-		return false  # EC-07 / AC-E04: coins unchanged
+		return false  # EC-07 / AC-E04
 	if board.occupied_discard_count() >= board.active_discard_slots():
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.EXTRA_DISCARD,
 				EconomyEnums.FailReason.DISCARD_FULL))
-		return false  # EC-06 / AC-E05: purchase-ahead-only, no rescue
-	if not spend(EconomyEnums.Currency.COINS, _config.extra_discard_cost_coins):
-		return false  # insufficient -> SPEND_FAILED already emitted by spend()
+		return false  # EC-06 / AC-E05
+	return true
+
+
+# Shared Extra Discard activation (no payment): appends a slot, flags the level, counts the use.
+func _activate_extra_discard(board: BoardModel) -> bool:
 	board.expand_discard()
 	extra_discard_active = true
 	boosters_used_this_level += 1

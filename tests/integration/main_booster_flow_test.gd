@@ -206,9 +206,10 @@ func test_winning_real_play_in_scene_advances() -> void:
 
 
 func test_adding_a_deck_unlocks_a_stack_in_scene() -> void:
-	# The prototype opens one stack; the rest are locked "decks" bought in-game.
-	# Tapping a locked deck (via the unlock request) adds it: the stack unlocks and
-	# draws its target from the queue.
+	# The prototype opens one stack; the rest are locked "decks" added in-game.
+	# Tapping a locked deck opens the two-option UnlockPopup (watch ad / pay coins);
+	# choosing the (stubbed, free) ad path adds it: the stack unlocks and draws its
+	# target from the queue.
 	var runner = await _boot()
 	var main = runner.scene()
 	var model = main._model
@@ -219,7 +220,14 @@ func test_adding_a_deck_unlocks_a_stack_in_scene() -> void:
 			break
 	assert_int(locked).is_not_equal(-1)             # there is a locked deck to add
 
+	# The request shows the prompt rather than unlocking silently.
 	main._on_unlock_requested(locked)
+	await runner.simulate_frames(2)
+	assert_object(main._unlock_popup).is_not_null()  # two-option prompt is shown
+	assert_bool(model.is_stack_locked(locked)).is_true()  # not unlocked until a choice
+
+	# Choose the free "watch ad" unlock path.
+	main._unlock_popup.watch_ad_pressed.emit()
 	var wait := 0
 	while main.is_input_locked() and wait < 30:
 		wait += 1
@@ -228,3 +236,92 @@ func test_adding_a_deck_unlocks_a_stack_in_scene() -> void:
 
 	assert_bool(model.is_stack_locked(locked)).is_false()                 # deck added
 	assert_int(model.stack_target(locked)).is_not_equal(BoardModel.NO_TARGET)  # drew a target
+
+
+func test_paying_coins_unlocks_a_deck_and_deducts_the_cost() -> void:
+	# The coin path of the UnlockPopup spends real coins through WalletService:
+	# choosing "pay" unlocks the deck and deducts UNLOCK_COST from the balance.
+	var runner = await _boot()                       # funds the wallet with 2000 coins
+	var main = runner.scene()
+	var model = main._model
+	var locked := -1
+	for s in BoardModel.STACK_COUNT:
+		if model.is_stack_locked(s):
+			locked = s
+			break
+	assert_int(locked).is_not_equal(-1)
+	var before: int = WalletService.balance(COINS)
+
+	main._on_unlock_requested(locked)
+	await runner.simulate_frames(2)
+	assert_object(main._unlock_popup).is_not_null()
+	main._unlock_popup.pay_coins_pressed.emit()      # choose the coin path
+	var wait := 0
+	while main.is_input_locked() and wait < 30:
+		wait += 1
+		await runner.simulate_frames(3)
+	await runner.simulate_frames(5)
+
+	assert_bool(model.is_stack_locked(locked)).is_false()             # deck added
+	assert_int(WalletService.balance(COINS)).is_equal(before - main.UNLOCK_COST)  # coins spent
+
+
+# --- buff inventory (count → free use; zero → watch-ad / pay-coins popup) ---
+
+const EXTRA_DISCARD := EconomyEnums.BoosterType.EXTRA_DISCARD
+const RESHUFFLE := EconomyEnums.BoosterType.RESHUFFLE
+
+
+# Forces a booster's owned count to exactly [param n] on the live WalletService.
+func _set_stock(type: int, n: int) -> void:
+	while WalletService.booster_count(type) > n:
+		WalletService.consume_booster(type)
+	if WalletService.booster_count(type) < n:
+		WalletService.grant_booster(type, n - WalletService.booster_count(type))
+
+
+func test_buff_with_stock_is_used_for_free() -> void:
+	var runner = await _boot()
+	var main = runner.scene()
+	_set_stock(EXTRA_DISCARD, 2)
+	var coins_before: int = WalletService.balance(COINS)
+
+	main._on_booster_pressed(EXTRA_DISCARD)          # count > 0 → consume one, no popup
+	await runner.simulate_frames(5)
+
+	assert_object(main._buff_popup).is_null()                         # no popup shown
+	assert_int(WalletService.booster_count(EXTRA_DISCARD)).is_equal(1)  # one consumed
+	assert_int(WalletService.balance(COINS)).is_equal(coins_before)   # free (no coin spend)
+	assert_int(main._model.active_discard_slots()).is_equal(6)        # buff took effect
+
+
+func test_buff_at_zero_opens_popup_and_watch_ad_uses_it() -> void:
+	var runner = await _boot()
+	var main = runner.scene()
+	_set_stock(RESHUFFLE, 0)
+
+	main._on_booster_pressed(RESHUFFLE)              # count == 0 → popup, no reshuffle yet
+	await runner.simulate_frames(2)
+	assert_object(main._buff_popup).is_not_null()
+	assert_int(WalletService.reshuffle_count).is_equal(0)
+
+	main._buff_popup.watch_ad_pressed.emit()         # free stub: grant + use immediately
+	await runner.simulate_frames(20)
+	assert_int(WalletService.reshuffle_count).is_greater(0)           # reshuffle fired
+
+
+func test_buff_at_zero_pay_coins_uses_it_and_deducts() -> void:
+	var runner = await _boot()
+	var main = runner.scene()
+	_set_stock(EXTRA_DISCARD, 0)
+	var coins_before: int = WalletService.balance(COINS)
+
+	main._on_booster_pressed(EXTRA_DISCARD)          # count == 0 → popup
+	await runner.simulate_frames(2)
+	assert_object(main._buff_popup).is_not_null()
+
+	main._buff_popup.pay_coins_pressed.emit()        # coin path: spend + use immediately
+	await runner.simulate_frames(10)
+	assert_int(main._model.active_discard_slots()).is_equal(6)        # buff took effect
+	assert_int(WalletService.balance(COINS)) \
+		.is_equal(coins_before - WalletService.booster_coin_cost(EXTRA_DISCARD))

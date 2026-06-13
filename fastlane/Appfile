@@ -1,0 +1,7 @@
+# CardSortMath — fastlane app config.
+# Bundle id matches docs/ios-build.md and the iOS export preset (case-sensitive).
+app_identifier("Com.omerbehar.cardsortmath")
+
+# apple_id / team_id are intentionally omitted: the lanes authenticate with the
+# App Store Connect API key (ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_BASE64),
+# the same secrets mobile-build.yml already uses — no Apple-ID password needed.

@@ -98,6 +98,44 @@ its UI — see the comparison the team discussed.)
 - Provide a launch screen / storyboard (the preset uses Godot's default launch
   screen; customise via the `storyboard/*` options if desired).
 
+## Adding TestFlight testers (fastlane)
+
+Tester management lives in **App Store Connect**, not in a build artifact. This repo
+includes a small fastlane setup (`Gemfile`, `fastlane/Appfile`, `fastlane/Fastfile`)
+so adding a tester is a repeatable command using the **same App Store Connect API
+key secrets** the build already uses (`ASC_KEY_ID`, `ASC_ISSUER_ID`,
+`ASC_API_KEY_BASE64`).
+
+```bash
+bundle install                     # once, on a machine with Ruby
+export ASC_KEY_ID=...              # same values as the GitHub secrets
+export ASC_ISSUER_ID=...
+export ASC_API_KEY_BASE64=...      # base64 of your AuthKey_*.p8
+
+# Add the default internal tester (itamarb2010@gmail.com):
+bundle exec fastlane ios add_internal_tester
+
+# …or any tester:
+bundle exec fastlane ios add_internal_tester email:jane@example.com first_name:Jane last_name:Doe
+```
+
+**Internal vs external — read this first.** A TestFlight **internal** tester must be
+a member of your App Store Connect **Users and Access** team (Apple's rule — up to
+100, no Beta App Review, instant builds). The lane assigns the tester to your
+**internal Beta Group**; it cannot turn an arbitrary email into a team member. So:
+
+1. In **App Store Connect → Users and Access**, invite `itamarb2010@gmail.com` (any
+   role; they accept the email invite). Skip if they're already on the team.
+2. In **App Store Connect → TestFlight → Internal Testing**, ensure an internal
+   group exists.
+3. Run the lane above. (For *external* testers — arbitrary emails, but builds need
+   Beta App Review — use `fastlane pilot add <email> -g "<External Group>"`.)
+
+The lane uses Spaceship ConnectAPI directly because fastlane's `pilot` action can't
+reliably assign internal groups. It is a manual/one-off lane — intentionally **not**
+wired into `mobile-build.yml` (you don't want to re-add testers on every build); run
+it locally or add a `workflow_dispatch` job if you want it in CI.
+
 ## Why this can't be built in CI / on Linux
 
 This repo's CI (and the Claude Code web sandbox) run on **Linux**. Godot's iOS
