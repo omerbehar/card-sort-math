@@ -1,0 +1,7 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- an empty discard-slot frame (buying SPACE, not a card) -->
+  <rect x="3.5" y="6" width="10" height="13" rx="2"/>
+  <!-- +1 -->
+  <line x1="19" y1="8.5" x2="19" y2="16.5"/>
+  <line x1="15" y1="12.5" x2="23" y2="12.5"/>
+</svg>

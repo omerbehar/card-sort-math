@@ -85,6 +85,7 @@ func _build_board() -> void:
 	_hud = Hud.new()
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
+	_hud.booster_pressed.connect(_on_booster_pressed)
 	# Prototype: a fake coin balance shown top-right (no economy system yet).
 	_coins_label = UiFactory.label(_hud_layer, "", Vector2(250, 12), Vector2(130, 28), 20, Color(1, 0.93, 0.5))
 	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -368,6 +369,31 @@ func pick(card_id: int) -> void:
 	_floor.refresh_exposure(_model)
 	_update_discard_warning()
 	_input_locked = false
+
+
+## Routes a booster-tray button press (Hud.booster_pressed) to its activation.
+func _on_booster_pressed(booster_type: int) -> void:
+	if _input_locked or _model == null or _model.is_game_over():
+		return
+	match booster_type:
+		EconomyEnums.BoosterType.PICKER:
+			arm_picker()
+		EconomyEnums.BoosterType.RESHUFFLE:
+			reshuffle_now()
+		EconomyEnums.BoosterType.EXTRA_DISCARD:
+			buy_extra_discard()
+
+
+## Buys the Extra Discard Slot booster through the wallet (spends coins), then
+## syncs the view. Distinct from [method expand_discard] (the no-spend path used by
+## tooling/tests). No-op if the wallet rejects it (at max / discard full / broke).
+func buy_extra_discard() -> void:
+	if _model == null or _input_locked:
+		return
+	if WalletService.use_extra_discard(_model):
+		_discard.set_slot_count(_model.active_discard_slots())
+		_discard_cards.append(-1)
+		_update_discard_warning()
 
 
 ## Activates the Reshuffle booster (S3-009): re-permutes floor coverage via

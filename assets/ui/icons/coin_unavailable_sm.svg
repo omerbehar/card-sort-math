@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="9.5" fill="#9aa0ad" stroke="#5d636f" stroke-width="2"/>
+  <circle cx="12" cy="12" r="5" fill="none" stroke="#5d636f" stroke-width="1.5"/>
+  <!-- "can't afford" shape cue: a diagonal slash, not a hue change -->
+  <line x1="5" y1="5" x2="19" y2="19" stroke="#3a3f49" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

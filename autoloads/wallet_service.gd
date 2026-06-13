@@ -116,6 +116,20 @@ func balance(currency: int) -> int:
 	return _wallet.balance_of(currency)
 
 
+## Coin cost of [param booster_type] (an [EconomyEnums.BoosterType]) from the config.
+## Lets the HUD show costs / afford-state without reaching into [EconomyConfig].
+func booster_coin_cost(booster_type: int) -> int:
+	match booster_type:
+		EconomyEnums.BoosterType.PICKER:
+			return _config.picker_cost_coins
+		EconomyEnums.BoosterType.RESHUFFLE:
+			return _config.reshuffle_cost_coins
+		EconomyEnums.BoosterType.EXTRA_DISCARD:
+			return _config.extra_discard_cost_coins
+		_:
+			return 0
+
+
 # Per-currency hard cap from the tuning config (Formula 4).
 func _cap_for(currency: int) -> int:
 	match currency:

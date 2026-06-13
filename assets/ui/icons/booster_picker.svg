@@ -1,0 +1,9 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- coverage layers (the pile, in cross-section) -->
+  <line x1="5" y1="14" x2="19" y2="14"/>
+  <line x1="5" y1="18" x2="19" y2="18"/>
+  <line x1="5" y1="22" x2="19" y2="22"/>
+  <!-- downward pointer reaching past the coverage -->
+  <line x1="12" y1="2" x2="12" y2="15"/>
+  <polyline points="8,11 12,16 16,11"/>
+</svg>
