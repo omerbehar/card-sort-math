@@ -14,12 +14,16 @@ const DISCARD_WARN_FREE_SLOTS: int = 1   # tint red when this many (or fewer) sl
 # Offset from a stack's origin to its centre, where the clear burst spawns.
 const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 
-# --- prototype: locked-decks (placeholder economy; not yet designed) ---
-# Stacks that start OPEN; the rest are locked and bought with coins/ad.
+# --- prototype: locked-decks ---
+# Stacks that start OPEN; the rest are locked "decks" the player adds in-game.
+# Tapping a locked deck opens the two-option UnlockPopup: watch a (stubbed) ad,
+# or pay coins. The ad path is a prototype stub (free unlock; ad SDK deferred to
+# M4); the coin path spends real coins through WalletService.
 const PROTO_OPEN_COUNT: int = 1
-const UNLOCK_COST: int = 100          # coin price; falls back to a free "ad" unlock
-var _coins: int = 150                 # fake starting balance (no persistence yet)
+const UNLOCK_COST: int = 100          # coin price of adding a locked deck
 var _coins_label: Label = null
+# The active unlock prompt; null when none is shown (only one at a time).
+var _unlock_popup: UnlockPopup = null
 
 var _model: BoardModel
 var _config: LevelConfig
@@ -86,9 +90,13 @@ func _build_board() -> void:
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
 	_hud.booster_pressed.connect(_on_booster_pressed)
-	# Prototype: a fake coin balance shown top-right (no economy system yet).
+	# Coin balance shown top-right, read from the real WalletService and kept in
+	# sync with earns/spends via its economy_event signal.
 	_coins_label = UiFactory.label(_hud_layer, "", Vector2(250, 12), Vector2(130, 28), 20, Color(1, 0.93, 0.5))
 	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var wallet := get_node_or_null("/root/WalletService")
+	if wallet != null and wallet.has_signal("economy_event"):
+		wallet.economy_event.connect(func(_e: Variant) -> void: _update_coins_hud())
 	_update_coins_hud()
 	# Live-recolour the stacks when the colorblind palette is toggled in-game.
 	SettingsService.changed.connect(_on_setting_changed)
@@ -300,23 +308,73 @@ func _clear_stack(stack_index: int, new_target: int) -> void:
 	await _stacks[stack_index].play_clear()
 
 
-# Prototype: locked-decks. A tapped locked stack is bought with coins if the
-# player can afford it, otherwise unlocked free via a stubbed "watch ad". The
-# real economy + ad SDK + difficulty balancing are deferred (design pending).
+# Prototype: locked-decks. A tapped locked stack opens the two-option UnlockPopup
+# (watch ad / pay coins) instead of unlocking silently. The popup is view-only and
+# emits intent; this controller runs the chosen unlock via _perform_unlock.
 func _on_unlock_requested(stack_index: int) -> void:
+	if _input_locked or is_instance_valid(_result_screen):
+		return
+	if is_instance_valid(_unlock_popup):
+		return                                  # one prompt at a time
+	if not _model.is_stack_locked(stack_index):
+		return
+
+	var wallet := get_node_or_null("/root/WalletService")
+	var coins: int = wallet.balance(EconomyEnums.Currency.COINS) if wallet != null else 0
+
+	var popup := UnlockPopup.new()
+	popup.dismiss_on_backdrop = true            # tap-outside cancels (set before _ready)
+	_unlock_popup = popup
+	_overlay_layer.add_child(popup)
+	popup.setup(UNLOCK_COST, coins >= UNLOCK_COST)
+	popup.backdrop_pressed.connect(popup.close)
+	popup.closed.connect(func() -> void: _unlock_popup = null)
+	# Both choices dismiss the prompt, then run the matching unlock path.
+	popup.watch_ad_pressed.connect(func() -> void:
+		_dismiss_unlock_popup()
+		_perform_unlock(stack_index, false))
+	popup.pay_coins_pressed.connect(func() -> void:
+		_dismiss_unlock_popup()
+		_perform_unlock(stack_index, true))
+
+
+func _dismiss_unlock_popup() -> void:
+	if is_instance_valid(_unlock_popup):
+		_unlock_popup.close()
+	_unlock_popup = null
+
+
+# Runs the chosen unlock for a locked deck. [param paid] true spends UNLOCK_COST
+# coins atomically via WalletService (the deck is added only if the spend commits);
+# false is the prototype "watch ad" stub — a free unlock until the ad SDK lands (M4).
+# The board mutation + pulled-in-card animation are shared by both paths.
+func _perform_unlock(stack_index: int, paid: bool) -> void:
 	if _input_locked or is_instance_valid(_result_screen):
 		return
 	if not _model.is_stack_locked(stack_index):
 		return
-	if _coins >= UNLOCK_COST:
-		_coins -= UNLOCK_COST
-	# else: stubbed ad watch — free unlock for now.
-	_update_coins_hud()
+
+	var events: Array[GameEvent] = []
+	if paid:
+		# Atomic spend: the deck is unlocked inside on_committed so a rejected spend
+		# (insufficient funds → SPEND_FAILED) leaves the board untouched (GDD Rule 4).
+		var wallet := get_node_or_null("/root/WalletService")
+		if wallet == null:
+			return
+		var ok: bool = wallet.spend(
+			EconomyEnums.Currency.COINS, UNLOCK_COST,
+			func() -> bool:
+				events = _model.unlock_stack(stack_index)
+				return true)
+		if not ok:
+			return                              # not enough coins; nothing changed
+	else:
+		events = _model.unlock_stack(stack_index)   # ad stub: free unlock
 
 	# Swap the slot to its open look before animating the pulled-in cards.
-	var events := _model.unlock_stack(stack_index)
 	_stacks[stack_index].set_locked(false)
 	_stacks[stack_index].set_target(_model.stack_target(stack_index))
+	_update_coins_hud()
 
 	_input_locked = true
 	await _play_events(events)
@@ -328,8 +386,11 @@ func _on_unlock_requested(stack_index: int) -> void:
 
 
 func _update_coins_hud() -> void:
-	if _coins_label != null:
-		_coins_label.text = "🪙 %d" % _coins
+	if _coins_label == null:
+		return
+	var wallet := get_node_or_null("/root/WalletService")
+	var coins: int = wallet.balance(EconomyEnums.Currency.COINS) if wallet != null else 0
+	_coins_label.text = "🪙 %d" % coins
 
 
 func _update_discard_warning() -> void:
