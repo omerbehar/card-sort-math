@@ -12,8 +12,9 @@ Defines what is printed on a card and the one value the sort engine cares about:
 its `result`. A card is an arithmetic exercise (`a + b`, `a − b`, `a × b`, `a ÷ b`);
 the player must compute the result to know where the card belongs. This is the
 system that turns a sort puzzle into a math game. Operations are organised as
-**worlds** (ADR-0011): every 5 levels advances one operation (1–5 `+`, 6–10 `−`,
-11–15 `×`, 16–20 `÷`), and level 21 onward mixes all four on the same board.
+**worlds** (ADR-0011): the first four 5-level bands each teach one binary
+operation (1–5 `+`, 6–10 `−`, 11–15 `×`, 16–20 `÷`); the bands above teach
+**three-term expressions** (`a ∘ b ∘ c`) — see *Multi-term teaching worlds* below.
 
 > **Quick reference** — Layer: `Feature` · Priority: `MVP` (addition); generalize in `Full Vision` · Key deps: `Level & Solvability`
 
@@ -111,6 +112,30 @@ All read differently, all equal 7.
 | Operand-split policy | `1 + slot%(r-1)` | any sum = result | Controls visual variety & subtraction framing |
 | Allow zero / negatives | no | per world | Negatives raise difficulty (future) |
 
+## Multi-term teaching worlds
+
+> **Status**: Implemented (2026-06-14). Three-term cards (`term_count == 3`) layered
+> on the result-only routing seam (ADR-0003) — the board never reads the new fields.
+
+From level 21 the card carries a second operator and a third operand
+(`operand_c`, `operation2`) plus a `grouping` (`TernaryExpression.Grouping`). The
+grouping decides BOTH evaluation and display:
+
+| Band | World | Grouping | Teaches | Example |
+|------|-------|----------|---------|---------|
+| 21–25 | `WORLD_TRI_ADDSUB` | `LEFT` | order of `+`/`−` does not change the value | `3 + 7 − 4` |
+| 26–30 | `WORLD_TRI_PARENS` | `PAREN_LEFT` / `PAREN_RIGHT` | parentheses can change grouping | `7 − (5 − 1)` |
+| 31–40 | `WORLD_TRI_ORDER` | `PRECEDENCE` | `×`/`÷` bind tighter than `+`/`−` (no parens shown) | `2 + 3 × 4` |
+| 41+ | `MIXED_WORLD_ID` | all of the above | mixed practice | any of the above |
+
+Every value is kept **non-negative** at every step and every division **exact**:
+`TernaryExpression.evaluate` returns `INVALID` for any triple that would go
+negative mid-step or divide inexactly, and the generator only deals triples it
+accepts. `OperandPicker.triple_options`/`triple_renderings` enumerate the legal
+triples per result (deduped by displayed text for the variety floor); the
+generator deals from them in `_deal_ternary`, keeping the 3×N solvability
+invariant unchanged.
+
 ## Acceptance Criteria
 
 - [x] `result == Operation.apply(operand_a, operand_b, operation)` for every created card (test_card_data, test_operation).
@@ -120,6 +145,9 @@ All read differently, all equal 7.
 - [x] An `operation` enum drives display + result for non-addition worlds (ADR-0011).
 - [x] Single-operation worlds and the mixed world stay solvable across seeds (test_level_generator, test_level_data_generation).
 - [x] Every result in a generated level offers >= 3 distinct displayed operand pairs, so equal-result cards aren't the same exercise — a prime is never a multiply result (no all-"1 × 7" groups). Enforced by `GeneratorParams.min_operand_options` (= `LevelData.OPERAND_OPTIONS_MIN` = 3) + per-world number-range tuning in `LevelData._apply_world_number_range`. (test_level_data_generation, test_operand_picker)
+- [x] Levels 21–25 print three-term `a ± b ± c` (no parentheses); 26–30 print meaningful parentheses; 31–40 print `×`/`÷` with `+`/`−` under precedence (no parentheses); 41+ mix all three. All stay solvable across seeds. (test_level_data_generation, test_ternary_expression, integration/operation_worlds_test)
+- [x] Three-term expressions keep every value non-negative and every division exact; illegal triples are rejected (`TernaryExpression.evaluate → INVALID`). (test_ternary_expression, test_operand_picker)
+- [x] Two decks start unlocked by default (`main.PROTO_OPEN_COUNT = 2`); stacks 2 & 3 begin locked. (integration/operation_worlds_test)
 
 ## Open Questions
 

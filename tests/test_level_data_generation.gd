@@ -68,16 +68,88 @@ func test_generated_levels_are_solvable_across_indices() -> void:
 			.override_failure_message("level %d not solvable" % n).is_true()
 
 
-# --- Operation worlds: every WORLD_SIZE levels advances one operation, then mix. ---
+# --- Worlds: four binary bands, then the three-term teaching bands, then mixed. ---
 func test_world_for_level_maps_bands_to_operations() -> void:
-	# Levels 1-5 +, 6-10 −, 11-15 ×, 16-20 ÷, 21+ mixed.
-	assert_int(LevelData.world_for_level(1)).is_equal(0)
-	assert_int(LevelData.world_for_level(5)).is_equal(0)
-	assert_int(LevelData.world_for_level(6)).is_equal(1)
-	assert_int(LevelData.world_for_level(11)).is_equal(2)
-	assert_int(LevelData.world_for_level(16)).is_equal(3)
-	assert_int(LevelData.world_for_level(21)).is_equal(LevelData.MIXED_WORLD_ID)
+	# Binary: 1-5 +, 6-10 −, 11-15 ×, 16-20 ÷.
+	assert_int(LevelData.world_for_level(1)).is_equal(LevelData.WORLD_ADD)
+	assert_int(LevelData.world_for_level(5)).is_equal(LevelData.WORLD_ADD)
+	assert_int(LevelData.world_for_level(6)).is_equal(LevelData.WORLD_SUB)
+	assert_int(LevelData.world_for_level(11)).is_equal(LevelData.WORLD_MUL)
+	assert_int(LevelData.world_for_level(16)).is_equal(LevelData.WORLD_DIV)
+	assert_int(LevelData.world_for_level(20)).is_equal(LevelData.WORLD_DIV)
+	# Three-term teaching bands.
+	assert_int(LevelData.world_for_level(21)).is_equal(LevelData.WORLD_TRI_ADDSUB)
+	assert_int(LevelData.world_for_level(25)).is_equal(LevelData.WORLD_TRI_ADDSUB)
+	assert_int(LevelData.world_for_level(26)).is_equal(LevelData.WORLD_TRI_PARENS)
+	assert_int(LevelData.world_for_level(30)).is_equal(LevelData.WORLD_TRI_PARENS)
+	assert_int(LevelData.world_for_level(31)).is_equal(LevelData.WORLD_TRI_ORDER)
+	assert_int(LevelData.world_for_level(40)).is_equal(LevelData.WORLD_TRI_ORDER)
+	# Mixed from 41 onward.
+	assert_int(LevelData.world_for_level(41)).is_equal(LevelData.MIXED_WORLD_ID)
 	assert_int(LevelData.world_for_level(99)).is_equal(LevelData.MIXED_WORLD_ID)
+
+
+func test_levels_1_to_20_stay_binary() -> void:
+	for n in [3, 8, 13, 18]:
+		var config := LevelData.get_level(n)
+		for card: CardData in config.card_pool:
+			assert_int(card.term_count) \
+				.override_failure_message("binary level %d has a multi-term card" % n).is_equal(2)
+
+
+# --- Levels 21-25: three-term add/sub, no parentheses (3 + 7 − 4). ---
+func test_addsub_world_levels_are_three_term_without_parentheses() -> void:
+	for n in [21, 23, 25]:
+		var config := LevelData.get_level(n)
+		assert_bool(LevelData.is_solvable(config)) \
+			.override_failure_message("level %d not solvable" % n).is_true()
+		for card: CardData in config.card_pool:
+			assert_int(card.term_count) \
+				.override_failure_message("level %d card not three-term" % n).is_equal(3)
+			# Only + and − appear; no parentheses are printed.
+			assert_bool(card.operation == Operation.Type.ADD or card.operation == Operation.Type.SUBTRACT).is_true()
+			assert_bool(card.operation2 == Operation.Type.ADD or card.operation2 == Operation.Type.SUBTRACT).is_true()
+			assert_str(card.exercise_text()).not_contains("(")
+
+
+# --- Levels 26-30: three-term add/sub WITH parentheses on some cards. ---
+func test_parentheses_world_levels_show_parentheses() -> void:
+	var config := LevelData.get_level(28)
+	assert_bool(LevelData.is_solvable(config)).is_true()
+	var saw_parens := false
+	for card: CardData in config.card_pool:
+		assert_int(card.term_count).is_equal(3)
+		assert_bool(card.operation == Operation.Type.ADD or card.operation == Operation.Type.SUBTRACT).is_true()
+		if card.exercise_text().contains("("):
+			saw_parens = true
+	assert_bool(saw_parens) \
+		.override_failure_message("parentheses world printed no '(' on any card").is_true()
+
+
+# --- Levels 31-40: three-term order of operations — ×/÷ appears, no parentheses. ---
+func test_order_of_operations_world_uses_high_ops_without_parentheses() -> void:
+	for n in [31, 36, 40]:
+		var config := LevelData.get_level(n)
+		assert_bool(LevelData.is_solvable(config)) \
+			.override_failure_message("level %d not solvable" % n).is_true()
+		var saw_high := false
+		for card: CardData in config.card_pool:
+			assert_int(card.term_count) \
+				.override_failure_message("level %d card not three-term" % n).is_equal(3)
+			assert_str(card.exercise_text()) \
+				.override_failure_message("order-of-ops level %d printed parentheses" % n).not_contains("(")
+			if Operation.is_high_precedence(card.operation) or Operation.is_high_precedence(card.operation2):
+				saw_high = true
+		assert_bool(saw_high) \
+			.override_failure_message("order-of-ops level %d had no ×/÷ card" % n).is_true()
+
+
+# --- Level 41+: mixed multi-term — plain, parenthesised and ×/÷ cards coexist. ---
+func test_mixed_world_combines_multi_term_styles() -> void:
+	var config := LevelData.get_level(45)
+	assert_bool(LevelData.is_solvable(config)).is_true()
+	for card: CardData in config.card_pool:
+		assert_int(card.term_count).is_equal(3)
 
 
 func test_single_operation_worlds_print_only_that_operation() -> void:
@@ -96,13 +168,16 @@ func test_single_operation_worlds_print_only_that_operation() -> void:
 				.is_equal(bands[n])
 
 
-func test_mixed_world_level_mixes_operations() -> void:
+func test_addsub_world_level_mixes_plus_and_minus() -> void:
+	# A full add/sub board prints both operators across its two operator slots.
 	var config := LevelData.get_level(25)
 	assert_bool(LevelData.is_solvable(config)).is_true()
-	var ops_seen: Dictionary = {}
+	var glyphs_seen: Dictionary = {}
 	for card: CardData in config.card_pool:
-		ops_seen[card.operation] = true
-	assert_int(ops_seen.size()).is_greater(1)
+		glyphs_seen[Operation.glyph(card.operation)] = true
+		glyphs_seen[Operation.glyph(card.operation2)] = true
+	assert_bool(glyphs_seen.has("+")).is_true()
+	assert_bool(glyphs_seen.has("−")).is_true()
 
 
 # Every result in a generated level must read at least OPERAND_OPTIONS_MIN distinct

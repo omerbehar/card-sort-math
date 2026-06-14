@@ -19,7 +19,7 @@ const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 # Tapping a locked deck opens the two-option UnlockPopup: watch a (stubbed) ad,
 # or pay coins. The ad path is a prototype stub (free unlock; ad SDK deferred to
 # M4); the coin path spends real coins through WalletService.
-const PROTO_OPEN_COUNT: int = 1
+const PROTO_OPEN_COUNT: int = 2
 const UNLOCK_COST: int = 100          # coin price of adding a locked deck
 
 # --- debug: Settings "Reset Inventory" button (debug builds only) ---

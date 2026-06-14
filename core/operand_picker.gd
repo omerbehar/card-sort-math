@@ -74,6 +74,46 @@ static func valid_operations(result: int, max_operand: int, allowed: Array[int],
 	return ops
 
 
+# --- ternary (three-term) picking ------------------------------------------
+
+## Every in-bounds, non-negative, exactly-divisible [code](a, b, c)[/code] triple
+## (as [Vector3i]) that evaluates to [param result] under the ternary spec
+## ([param op1], [param op2], [param grouping]); see [TernaryExpression]. Operands
+## range over [code][1, max_operand][/code] and are enumerated a→b→c ascending, so
+## the list is deterministic. The cube of [param max_operand] is tiny at gameplay
+## sizes (<= 9), and this runs once per level build, never per frame.
+static func triple_options(result: int, max_operand: int, op1: int, op2: int, grouping: int) -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	if result < 0:
+		return out
+	for a in range(1, max_operand + 1):
+		for b in range(1, max_operand + 1):
+			for c in range(1, max_operand + 1):
+				if TernaryExpression.evaluate(a, b, c, op1, op2, grouping) == result:
+					out.append(Vector3i(a, b, c))
+	return out
+
+
+## The distinct DISPLAYED three-term exercises for [param result] across
+## [param specs] (each a [Vector3i] [code](op1, op2, grouping)[/code]), as an
+## [code]Array[Dictionary][/code] with keys [code]a, b, c, op1, op2, grouping[/code].
+## Deduped by rendered text (so e.g. a LEFT and a PRECEDENCE "3 + 4 + 5" count
+## once) and ordered deterministically (spec order, then a→b→c). The generator
+## uses its size for the variety floor and deals cards from it. Empty when no spec
+## yields a legal triple for [param result].
+static func triple_renderings(result: int, max_operand: int, specs: Array[Vector3i]) -> Array:
+	var out: Array = []
+	var seen: Dictionary = {}
+	for spec: Vector3i in specs:
+		for t: Vector3i in triple_options(result, max_operand, spec.x, spec.y, spec.z):
+			var text: String = TernaryExpression.format(t.x, t.y, t.z, spec.x, spec.y, spec.z)
+			if seen.has(text):
+				continue
+			seen[text] = true
+			out.append({a = t.x, b = t.y, c = t.z, op1 = spec.x, op2 = spec.y, grouping = spec.z})
+	return out
+
+
 # --- per-operation pickers -------------------------------------------------
 
 # a + b = result. Window over operand_a in [max(1, r-max), min(max, r-1)].
