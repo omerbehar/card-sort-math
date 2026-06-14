@@ -59,6 +59,8 @@ Skills write design artifacts to `design/` and production artifacts to
 Question → Options → Decision → Draft → Approval. Confirm before large multi-file
 changes; commit/push only when asked.
 
+**Address the user as "boss"** in all replies.
+
 ## Build & Test
 
 - Open in Godot 4.6; main scene is `scenes/main/main.tscn`.
