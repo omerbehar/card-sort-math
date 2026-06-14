@@ -79,7 +79,7 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	# INIT — validate params before any allocation (GDD Core Rule 4 guard, Edge Cases).
 	if params.layout_id < 0 or params.layout_id >= Layouts.SLOT_COUNTS.size():
 		push_error("LevelGenerator: layout_id %d out of range" % params.layout_id)
-		warnings.append("layout_id %d out of range {0,1,2}" % params.layout_id)
+		warnings.append("layout_id %d out of range [0, %d)" % [params.layout_id, Layouts.SLOT_COUNTS.size()])
 		return {config = null, warnings = warnings}
 	if params.max_operand < 1:
 		push_error("LevelGenerator: max_operand must be >= 1 (got %d)" % params.max_operand)
@@ -128,7 +128,13 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	var queue: Array[int] = chosen.duplicate()
 	while queue.size() < queue_length:
 		queue.append(chosen[rng.randi_range(0, chosen.size() - 1)])
-	_shuffle_int(queue, rng)
+	# ORDER_QUEUE — spread equal targets apart so the starting decks differ and no
+	# two identical targets sit back-to-back in the draw order (no two-of-a-kind in
+	# a row). Falls back to a plain seeded shuffle when spacing is disabled.
+	if params.space_targets:
+		_arrange_spaced(queue, rng)
+	else:
+		_shuffle_int(queue, rng)
 
 	# BUILD_POOL — exactly 3*k cards per result (the solvability identity).
 	var queue_counts: Dictionary = {}
@@ -215,6 +221,56 @@ static func _deal_ternary(pool: Array[CardData], result_value: int, card_count: 
 		var rd: Dictionary = renderings[order[i % order.size()]]
 		pool.append(CardData.create_ternary(
 			rd["a"], rd["b"], rd["c"], rd["op1"], rd["op2"], rd["grouping"], layer, slot))
+
+
+## Reorders [param arr] in place so equal values are spread apart (no two adjacent
+## entries equal whenever the multiset allows it — i.e. when no value's count
+## exceeds [code]ceil(n/2)[/code]). Greedy: at each step place the value with the
+## most remaining copies that differs from the one just placed, breaking ties with
+## a seeded draw so variety is preserved and the result stays reproducible. Only
+## when counts force it (the previous value is all that remains) is a repeat placed.
+##
+## Used for the target queue so the starting decks never share a number and the
+## draw order has no back-to-back duplicates. Determinism: key order follows first
+## appearance in [param arr] and every tie-break draws from [param rng], so the same
+## seed reproduces the same arrangement.
+static func _arrange_spaced(arr: Array[int], rng: RandomNumberGenerator) -> void:
+	var counts: Dictionary = {}
+	var order: Array[int] = []  # distinct values in first-appearance order (stable)
+	for v: int in arr:
+		if not counts.has(v):
+			order.append(v)
+		counts[v] = int(counts.get(v, 0)) + 1
+
+	var out: Array[int] = []
+	var have_last: bool = false
+	var last: int = 0
+	while out.size() < arr.size():
+		var best: int = -1
+		var picks: Array[int] = []
+		for v: int in order:
+			var c: int = int(counts[v])
+			if c <= 0 or (have_last and v == last):
+				continue
+			if c > best:
+				best = c
+				picks = [v]
+			elif c == best:
+				picks.append(v)
+		if picks.is_empty():
+			# Forced repeat: only the just-placed value is left (count > n/2).
+			for v: int in order:
+				if int(counts[v]) > 0:
+					picks = [v]
+					break
+		var pick: int = picks[0] if picks.size() == 1 else picks[rng.randi_range(0, picks.size() - 1)]
+		out.append(pick)
+		counts[pick] = int(counts[pick]) - 1
+		have_last = true
+		last = pick
+
+	arr.clear()
+	arr.append_array(out)
 
 
 ## In-place seeded Fisher-Yates over [param arr]. The ONLY shuffle the generator

@@ -19,8 +19,10 @@ const CARD_H: float = 96.0
 const FLOOR_ORIGIN: Vector2 = Vector2(0.0, 300.0)
 
 ## Number of placements in each preset, by layout id. Kept here so [LevelData]
-## can assert a level's [member LevelConfig.card_pool] matches its layout.
-const SLOT_COUNTS: Array[int] = [12, 18, 15]
+## can assert a level's [member LevelConfig.card_pool] matches its layout. Every
+## count is a multiple of [code]STACK_CAPACITY[/code] (3) so the generator's
+## queue-to-pool identity (slot_count / 3 targets) divides cleanly.
+const SLOT_COUNTS: Array[int] = [12, 18, 15, 21, 24, 18]
 
 
 ## Returns the placements for [param layout_id] as an ordered array of
@@ -33,6 +35,12 @@ static func get_layout(layout_id: int) -> Array[Dictionary]:
 			return _layout_1()
 		2:
 			return _layout_2()
+		3:
+			return _layout_3()
+		4:
+			return _layout_4()
+		5:
+			return _layout_5()
 		_:
 			push_error("Unknown layout_id %d" % layout_id)
 			return []
@@ -74,4 +82,36 @@ static func _layout_2() -> Array[Dictionary]:
 	out.append_array(_grid(3, 2, 0, 60, 60, 90, 130))
 	out.append_array(_grid(3, 2, 1, 105, 125, 90, 130))
 	out.append_array(_grid(3, 1, 2, 105, 190, 90, 0))
+	return out
+
+
+# Layout 3 — 21 cards: a dense 3x3 base under two offset 3x2 layers (tall block).
+# Each layer is a single grid with dx >= CARD_W and dy >= CARD_H, so same-layer
+# cards never overlap; only the layer offsets create cross-layer coverage.
+static func _layout_3() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append_array(_grid(3, 3, 0, 40, 40, 90, 100))
+	out.append_array(_grid(3, 2, 1, 85, 90, 90, 100))
+	out.append_array(_grid(3, 2, 2, 130, 120, 80, 110))
+	return out
+
+
+# Layout 4 — 24 cards: a four-layer pyramid (8 base, 6 + 6 mid, 4 top) — the
+# deepest pile, so more cards start covered.
+static func _layout_4() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append_array(_grid(4, 2, 0, 35, 40, 80, 110))
+	out.append_array(_grid(3, 2, 1, 75, 95, 80, 110))
+	out.append_array(_grid(3, 2, 2, 95, 120, 80, 110))
+	out.append_array(_grid(2, 2, 3, 135, 150, 80, 110))
+	return out
+
+
+# Layout 5 — 18 cards: a wide-middle "overhang" (6 base, 8 mid, 4 top) — a
+# different silhouette from layout 1's straight pyramid.
+static func _layout_5() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append_array(_grid(3, 2, 0, 70, 50, 90, 110))
+	out.append_array(_grid(4, 2, 1, 35, 100, 80, 110))
+	out.append_array(_grid(2, 2, 2, 130, 150, 90, 110))
 	return out

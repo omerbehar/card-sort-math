@@ -14,6 +14,9 @@ var result_min: int = 2
 var result_max: int = 12
 var max_operand: int = 6
 var allow_queue_repeats: bool = true
+# Spread equal targets apart in the queue (no two-of-a-kind back-to-back, distinct
+# starting decks). Default true; set false for the legacy plain-shuffle ordering.
+var space_targets: bool = true
 var seed: int = 0
 var world_id: int = 0
 var level_index: int = 0
@@ -59,7 +62,8 @@ static func create(
 		allow_queue_repeats: bool = true,
 		world_id: int = 0,
 		level_index: int = 0,
-		allowed_operations: Array[int] = [Operation.Type.ADD]) -> GeneratorParams:
+		allowed_operations: Array[int] = [Operation.Type.ADD],
+		space_targets: bool = true) -> GeneratorParams:
 	var p := GeneratorParams.new()
 	p.layout_id = layout_id
 	p.distinct_results = distinct_results
@@ -71,4 +75,5 @@ static func create(
 	p.world_id = world_id
 	p.level_index = level_index
 	p.allowed_operations = allowed_operations.duplicate()
+	p.space_targets = space_targets
 	return p
