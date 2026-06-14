@@ -22,6 +22,7 @@ static func params_for(
 	p.result_min = r_min_for(n, data)
 	p.max_operand = max_operand_for(n, data)
 	p.allow_queue_repeats = data.allow_queue_repeats
+	p.space_targets = data.space_queue_targets
 	p.min_recovery_margin = data.min_recovery_margin
 	p.seed = seed
 	p.world_id = world_id

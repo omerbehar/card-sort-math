@@ -205,9 +205,11 @@ func test_empty_candidate_pool_returns_null_config() -> void:
 
 
 func test_invalid_params_return_null_config() -> void:
-	# AC-17c — max_operand=0 and layout_id out of range each error out.
+	# AC-17c — max_operand=0 and layout_id out of range each error out. The
+	# out-of-range id is SLOT_COUNTS.size() (one past the last valid preset).
 	assert_object(LevelGenerator.generate(GeneratorParams.create(0, 4, 3, 12, 0, 0)).config).is_null()
-	assert_object(LevelGenerator.generate(GeneratorParams.create(3, 4, 3, 12, 6, 0)).config).is_null()
+	assert_object(LevelGenerator.generate(
+		GeneratorParams.create(Layouts.SLOT_COUNTS.size(), 4, 3, 12, 6, 0)).config).is_null()
 
 
 func test_no_repeats_with_few_distinct_promotes_and_solves() -> void:
@@ -326,3 +328,89 @@ func test_mixed_world_is_deterministic() -> void:
 		assert_int(a.card_pool[i].operation).is_equal(b.card_pool[i].operation)
 		assert_int(a.card_pool[i].operand_a).is_equal(b.card_pool[i].operand_a)
 		assert_int(a.card_pool[i].operand_b).is_equal(b.card_pool[i].operand_b)
+
+
+# --- Group 6: extra layout presets (ids 3, 4, 5) ---------------------------
+
+func test_extra_layouts_generate_solvable_levels_across_seeds() -> void:
+	# The three new presets must build solvable, correctly-sized boards on every seed.
+	for layout_id in [3, 4, 5]:
+		for seed in range(30):
+			var params := GeneratorParams.create(layout_id, 5, 2, 16, 8, seed)
+			var config := _generate(params)
+			assert_bool(Solvability.is_solvable(config)) \
+				.override_failure_message("layout %d seed %d unsolvable" % [layout_id, seed]).is_true()
+			assert_int(config.card_pool.size()).is_equal(Layouts.SLOT_COUNTS[layout_id])
+			assert_int(config.target_queue.size()).is_equal(Layouts.SLOT_COUNTS[layout_id] / 3)
+
+
+# --- Group 7: target spacing (distinct starting decks, no two in a row) ----
+
+# The largest count any single target appears with in [param queue].
+func _max_target_count(queue: Array) -> int:
+	var counts: Dictionary = {}
+	var top: int = 0
+	for t: int in queue:
+		var c: int = int(counts.get(t, 0)) + 1
+		counts[t] = c
+		top = maxi(top, c)
+	return top
+
+
+func test_spaced_queue_has_no_two_targets_in_a_row() -> void:
+	# Across many seeds and all layouts: whenever spacing is feasible (no target's
+	# count exceeds ceil(n/2)) the queue has no back-to-back duplicates.
+	for layout_id in range(Layouts.SLOT_COUNTS.size()):
+		for seed in range(40):
+			var params := GeneratorParams.create(layout_id, 5, 2, 16, 8, seed)
+			var queue := _generate(params).target_queue
+			var n: int = queue.size()
+			if _max_target_count(queue) > (n + 1) / 2:
+				continue  # infeasible multiset — forced adjacency is allowed
+			for i in range(n - 1):
+				assert_int(queue[i]) \
+					.override_failure_message(
+						"layout %d seed %d: targets repeat at %d in %s"
+						% [layout_id, seed, i, str(queue)]) \
+					.is_not_equal(queue[i + 1])
+
+
+func test_spaced_queue_starting_decks_are_distinct() -> void:
+	# The first two queue entries become the two starting decks — they must differ
+	# whenever there is more than one distinct result to draw on.
+	for seed in range(40):
+		var params := GeneratorParams.create(0, 4, 3, 12, 6, seed)
+		var queue := _generate(params).target_queue
+		assert_int(queue[0]) \
+			.override_failure_message("seed %d: starting decks share a number %s" % [seed, str(queue)]) \
+			.is_not_equal(queue[1])
+
+
+func test_spacing_is_deterministic_for_a_seed() -> void:
+	# The seeded tie-break keeps the arrangement reproducible.
+	var params := GeneratorParams.create(1, 5, 3, 16, 8, 77)
+	assert_array(_generate(params).target_queue).is_equal(_generate(params).target_queue)
+
+
+func test_spacing_disabled_uses_plain_shuffle() -> void:
+	# With spacing off the generator still produces a valid, solvable queue over the
+	# same multiset of targets (legacy ordering path) — adjacency is just not avoided.
+	var spaced := _generate(GeneratorParams.create(1, 5, 3, 16, 8, 5, true, 0, 0, [Operation.Type.ADD], true))
+	var plain := _generate(GeneratorParams.create(1, 5, 3, 16, 8, 5, true, 0, 0, [Operation.Type.ADD], false))
+	assert_bool(Solvability.is_solvable(plain)).is_true()
+	var spaced_sorted: Array = spaced.target_queue.duplicate()
+	var plain_sorted: Array = plain.target_queue.duplicate()
+	spaced_sorted.sort()
+	plain_sorted.sort()
+	assert_array(spaced_sorted).is_equal(plain_sorted)
+
+
+func test_spacing_allows_forced_repeat_for_single_result() -> void:
+	# A degenerate single-result level cannot avoid adjacency; spacing must still
+	# place every copy (and stay solvable) rather than drop or loop.
+	var params := GeneratorParams.create(0, 1, 5, 5, 3, 0)
+	var config := _generate(params)
+	assert_int(config.target_queue.size()).is_equal(4)
+	for t: int in config.target_queue:
+		assert_int(t).is_equal(5)
+	assert_bool(Solvability.is_solvable(config)).is_true()

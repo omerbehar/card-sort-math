@@ -82,13 +82,25 @@ func test_d_step_is_pinned_to_level_21() -> void:
 
 # --- Schedule produces solvable, in-band generated levels end to end. ---
 func test_scheduled_params_generate_solvable_levels() -> void:
-	for n in [1, 8, 13, 21, 29, 40, 53, 70, 85, 120]:
+	# Includes 57/65/73, the first levels that hit the new cycle layouts 3/4/5.
+	for n in [1, 8, 13, 21, 29, 40, 53, 57, 65, 70, 73, 85, 120]:
 		var params := DifficultySchedule.params_for(n, _data, n)  # seed = n
 		var result := LevelGenerator.generate(params)
 		assert_object(result.config) \
 			.override_failure_message("level %d generated null" % n).is_not_null()
 		assert_bool(Solvability.is_solvable(result.config)) \
 			.override_failure_message("level %d not solvable" % n).is_true()
+
+
+# --- The late-game cycle rotates through all six layout presets. ---
+func test_layout_cycle_covers_all_presets() -> void:
+	var seen: Dictionary = {}
+	for n in range(_data.layout_cycle_start, _data.layout_cycle_start + 200):
+		seen[DifficultySchedule.layout_for(n, _data)] = true
+	for layout_id in range(Layouts.SLOT_COUNTS.size()):
+		assert_bool(seen.has(layout_id)) \
+			.override_failure_message("layout %d never appears in the late-game cycle" % layout_id) \
+			.is_true()
 
 
 # --- D never exceeds the queue length of any cycled late-game layout's L when
