@@ -373,3 +373,26 @@ func test_debug_reset_button_is_present_in_the_pause_menu() -> void:
 	await runner.simulate_frames(2)
 	assert_bool(main._pause_menu._buttons.has("debug_reset")).is_true()
 	main._close_pause()
+
+
+func test_restart_from_first_button_resets_progression_to_level_one() -> void:
+	# End-to-end: advance progression, then press the real Settings "Restart from
+	# Lv 1" button → the saved resume point and the live board both return to 1.
+	var runner = await _boot()
+	var main = runner.scene()
+	GameManager.start_level(7)                       # pretend we're deep in the run
+	await runner.simulate_frames(2)
+	assert_int(GameManager.current_level).is_not_equal(1)
+
+	main._open_pause()
+	await runner.simulate_frames(2)
+	var btn: Button = main._pause_menu._buttons.get("restart_level1")
+	assert_object(btn).is_not_null()
+
+	btn.pressed.emit()                               # → restart_from_first_pressed → _on_restart_from_first
+	await runner.simulate_frames(5)
+
+	# Progression reset to level 1, persisted, and the board rebuilt there.
+	assert_int(GameManager.current_level).is_equal(1)
+	assert_int(SaveService.data.current_level).is_equal(1)
+	assert_int(main._config.level_id).is_equal(1)
