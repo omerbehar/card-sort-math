@@ -98,45 +98,45 @@ func _build() -> void:
 
 	_build_audio_toggles()
 	_build_switches()
-	_build_debug_rows()
+	_build_debug_row()
 	_build_actions()
 
 
-# Two slim debug rows between the switches and the Home/Continue actions:
-#   Row 1: "Reset Tutorial" + "Reset Inventory" (coins + buffs).
-#   Row 2: "Restart from Lv 1" (resets progression to the first level).
-# All shown in every build per boss request (debug aids usable on-device).
-func _build_debug_rows() -> void:
+# A single debug row between the switches and the Home/Continue actions, holding
+# three small buttons: "Reset Tutorial", "Reset Inventory" (coins + buffs), and
+# "Restart Lv 1" (resets progression to the first level). Two-line labels keep
+# them legible at the narrow column width. All shown in every build per boss
+# request (debug aids usable on-device).
+func _build_debug_row() -> void:
 	var row_w: float = _PANEL_SIZE.x - 44.0
-	var x: float = _PANEL_POS.x + 22
-	var gap: float = 12.0
-	var row_h: float = 24.0
-	var y0: float = _PANEL_POS.y + _PANEL_SIZE.y - 122.0
-	var half_w: float = (row_w - gap) * 0.5
+	var x0: float = _PANEL_POS.x + 22
+	var y: float = _PANEL_POS.y + _PANEL_SIZE.y - 122.0
+	var gap: float = 10.0
+	var col_w: float = (row_w - 2.0 * gap) / 3.0
+	var size := Vector2(col_w, 40.0)
 
-	var tut := _bare_button(Vector2(x, y0), Vector2(half_w, row_h))
-	UiFactory.nine_patch(tut, "kenney/rect_blue.png", Vector2.ZERO, Vector2(half_w, row_h), 14, Color(0.12, 0.32, 0.58))
-	UiFactory.label(tut, "Reset Tutorial", Vector2.ZERO, Vector2(half_w, row_h), 15, Color.WHITE)
-	tut.pressed.connect(func() -> void:
+	# (label, tint, button key) per column, left to right.
+	var cols := [
+		["Reset\nTutorial", Color(0.12, 0.32, 0.58), "reset_tutorial"],
+		["Reset\nInventory", Color(0.78, 0.52, 0.16), "debug_reset"],
+		["Restart\nLv 1", Color(0.62, 0.24, 0.52), "restart_level1"],
+	]
+	for i in cols.size():
+		var col: Array = cols[i]
+		var pos := Vector2(x0 + i * (col_w + gap), y)
+		var btn := _bare_button(pos, size)
+		UiFactory.nine_patch(btn, "kenney/rect_blue.png", Vector2.ZERO, size, 14, col[1])
+		UiFactory.label(btn, col[0], Vector2.ZERO, size, 14, Color.WHITE)
+		_buttons[col[2]] = btn
+
+	# Wire each button to its action (Reset Tutorial / Restart also resume).
+	_buttons["reset_tutorial"].pressed.connect(func() -> void:
 		reset_tutorial_pressed.emit()
 		_resume())
-	_buttons["reset_tutorial"] = tut
-
-	var dbg_pos := Vector2(x + half_w + gap, y0)
-	var dbg := _bare_button(dbg_pos, Vector2(half_w, row_h))
-	UiFactory.nine_patch(dbg, "kenney/rect_blue.png", Vector2.ZERO, Vector2(half_w, row_h), 14, Color(0.78, 0.52, 0.16))
-	UiFactory.label(dbg, "Reset Inventory", Vector2.ZERO, Vector2(half_w, row_h), 14, Color.WHITE)
-	dbg.pressed.connect(func() -> void:
+	_buttons["debug_reset"].pressed.connect(func() -> void:
 		debug_reset_pressed.emit())
-	_buttons["debug_reset"] = dbg
-
-	var y1: float = y0 + row_h + 4.0
-	var lvl := _bare_button(Vector2(x, y1), Vector2(row_w, row_h))
-	UiFactory.nine_patch(lvl, "kenney/rect_blue.png", Vector2.ZERO, Vector2(row_w, row_h), 14, Color(0.62, 0.24, 0.52))
-	UiFactory.label(lvl, "Restart from Lv 1", Vector2.ZERO, Vector2(row_w, row_h), 15, Color.WHITE)
-	lvl.pressed.connect(func() -> void:
+	_buttons["restart_level1"].pressed.connect(func() -> void:
 		restart_from_first_pressed.emit())
-	_buttons["restart_level1"] = lvl
 
 
 func _build_audio_toggles() -> void:
