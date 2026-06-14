@@ -122,3 +122,20 @@ func test_home_emits_home_pressed() -> void:
 	menu._go_home()
 
 	assert_bool(got[0]).is_true()
+
+
+func test_restart_from_first_button_is_present() -> void:
+	var settings = _make_settings()
+	var menu := _make_menu(settings)
+	assert_bool(menu._buttons.has("restart_level1")).is_true()
+
+
+func test_restart_from_first_button_emits_signal() -> void:
+	var settings = _make_settings()
+	var menu := _make_menu(settings)
+	var got := [false]
+	menu.restart_from_first_pressed.connect(func() -> void: got[0] = true)
+
+	menu._buttons["restart_level1"].pressed.emit()
+
+	assert_bool(got[0]).is_true()

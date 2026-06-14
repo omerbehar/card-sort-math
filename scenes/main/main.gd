@@ -635,6 +635,7 @@ func _open_pause() -> void:
 	_pause_menu.home_pressed.connect(_on_home_pressed)
 	_pause_menu.reset_tutorial_pressed.connect(_on_reset_tutorial)
 	_pause_menu.debug_reset_pressed.connect(_on_debug_reset)
+	_pause_menu.restart_from_first_pressed.connect(_on_restart_from_first)
 	_hud_layer.add_child(_pause_menu)
 
 
@@ -667,6 +668,14 @@ func _on_debug_reset() -> void:
 func _on_home_pressed() -> void:
 	_close_pause()
 	start_level(GameManager.current_level)
+
+
+# Debug-only (Settings → "Restart from Lv 1"): resets the saved resume point to
+# level 1 and reloads it, so the operation worlds can be replayed from the start.
+func _on_restart_from_first() -> void:
+	_close_pause()
+	SaveService.set_current_level(1)
+	start_level(1)
 
 
 # Recolours the live board when the colorblind palette setting changes.

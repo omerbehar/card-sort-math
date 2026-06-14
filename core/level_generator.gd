@@ -96,10 +96,11 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	var slot_count: int = Layouts.SLOT_COUNTS[params.layout_id]
 	var queue_length: int = slot_count / STACK_CAPACITY
 
-	# PICK_RESULTS — candidates are results with at least one legal operand pair.
+	# PICK_RESULTS — candidates are results with at least one legal operand pair
+	# under any of the world's allowed operations.
 	var candidates: Array[int] = []
 	for r in range(params.result_min, params.result_max + 1):
-		if OperandPicker.has_valid_pair(r, params.max_operand):
+		if not OperandPicker.valid_operations(r, params.max_operand, params.allowed_operations).is_empty():
 			candidates.append(r)
 	# Empty-pool guard MUST precede the clamp: clampi(D, 1, 0) returns 1, which
 	# would otherwise draw from an empty set (GDD Edge Cases / Formula 5).
@@ -144,12 +145,18 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	var next_slot_index: int = 0
 	for result_value: int in queue_counts:
 		var card_count: int = STACK_CAPACITY * int(queue_counts[result_value])
+		# Operations this result can be printed with (non-empty: it passed the
+		# candidate filter). A single-operation world skips the RNG draw entirely,
+		# so addition levels stay byte-identical to the pre-operations generator.
+		var ops: Array[int] = OperandPicker.valid_operations(
+			result_value, params.max_operand, params.allowed_operations)
 		for i in range(card_count):
 			var slot: int = slot_order[next_slot_index]
 			next_slot_index += 1
 			var layer: int = placements[slot].layer
-			var operands := OperandPicker.pick(result_value, i, params.max_operand)
-			pool.append(CardData.create(operands.x, operands.y, layer, slot))
+			var op: int = ops[0] if ops.size() == 1 else ops[rng.randi_range(0, ops.size() - 1)]
+			var operands := OperandPicker.pick(result_value, i, params.max_operand, op)
+			pool.append(CardData.create(operands.x, operands.y, layer, slot, op))
 
 	# Canonical ordering (determinism-critical, AC-08): pool order is a pure
 	# function of slot assignment, never of result draw order.

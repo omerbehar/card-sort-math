@@ -18,6 +18,12 @@ var seed: int = 0
 var world_id: int = 0
 var level_index: int = 0
 
+# Which operations the generator may print (see [enum Operation.Type]). A
+# single-operation world holds one entry; a mixed world holds several. Each
+# card's operation is chosen from those valid for its result. Defaults to
+# addition-only so callers that never set it are unaffected.
+var allowed_operations: Array[int] = [Operation.Type.ADD]
+
 # Recoverability (Core Rule 10 / AC-32). 0 disables the check (the default, so
 # S2-003a callers are unaffected); the difficulty schedule sets it to 1.
 var min_recovery_margin: int = 0
@@ -34,7 +40,8 @@ static func create(
 		seed: int = 0,
 		allow_queue_repeats: bool = true,
 		world_id: int = 0,
-		level_index: int = 0) -> GeneratorParams:
+		level_index: int = 0,
+		allowed_operations: Array[int] = [Operation.Type.ADD]) -> GeneratorParams:
 	var p := GeneratorParams.new()
 	p.layout_id = layout_id
 	p.distinct_results = distinct_results
@@ -45,4 +52,5 @@ static func create(
 	p.allow_queue_repeats = allow_queue_repeats
 	p.world_id = world_id
 	p.level_index = level_index
+	p.allowed_operations = allowed_operations.duplicate()
 	return p
