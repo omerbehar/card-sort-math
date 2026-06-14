@@ -18,6 +18,13 @@ var card_data: CardData
 var _label: Label
 var _showing_result: bool = false
 
+# Exercise label font sizes: a roomy size for a binary "3 + 4", a smaller one for
+# a three-term "(3 + 7) − 4" so the longer string fits the 72px card, and the big
+# size for the bare result number once a card lands on a stack.
+const _FONT_BINARY: int = 20
+const _FONT_TERNARY: int = 13
+const _FONT_RESULT: int = 30
+
 
 func _ready() -> void:
 	z_as_relative = false
@@ -34,9 +41,11 @@ func _build_visuals() -> void:
 	_label.size = Vector2(W, H)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_label.add_theme_font_size_override("font_size", 20)
+	_label.add_theme_font_size_override("font_size", _FONT_BINARY)
 	_label.add_theme_color_override("font_color", Color(0.10, 0.12, 0.20))
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Wrap a long three-term exercise onto a second line rather than clip it.
+	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_label)
 
 	var shape := CollisionShape2D.new()
@@ -55,8 +64,15 @@ func setup(id: int, data: CardData) -> void:
 
 
 func _apply_text() -> void:
-	if _label != null and card_data != null:
-		_label.text = str(card_data.result) if _showing_result else card_data.exercise_text()
+	if _label == null or card_data == null:
+		return
+	if _showing_result:
+		_label.text = str(card_data.result)
+		return
+	_label.text = card_data.exercise_text()
+	# A three-term exercise needs the smaller font to fit the card width.
+	var size: int = _FONT_TERNARY if card_data.term_count >= 3 else _FONT_BINARY
+	_label.add_theme_font_size_override("font_size", size)
 
 
 ## Flips the card from its exercise to just the result number (used when the
@@ -64,7 +80,7 @@ func _apply_text() -> void:
 func show_result() -> void:
 	_showing_result = true
 	if _label != null:
-		_label.add_theme_font_size_override("font_size", 30)
+		_label.add_theme_font_size_override("font_size", _FONT_RESULT)
 	_apply_text()
 
 

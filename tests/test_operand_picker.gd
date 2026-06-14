@@ -89,3 +89,60 @@ func test_pick_is_deterministic() -> void:
 		if OperandPicker.has_valid_pair(8, MAX_OPERAND, op):
 			assert_vector(OperandPicker.pick(8, 3, MAX_OPERAND, op)) \
 				.is_equal(OperandPicker.pick(8, 3, MAX_OPERAND, op))
+
+
+# --- ternary (three-term) picking ------------------------------------------
+
+const ADD := Operation.Type.ADD
+const SUB := Operation.Type.SUBTRACT
+const MUL := Operation.Type.MULTIPLY
+const G := TernaryExpression.Grouping
+
+
+# Every triple returned for a spec must evaluate back to the result, stay in
+# bounds, and be non-negative throughout (the picker only returns legal triples).
+func test_triple_options_all_evaluate_to_result_and_in_bounds() -> void:
+	var specs := [
+		[ADD, SUB, G.LEFT],
+		[SUB, ADD, G.PAREN_RIGHT],
+		[ADD, MUL, G.PRECEDENCE],
+	]
+	for spec: Array in specs:
+		for result in range(2, 20):
+			for t: Vector3i in OperandPicker.triple_options(result, MAX_OPERAND, spec[0], spec[1], spec[2]):
+				assert_int(TernaryExpression.evaluate(t.x, t.y, t.z, spec[0], spec[1], spec[2])) \
+					.override_failure_message("triple %s spec %s -> wrong result" % [t, spec]).is_equal(result)
+				for v in [t.x, t.y, t.z]:
+					assert_bool(v >= 1 and v <= MAX_OPERAND).is_true()
+
+
+func test_triple_options_are_deterministic() -> void:
+	var a := OperandPicker.triple_options(6, MAX_OPERAND, ADD, SUB, G.LEFT)
+	var b := OperandPicker.triple_options(6, MAX_OPERAND, ADD, SUB, G.LEFT)
+	assert_array(a).is_equal(b)
+	assert_array(a).is_not_empty()
+
+
+# Renderings across specs are deduped by displayed text (a LEFT and a PRECEDENCE
+# "3 + 4 + 5" collapse to one) and each carries its full spec.
+func test_triple_renderings_dedupe_by_text_and_carry_spec() -> void:
+	# Both specs render some additions identically (no parentheses, all '+').
+	var specs: Array[Vector3i] = [
+		Vector3i(ADD, ADD, G.LEFT),
+		Vector3i(ADD, ADD, G.PRECEDENCE),
+	]
+	var renderings := OperandPicker.triple_renderings(12, 9, specs)
+	assert_array(renderings).is_not_empty()
+	var texts: Dictionary = {}
+	for rd: Dictionary in renderings:
+		var text: String = TernaryExpression.format(
+			rd["a"], rd["b"], rd["c"], rd["op1"], rd["op2"], rd["grouping"])
+		assert_bool(texts.has(text)) \
+			.override_failure_message("duplicate rendering '%s'" % text).is_false()
+		texts[text] = true
+
+
+func test_triple_renderings_empty_when_no_legal_triple() -> void:
+	# Result 0 is never produced by a positive add/sub triple in [1, max].
+	var specs: Array[Vector3i] = [Vector3i(ADD, ADD, G.LEFT)]
+	assert_array(OperandPicker.triple_renderings(0, MAX_OPERAND, specs)).is_empty()

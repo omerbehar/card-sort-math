@@ -59,6 +59,17 @@ func test_division_world_renders_divide_glyph_in_scene() -> void:
 	_assert_floor_glyph(main, "÷")
 
 
+func test_two_decks_unlocked_by_default_in_scene() -> void:
+	# Default unlock count is 2: stacks 0 and 1 start open, 2 and 3 start locked.
+	var runner = await _boot()
+	var main = await _start(runner, 1)
+	var model = main._model
+	assert_bool(model.is_stack_locked(0)).is_false()
+	assert_bool(model.is_stack_locked(1)).is_false()
+	assert_bool(model.is_stack_locked(2)).is_true()
+	assert_bool(model.is_stack_locked(3)).is_true()
+
+
 func test_operation_world_board_is_playable_in_scene() -> void:
 	# A subtraction-world board still routes/discards a tap through the real seam.
 	var runner = await _boot()
@@ -72,11 +83,42 @@ func test_operation_world_board_is_playable_in_scene() -> void:
 	assert_bool(model.is_card_removed(cid)).is_true()
 
 
-func test_mixed_world_renders_multiple_glyphs_in_scene() -> void:
+func test_three_term_addsub_world_renders_two_operator_expression() -> void:
+	# Level 21-25: every floor card prints a three-term a ∘ b ∘ c exercise.
 	var runner = await _boot()
-	var main = await _start(runner, 25)       # mixed world
+	var main = await _start(runner, 23)       # three-term add/sub world
 	var cards: Dictionary = main._floor._cards
-	var glyphs_seen: Dictionary = {}
+	assert_int(cards.size()).is_greater(0)
 	for card in cards.values():
-		glyphs_seen[Operation.glyph(card.card_data.operation)] = true
-	assert_int(glyphs_seen.size()).is_greater(1)
+		assert_int(card.card_data.term_count) \
+			.override_failure_message("card '%s' is not three-term" % card._label.text).is_equal(3)
+		# Two operators ⇒ five whitespace-separated tokens (e.g. "3 + 7 − 4").
+		assert_int(card._label.text.split(" ", false).size()).is_greater_equal(5)
+
+
+func test_parentheses_world_renders_a_parenthesised_card_in_scene() -> void:
+	# Level 26-30: at least one floor card shows parentheses.
+	var runner = await _boot()
+	var main = await _start(runner, 28)
+	var cards: Dictionary = main._floor._cards
+	var saw_parens := false
+	for card in cards.values():
+		if card._label.text.contains("("):
+			saw_parens = true
+	assert_bool(saw_parens) \
+		.override_failure_message("no parenthesised card rendered in the parentheses world").is_true()
+
+
+func test_order_of_operations_world_renders_high_op_glyph_in_scene() -> void:
+	# Level 31-40: a × or ÷ appears on the floor, with no parentheses printed.
+	var runner = await _boot()
+	var main = await _start(runner, 33)
+	var cards: Dictionary = main._floor._cards
+	var saw_high := false
+	for card in cards.values():
+		var text: String = card._label.text
+		assert_str(text).not_contains("(")
+		if text.contains("×") or text.contains("÷"):
+			saw_high = true
+	assert_bool(saw_high) \
+		.override_failure_message("no ×/÷ card rendered in the order-of-operations world").is_true()

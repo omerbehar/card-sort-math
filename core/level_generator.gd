@@ -101,8 +101,7 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	# (variety floor: no result whose cards would all read identically).
 	var candidates: Array[int] = []
 	for r in range(params.result_min, params.result_max + 1):
-		if not OperandPicker.valid_operations(
-				r, params.max_operand, params.allowed_operations, params.min_operand_options).is_empty():
+		if _result_has_content(r, params):
 			candidates.append(r)
 	# Empty-pool guard MUST precede the clamp: clampi(D, 1, 0) returns 1, which
 	# would otherwise draw from an empty set (GDD Edge Cases / Formula 5).
@@ -147,6 +146,10 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	var next_slot_index: int = 0
 	for result_value: int in queue_counts:
 		var card_count: int = STACK_CAPACITY * int(queue_counts[result_value])
+		if params.term_count >= 3:
+			_deal_ternary(pool, result_value, card_count, params, placements, slot_order, next_slot_index, rng)
+			next_slot_index += card_count
+			continue
 		# Operations this result can be printed with (non-empty: it passed the
 		# candidate filter). A single-operation world skips the RNG draw entirely,
 		# so addition levels stay byte-identical to the pre-operations generator.
@@ -179,6 +182,39 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	assert(Solvability.is_solvable(config), "LevelGenerator produced an unsolvable level (construction bug)")
 
 	return {config = config, warnings = warnings}
+
+
+# Whether [param r] can seed enough variety to be a candidate result: a binary
+# world needs an allowed operation with >= min_operand_options pairs; a three-term
+# world needs >= min_operand_options distinct rendered exercises across its specs.
+static func _result_has_content(r: int, params: GeneratorParams) -> bool:
+	if params.term_count >= 3:
+		return OperandPicker.triple_renderings(
+			r, params.max_operand, params.expression_specs).size() >= params.min_operand_options
+	return not OperandPicker.valid_operations(
+		r, params.max_operand, params.allowed_operations, params.min_operand_options).is_empty()
+
+
+# Deals [param card_count] three-term cards for [param result_value] into
+# [param pool], starting at [code]slot_order[start_index][/code]. Cycles a
+# deterministically shuffled list of distinct rendered exercises (size >=
+# min_operand_options by the candidate filter), so equal-result cards read
+# differently and the level stays reproducible for a given seed.
+static func _deal_ternary(pool: Array[CardData], result_value: int, card_count: int,
+		params: GeneratorParams, placements: Array, slot_order: Array[int],
+		start_index: int, rng: RandomNumberGenerator) -> void:
+	var renderings: Array = OperandPicker.triple_renderings(
+		result_value, params.max_operand, params.expression_specs)
+	var order: Array[int] = []
+	for k in range(renderings.size()):
+		order.append(k)
+	_shuffle_int(order, rng)
+	for i in range(card_count):
+		var slot: int = slot_order[start_index + i]
+		var layer: int = placements[slot].layer
+		var rd: Dictionary = renderings[order[i % order.size()]]
+		pool.append(CardData.create_ternary(
+			rd["a"], rd["b"], rd["c"], rd["op1"], rd["op2"], rd["grouping"], layer, slot))
 
 
 ## In-place seeded Fisher-Yates over [param arr]. The ONLY shuffle the generator

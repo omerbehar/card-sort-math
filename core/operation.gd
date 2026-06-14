@@ -36,6 +36,13 @@ static func glyph(operation: int) -> String:
 	return _GLYPHS.get(operation, "+")
 
 
+## Whether [param operation] binds tighter than +/− under the order of operations
+## — i.e. it is × or ÷. Used by [TernaryExpression] to resolve precedence and by
+## the level generator to compose order-of-operations worlds.
+static func is_high_precedence(operation: int) -> bool:
+	return operation == Type.MULTIPLY or operation == Type.DIVIDE
+
+
 ## Applies [param operation] to [param a] and [param b]. Division is exact by
 ## construction (the generator only pairs evenly-divisible operands); a zero
 ## divisor returns 0 rather than crashing.

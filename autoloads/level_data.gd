@@ -11,15 +11,34 @@ extends Node
 const STACK_COUNT: int = 4
 const STACK_CAPACITY: int = 3
 
-# Operation worlds + generated-level seeding (ADR-0007). Each WORLD_SIZE-level
-# band advances one operation (+, −, ×, ÷); levels past the four single-operation
-# bands mix all four. seed = world_for_level(n) * WORLD_STRIDE + n, so every
-# world's seed space is disjoint and the same index always rebuilds the same
-# level. WORLD_ID (0 = addition) is retained for back-compatible references.
+# Operation worlds + generated-level seeding (ADR-0007). The first four
+# WORLD_SIZE-level bands each teach one binary operation (+, −, ×, ÷); the bands
+# above teach multi-term expressions:
+#   1-5  + | 6-10 − | 11-15 × | 16-20 ÷        (binary, one op each)
+#   21-25  three-term add/sub, left-to-right     (WORLD_TRI_ADDSUB)
+#   26-30  three-term add/sub WITH parentheses   (WORLD_TRI_PARENS)
+#   31-40  three-term ×/÷ mixed with +/−, order of operations (WORLD_TRI_ORDER)
+#   41+    all three multi-term styles mixed     (MIXED_WORLD_ID)
+# seed = world_for_level(n) * WORLD_STRIDE + n, so every world's seed space is
+# disjoint and the same index always rebuilds the same level. WORLD_ID (0 =
+# addition) is retained for back-compatible references.
 const WORLD_ID: int = 0
 const WORLD_STRIDE: int = 1_000_000
 const WORLD_SIZE: int = 5
-const MIXED_WORLD_ID: int = 4
+# Stable world ids (carried onto generated levels as provenance).
+const WORLD_ADD: int = 0
+const WORLD_SUB: int = 1
+const WORLD_MUL: int = 2
+const WORLD_DIV: int = 3
+const WORLD_TRI_ADDSUB: int = 4   # 21-25: a ± b ± c, left-to-right
+const WORLD_TRI_PARENS: int = 5   # 26-30: parentheses that can change grouping
+const WORLD_TRI_ORDER: int = 6    # 31-40: ×/÷ with +/−, order of operations
+const MIXED_WORLD_ID: int = 7     # 41+: all multi-term styles mixed
+# The first 1-based level of each multi-term band (binary bands use WORLD_SIZE).
+const TRI_ADDSUB_START: int = 21
+const TRI_PARENS_START: int = 26
+const TRI_ORDER_START: int = 31
+const MIXED_START: int = 41
 
 # Variety floor: every result in a generated level must offer at least this many
 # distinct displayed operand pairs, so equal-result cards aren't all the same
@@ -35,6 +54,8 @@ const _WORLD_OPERATIONS: Array[int] = [
 	Operation.Type.MULTIPLY,
 	Operation.Type.DIVIDE,
 ]
+# The two operators the add/sub teaching worlds mix (21-30).
+const _ADD_SUB: Array[int] = [Operation.Type.ADD, Operation.Type.SUBTRACT]
 const _SCHEDULE_PATH: String = "res://assets/data/difficulty_schedule.tres"
 
 # Per-level: the result printed on each slot's card. Length must equal the
@@ -86,21 +107,100 @@ func get_level(n: int) -> LevelConfig:
 	return config
 
 
-## The operation world for 1-based [param n]: 0 = +, 1 = −, 2 = ×, 3 = ÷ for the
-## first four [constant WORLD_SIZE]-level bands, then [constant MIXED_WORLD_ID]
-## (all four mixed) from level 21 onward.
+## The teaching world for 1-based [param n] (see the world-id constants):
+## 0 = +, 1 = −, 2 = ×, 3 = ÷ for the four binary bands (1-20), then the
+## three-term bands — add/sub (21-25), parentheses (26-30), order of operations
+## (31-40) — and finally the mixed world (41+).
 func world_for_level(n: int) -> int:
-	return mini((maxi(n, 1) - 1) / WORLD_SIZE, MIXED_WORLD_ID)
+	var lvl: int = maxi(n, 1)
+	if lvl < TRI_ADDSUB_START:
+		return mini((lvl - 1) / WORLD_SIZE, WORLD_DIV)
+	if lvl < TRI_PARENS_START:
+		return WORLD_TRI_ADDSUB
+	if lvl < TRI_ORDER_START:
+		return WORLD_TRI_PARENS
+	if lvl < MIXED_START:
+		return WORLD_TRI_ORDER
+	return MIXED_WORLD_ID
 
 
-## The operations a generated level at 1-based [param n] may print: one operation
-## per single-operation world, or all four in the mixed world. The generator
-## picks each card's operation from those valid for its result.
+## Whether 1-based [param n] is a three-term (multi-operand) teaching level.
+func is_multi_term_level(n: int) -> bool:
+	return world_for_level(n) >= WORLD_TRI_ADDSUB
+
+
+## The base operations involved at 1-based [param n]: the single op for a binary
+## world, [+, −] for the add/sub teaching worlds, or all four where ×/÷ appear.
+## (Three-term grouping is described by [method expression_specs_for_level].)
 func operations_for_level(n: int) -> Array[int]:
 	var world: int = world_for_level(n)
-	if world == MIXED_WORLD_ID:
-		return Operation.ALL.duplicate()
-	return [_WORLD_OPERATIONS[world]] as Array[int]
+	match world:
+		WORLD_TRI_ADDSUB, WORLD_TRI_PARENS:
+			return _ADD_SUB.duplicate()
+		WORLD_TRI_ORDER, MIXED_WORLD_ID:
+			return Operation.ALL.duplicate()
+		_:
+			return [_WORLD_OPERATIONS[world]] as Array[int]
+
+
+## The three-term expression specs (each a Vector3i (op1, op2, grouping); see
+## [enum TernaryExpression.Grouping]) a generated level at 1-based [param n] may
+## print, or empty for the binary worlds. The generator draws each card's
+## spec + operands from those that produce its result.
+func expression_specs_for_level(n: int) -> Array[Vector3i]:
+	var specs: Array[Vector3i] = []
+	match world_for_level(n):
+		WORLD_TRI_ADDSUB:
+			# a ± b ± c, left-to-right — teaches that 3 + 7 − 4 reads as 3 − 4 + 7.
+			for op1: int in _ADD_SUB:
+				for op2: int in _ADD_SUB:
+					specs.append(Vector3i(op1, op2, TernaryExpression.Grouping.LEFT))
+		WORLD_TRI_PARENS:
+			# Parentheses that can genuinely change the grouping (e.g. a − (b + c)).
+			for op1: int in _ADD_SUB:
+				for op2: int in _ADD_SUB:
+					specs.append(Vector3i(op1, op2, TernaryExpression.Grouping.PAREN_LEFT))
+					specs.append(Vector3i(op1, op2, TernaryExpression.Grouping.PAREN_RIGHT))
+		WORLD_TRI_ORDER:
+			specs = _order_of_operations_specs()
+		MIXED_WORLD_ID:
+			specs = expression_specs_for_world(WORLD_TRI_ADDSUB)
+			specs.append_array(expression_specs_for_world(WORLD_TRI_PARENS))
+			specs.append_array(_order_of_operations_specs())
+	return specs
+
+
+## The expression specs for an explicit [param world] id (used to compose the
+## mixed world). See [method expression_specs_for_level].
+func expression_specs_for_world(world: int) -> Array[Vector3i]:
+	return expression_specs_for_level(_first_level_of_world(world))
+
+
+# Specs for the order-of-operations world: every operator pair where at least one
+# side is ×/÷ (so precedence actually matters), displayed without parentheses.
+func _order_of_operations_specs() -> Array[Vector3i]:
+	var specs: Array[Vector3i] = []
+	for op1: int in Operation.ALL:
+		for op2: int in Operation.ALL:
+			if Operation.is_high_precedence(op1) or Operation.is_high_precedence(op2):
+				specs.append(Vector3i(op1, op2, TernaryExpression.Grouping.PRECEDENCE))
+	return specs
+
+
+# A representative 1-based level for [param world], so the spec/op helpers can be
+# queried by world id as well as by level.
+func _first_level_of_world(world: int) -> int:
+	match world:
+		WORLD_TRI_ADDSUB:
+			return TRI_ADDSUB_START
+		WORLD_TRI_PARENS:
+			return TRI_PARENS_START
+		WORLD_TRI_ORDER:
+			return TRI_ORDER_START
+		MIXED_WORLD_ID:
+			return MIXED_START
+		_:
+			return world * WORLD_SIZE + 1
 
 
 ## Returns the next stack target drawn from [param queue] at [param draw_index],
@@ -151,19 +251,30 @@ func _build_authored_level(index: int) -> LevelConfig:
 # schedule's range (addition options are plentiful; mixed qualifies via addition).
 func _apply_world_number_range(params: GeneratorParams, world: int) -> void:
 	match world:
-		1:  # subtraction: a − b = result needs b in [1, max−result]; ≥3 ⇒ result ≤ max−3.
+		WORLD_SUB:  # a − b = result needs b in [1, max−result]; ≥3 ⇒ result ≤ max−3.
 			params.max_operand = maxi(params.max_operand, 12)
 			params.result_min = 2
 			params.result_max = mini(params.result_max, params.max_operand - OPERAND_OPTIONS_MIN)
-		2:  # multiplication: only composites with 3+ factor pairs qualify (12,16,18,20,24…).
+		WORLD_MUL:  # only composites with 3+ factor pairs qualify (12,16,18,20,24…).
 			params.max_operand = maxi(params.max_operand, 12)
 			params.result_min = 8
 			params.result_max = maxi(params.result_max, 24)
-		3:  # division: a ÷ b = result needs b in [2, max/result]; ≥3 ⇒ small quotients.
+		WORLD_DIV:  # a ÷ b = result needs b in [2, max/result]; ≥3 ⇒ small quotients.
 			params.max_operand = maxi(params.max_operand, 20)
 			params.result_min = 2
 			params.result_max = 5
-		_:  # addition (0) and mixed (4): the schedule's range already offers enough.
+		WORLD_TRI_ADDSUB, WORLD_TRI_PARENS:
+			# Small single-digit operands so the lesson is the ordering/parentheses
+			# idea, not large sums; results span enough values for variety.
+			params.max_operand = clampi(params.max_operand, 5, 9)
+			params.result_min = 2
+			params.result_max = clampi(params.result_max, 12, 18)
+		WORLD_TRI_ORDER, MIXED_WORLD_ID:
+			# Room for ×/÷ products while keeping operands single-digit.
+			params.max_operand = clampi(params.max_operand, 6, 9)
+			params.result_min = 4
+			params.result_max = maxi(params.result_max, 36)
+		_:  # addition (WORLD_ADD): the schedule's range already offers enough.
 			pass
 
 
@@ -171,12 +282,16 @@ func _build_generated_level(n: int) -> LevelConfig:
 	var world: int = world_for_level(n)
 	var seed: int = world * WORLD_STRIDE + n
 	var params := DifficultySchedule.params_for(n, _get_schedule(), seed, world, n)
-	# The schedule sets only difficulty knobs; the operation(s) are a world concern
-	# decided here (ADR-0007), keeping DifficultySchedule operation-agnostic.
-	params.allowed_operations = operations_for_level(n)
 	# Every result must offer >= OPERAND_OPTIONS_MIN distinct exercises so equal-result
 	# cards vary (e.g. a prime like 7 is never a multiply result — it'd be all "1 × 7").
 	params.min_operand_options = OPERAND_OPTIONS_MIN
+	# The schedule sets only difficulty knobs; the operation(s)/expression shape are a
+	# world concern decided here (ADR-0007), keeping DifficultySchedule op-agnostic.
+	if is_multi_term_level(n):
+		params.term_count = 3
+		params.expression_specs = expression_specs_for_level(n)
+	else:
+		params.allowed_operations = operations_for_level(n)
 	_apply_world_number_range(params, world)
 	var result := LevelGenerator.generate(params)
 	if result.config == null:

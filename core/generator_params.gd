@@ -21,8 +21,20 @@ var level_index: int = 0
 # Which operations the generator may print (see [enum Operation.Type]). A
 # single-operation world holds one entry; a mixed world holds several. Each
 # card's operation is chosen from those valid for its result. Defaults to
-# addition-only so callers that never set it are unaffected.
+# addition-only so callers that never set it are unaffected. Used only when
+# term_count == 2 (binary cards).
 var allowed_operations: Array[int] = [Operation.Type.ADD]
+
+# Number of terms per card: 2 = binary a ∘ b (the default; uses allowed_operations
+# and the legacy path byte-for-byte), 3 = three-term a ∘ b ∘ c (the teaching
+# worlds; uses expression_specs).
+var term_count: int = 2
+
+# Allowed three-term expression specs, each a Vector3i (op1, op2, grouping) — see
+# [enum Operation.Type] and [enum TernaryExpression.Grouping]. Only used when
+# term_count == 3. Each card's spec+operands are drawn from those that produce its
+# result. Empty leaves the generator on the binary path.
+var expression_specs: Array[Vector3i] = []
 
 # Minimum distinct displayed operand pairs a result must offer (for at least one
 # allowed operation) to be a candidate — so equal-result cards aren't all the same
