@@ -376,7 +376,11 @@ func _perform_unlock(stack_index: int, paid: bool) -> void:
 		var ok: bool = wallet.spend(
 			EconomyEnums.Currency.COINS, UNLOCK_COST,
 			func() -> bool:
-				events = _model.unlock_stack(stack_index)
+				# Mutate (append_array), don't reassign: a GDScript lambda captures
+				# outer locals by value, so `events = …` here would NOT propagate out
+				# and the view would replay nothing (the paid deck's pulled-in discards
+				# would stay stuck in the row). append_array mutates the shared array.
+				events.append_array(_model.unlock_stack(stack_index))
 				return true)
 		if not ok:
 			return                              # not enough coins; nothing changed
@@ -440,18 +444,27 @@ func _grow_discard_view() -> void:
 	_update_discard_warning()
 
 
-# Slides every card currently in the discard to its slot's (recomputed, re-centred)
-# global position. Fire-and-forget tweens so they slide in parallel with the slot
-# frames. Discarded cards stay shrunk to the slot size.
+# Re-homes every card currently in the discard to its slot's (recomputed,
+# re-centred) global position, in lockstep with the slot frames: same duration and
+# easing as DiscardRow's frame slide (GROW_SLIDE_SEC, QUAD/EASE_OUT) so the card and
+# its slot move together. Under reduced motion the row snaps its frames instantly, so
+# the cards snap too. Discarded cards stay shrunk to the slot size.
 func _reposition_discard_cards() -> void:
 	var slot_scale: float = DiscardRow.SLOT_W / Card.W
+	var reduced: bool = bool(SettingsService.get_value("reduced_motion"))
 	for slot in _discard_cards.size():
 		var card_id: int = _discard_cards[slot]
 		if card_id == -1:
 			continue
 		var card := _floor.get_card(card_id)
-		if card != null:
-			card.fly_to(_discard.slot_global_position(slot), CARD_FLY, slot_scale)
+		if card == null:
+			continue
+		var target: Vector2 = _discard.slot_global_position(slot)
+		if reduced:
+			card.global_position = target
+			card.scale = Vector2(slot_scale, slot_scale)
+		else:
+			card.fly_to(target, DiscardRow.GROW_SLIDE_SEC, slot_scale)
 
 
 ## Arms the Picker booster (S3-012): every surviving card becomes tappable so the

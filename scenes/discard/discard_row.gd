@@ -24,6 +24,9 @@ const SLOTS: int = 5
 const MAX_SLOTS: int = 7
 ## Visible space between slots.
 const SLOT_GAP: float = 12.0
+## Seconds the existing slots take to slide to their re-centred positions on a grow.
+## Shared so the cards sitting in those slots (re-homed by Main) move in lockstep.
+const GROW_SLIDE_SEC: float = 0.20
 ## Slot width — fixed; sized so MAX_SLOTS slots + gaps fit the portrait with margins.
 const SLOT_W: float = 40.0
 ## Slot height, keeping the original 72×92 card aspect ratio (40 × 92/72 ≈ 51).
@@ -93,13 +96,13 @@ func _animate_grow(old_count: int) -> void:
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	for i in old_count:
 		tween.tween_property(_frames[i], "position",
-				Vector2(_start_x + i * (SLOT_W + SLOT_GAP), 0), 0.20)
+				Vector2(_start_x + i * (SLOT_W + SLOT_GAP), 0), GROW_SLIDE_SEC)
 	for i in range(old_count, _slot_count):
 		var pos := Vector2(_start_x + i * (SLOT_W + SLOT_GAP), 0)
 		var frame := UiFactory.nine_patch(self, "kenney/slot_grey.png", pos, Vector2(SLOT_W, SLOT_H), 12, tint)
 		frame.self_modulate = Color(tint, 0.0)
 		_frames.append(frame)
-		tween.tween_property(frame, "self_modulate:a", tint.a, 0.20).set_delay(0.06)
+		tween.tween_property(frame, "self_modulate:a", tint.a, GROW_SLIDE_SEC).set_delay(0.06)
 
 
 ## Current rendered slot count.
