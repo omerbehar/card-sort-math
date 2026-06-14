@@ -650,19 +650,15 @@ func use_extra_discard_from_stock(board: BoardModel) -> bool:
 	return _activate_extra_discard(board)
 
 
-# Extra Discard preconditions (EC-06/07): not at the slot cap, and the row is not
-# already full (purchase-ahead-only — no one-tap-from-LOSE rescue).
+# Extra Discard precondition (EC-07): only the absolute slot cap. The row may be
+# full — adding a slot when at 5/5 is the booster's whole point (rescue), so the
+# old "purchase-ahead-only / not when full" rule was dropped (see ADR-0010 update).
 func _extra_discard_allowed(board: BoardModel) -> bool:
 	if board.active_discard_slots() >= _config.max_discard_slots:
 		economy_event.emit(EconomyEvent.booster_precondition_failed(
 				EconomyEnums.BoosterType.EXTRA_DISCARD,
 				EconomyEnums.FailReason.AT_MAX))
 		return false  # EC-07 / AC-E04
-	if board.occupied_discard_count() >= board.active_discard_slots():
-		economy_event.emit(EconomyEvent.booster_precondition_failed(
-				EconomyEnums.BoosterType.EXTRA_DISCARD,
-				EconomyEnums.FailReason.DISCARD_FULL))
-		return false  # EC-06 / AC-E05
 	return true
 
 

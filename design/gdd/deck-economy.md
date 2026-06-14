@@ -92,7 +92,7 @@ as playing without them. The edu value prop survives every spend.
      before the resulting events are returned to the view layer for animation — so a save at any
      point reflects a complete transaction (no partial state). (This is implementation atomicity;
      the *view* animates asynchronously and is not expected to update simultaneously.)
-   - If the booster activation fails its precondition (e.g. Reshuffle on a won board, or Extra Discard when the row is full), no deduction was committed.
+   - If the booster activation fails its precondition (e.g. Reshuffle on a won board, or Extra Discard at the slot cap `MAX_DISCARD_SLOTS`), no deduction was committed.
      If a board mutation raises an unexpected error mid-transaction, the balance is restored by
      **direct assignment** `wallet[currency] = pre_spend_balance` (NOT via `earn()`, which would
      be silently truncated by the `MAX_BALANCE` clamp near the cap), and an
@@ -158,12 +158,13 @@ as playing without them. The edu value prop survives every spend.
     Reshuffle is therefore *always* meaningful — the player never spends to remain stuck. See
     Formula 6 and EC-05.
 
-11. **Extra Discard Slot (purchase-ahead-only — proactive, not rescue).** Precondition:
-    `_active_discard_slots < MAX_DISCARD_SLOTS` **AND the discard row is not currently full**
-    (`occupied_discard_cards < _active_discard_slots`). The second clause is the design change
-    that removes the rescue use case structurally: you buy thinking-space *while you still have
-    room*, as a deliberate "give me more buffer" choice — you cannot panic-buy it when the
-    discard is already full and you are one tap from LOSE. Default `MAX_DISCARD_SLOTS = 7`
+11. **Extra Discard Slot (rescue allowed).** Precondition:
+    `_active_discard_slots < MAX_DISCARD_SLOTS` (the slot cap) only.
+    **Revision (2026-06-14):** the original "purchase-ahead-only" second clause
+    (`occupied_discard_cards < _active_discard_slots` — blocked when the row is full) was
+    **removed**: it made the booster unresponsive exactly when a player reaches for it (row 5/5),
+    which read as broken. The booster may now be bought/used when the row is full, adding a slot
+    as a rescue, up to the cap. Default `MAX_DISCARD_SLOTS = 7`
     (tuning knob), so it can be bought twice per level at default settings, ahead of need.
     **Single mechanism (no contradiction):** the effect is to increment a mutable
     `BoardModel._active_discard_slots` by 1 (NOT a one-shot `discard_capacity = 6`) and append
@@ -731,7 +732,7 @@ No new art assets or shaders are required by the economy model itself.
   - Icon for the booster type
   - Coin cost label
   - Greyed-out state if coin balance < cost (but button is still visible — player knows it exists)
-  - Disabled state if the precondition is unmet (e.g. Reshuffle greyed out on a won board; Extra Discard greyed out at MAX_DISCARD_SLOTS or when the discard row is full)
+  - Disabled state if the precondition is unmet (e.g. Reshuffle greyed out on a won board; Extra Discard greyed out only at MAX_DISCARD_SLOTS — it is allowed when the discard row is full, as a rescue)
   - Armed indicator while the Picker is awaiting the player's card selection
 - **Spend confirmation (anti-misfire).** Boosters costing **≥ 250 coins** (Reshuffle, Extra
   Discard Slot) require a one-step confirm ("Spend 250 coins? [Confirm] [Cancel]") before
@@ -854,7 +855,7 @@ _Undo was cut from the design. AC-U01–U07 are withdrawn. No Undo behaviour is 
 - **AC-E01 [B]** GIVEN `_active_discard_slots == 5`, `MAX_DISCARD_SLOTS == 7`. WHEN `use_booster(EXTRA_DISCARD_SLOT)`. THEN `_active_discard_slots == 6`, `_discard.size() == 6` (new slot is −1/empty), 350 coins deducted.
 - **AC-E03 [B]** GIVEN Extra Discard Slot was used during a level. WHEN level ends (win, lose, or abandon). THEN `_active_discard_slots` resets to `DISCARD_SLOTS` (5) for the next level.
 - **AC-E04 [B]** GIVEN `_active_discard_slots == MAX_DISCARD_SLOTS == 7`. WHEN `use_booster(EXTRA_DISCARD_SLOT)`. THEN `BOOSTER_PRECONDITION_FAILED` returned, coins unchanged.
-- **AC-E05 [B]** GIVEN the discard row is full (`occupied_discard_cards == _active_discard_slots`, board is one tap from LOSE). WHEN `use_booster(EXTRA_DISCARD_SLOT)` is called. THEN `BOOSTER_PRECONDITION_FAILED(EXTRA_DISCARD, reason=DISCARD_FULL)` is returned, no coins deducted, no slot added (purchase-ahead-only — the rescue use case is blocked by design).
+- **AC-E05 [B]** (revised 2026-06-14) GIVEN the discard row is full (`occupied_discard_cards == _active_discard_slots`) and below the slot cap. WHEN `use_booster(EXTRA_DISCARD_SLOT)` is called. THEN it succeeds: one slot is added (`_active_discard_slots` +1), coins/stock are spent, and `BOOSTER_ACTIVATED(EXTRA_DISCARD)` is emitted — i.e. it works as a rescue. (The former "purchase-ahead-only / DISCARD_FULL block" was removed; only AC-E04's cap still gates it.)
 - **AC-E06 [B]** GIVEN `_active_discard_slots == 5` with only 3 cards occupied (room remains). WHEN `use_booster(EXTRA_DISCARD_SLOT)`. THEN it succeeds: `_active_discard_slots == 6`, `_discard.size() == 6`, 350 coins deducted (proactive purchase while room remains).
 
 ### Compliance / IAP gating
@@ -985,7 +986,7 @@ Buff top-up uses the existing spend transaction (Formula 3). Locked-deck Pay:
   `BOOSTER_PRECONDITION_FAILED(NO_STOCK)`, no activation.
 - **EC-BI3 — Seed-once:** a player who spends all of a buff to 0 is **not** re-granted on
   reload (`boosters_seeded` stays true). A v4→v5 migrated (or fresh) save is seeded once.
-- **EC-BI4 — Pay-path precondition fail (e.g. Extra Discard row full):** no coins spent,
+- **EC-BI4 — Pay-path precondition fail (e.g. Extra Discard at the slot cap):** no coins spent,
   no count change (preconditions run before payment).
 
 ### Addendum Dependencies

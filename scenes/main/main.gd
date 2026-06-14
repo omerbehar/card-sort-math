@@ -426,9 +426,32 @@ func expand_discard() -> void:
 	if _model == null:
 		return
 	_model.expand_discard()
+	_grow_discard_view()
+
+
+# Shared view sync after the model's discard buffer grows by one slot: mirror the
+# new capacity (the DiscardRow re-centres its slots), extend per-slot bookkeeping,
+# slide the cards already in the row to their new centred slots (so they don't end
+# up sitting between slots, S3-006), and refresh the near-full warning.
+func _grow_discard_view() -> void:
 	_discard.set_slot_count(_model.active_discard_slots())
 	_discard_cards.append(-1)
+	_reposition_discard_cards()
 	_update_discard_warning()
+
+
+# Slides every card currently in the discard to its slot's (recomputed, re-centred)
+# global position. Fire-and-forget tweens so they slide in parallel with the slot
+# frames. Discarded cards stay shrunk to the slot size.
+func _reposition_discard_cards() -> void:
+	var slot_scale: float = DiscardRow.SLOT_W / Card.W
+	for slot in _discard_cards.size():
+		var card_id: int = _discard_cards[slot]
+		if card_id == -1:
+			continue
+		var card := _floor.get_card(card_id)
+		if card != null:
+			card.fly_to(_discard.slot_global_position(slot), CARD_FLY, slot_scale)
 
 
 ## Arms the Picker booster (S3-012): every surviving card becomes tappable so the
@@ -576,9 +599,7 @@ func buy_extra_discard() -> void:
 	if _model == null or _input_locked:
 		return
 	if WalletService.use_extra_discard(_model):
-		_discard.set_slot_count(_model.active_discard_slots())
-		_discard_cards.append(-1)
-		_update_discard_warning()
+		_grow_discard_view()
 
 
 ## Extra Discard Slot from owned stock (free), via [method WalletService.use_extra_discard_from_stock].
@@ -587,9 +608,7 @@ func extra_discard_from_stock() -> void:
 	if _model == null or _input_locked:
 		return
 	if WalletService.use_extra_discard_from_stock(_model):
-		_discard.set_slot_count(_model.active_discard_slots())
-		_discard_cards.append(-1)
-		_update_discard_warning()
+		_grow_discard_view()
 
 
 ## Activates the Reshuffle booster (S3-009): re-permutes floor coverage via
