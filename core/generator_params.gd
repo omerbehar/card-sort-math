@@ -24,6 +24,12 @@ var level_index: int = 0
 # addition-only so callers that never set it are unaffected.
 var allowed_operations: Array[int] = [Operation.Type.ADD]
 
+# Minimum distinct displayed operand pairs a result must offer (for at least one
+# allowed operation) to be a candidate — so equal-result cards aren't all the same
+# exercise (e.g. a prime like 7 is excluded from a multiply world). Default 1 keeps
+# legacy callers/tests unchanged; LevelData sets the gameplay floor.
+var min_operand_options: int = 1
+
 # Recoverability (Core Rule 10 / AC-32). 0 disables the check (the default, so
 # S2-003a callers are unaffected); the difficulty schedule sets it to 1.
 var min_recovery_margin: int = 0

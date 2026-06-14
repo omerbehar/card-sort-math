@@ -156,3 +156,47 @@ func test_unlocking_a_deck_pulls_matching_discarded_cards_onto_it() -> void:
 	# The discarded 9 was pulled out of the discard (view slot freed) and onto deck 1.
 	assert_bool(main._discard_cards.has(nine)).is_false()
 	assert_int(model.stack_count(1)).is_greater(0)              # it landed on the unlocked deck
+
+
+func test_buying_a_deck_with_coins_pulls_matching_discards_in_the_view() -> void:
+	# Regression: the PAID unlock path assigned the board events inside a spend
+	# lambda. A GDScript lambda captures locals by value, so the outer `events` stayed
+	# empty and the view replayed nothing — the model pulled the card but it stayed
+	# stuck in the discard view. This drives the coin-pay path and asserts the card
+	# actually leaves the discard view (not just the model).
+	var runner = await _boot()
+	var main = runner.scene()
+	WalletService.earn(COINS, 2000, EconomyEnums.EarnSource.LEVEL_WIN)
+	main.load_level_config(_locked_deck_config(), 1)             # only stack 0 (target 5) open
+	await runner.simulate_frames(5)
+	var model = main._model
+
+	var nine := -1
+	for cid in model.exposed_cards():
+		if model.result_of(cid) == 9:
+			nine = cid
+			break
+	assert_int(nine).is_not_equal(-1)
+	main._on_card_tapped(nine)
+	var wait := 0
+	while main.is_input_locked() and wait < 80:
+		wait += 1
+		await runner.simulate_frames(2, 32)
+	assert_bool(main._discard_cards.has(nine)).is_true()
+	var coins_before: int = WalletService.balance(COINS)
+
+	# Unlock deck 1 via the real prompt, PAY-COINS path.
+	main._on_unlock_requested(1)
+	await runner.simulate_frames(2)
+	assert_object(main._unlock_popup).is_not_null()
+	main._unlock_popup.pay_coins_pressed.emit()
+	wait = 0
+	while main.is_input_locked() and wait < 80:
+		wait += 1
+		await runner.simulate_frames(2, 32)
+	await runner.simulate_frames(10)
+
+	# Coins were spent AND the card left the discard view onto the bought deck.
+	assert_int(WalletService.balance(COINS)).is_equal(coins_before - main.UNLOCK_COST)
+	assert_bool(main._discard_cards.has(nine)).is_false()
+	assert_int(model.stack_count(1)).is_greater(0)

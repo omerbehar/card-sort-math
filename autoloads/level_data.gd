@@ -20,6 +20,13 @@ const WORLD_ID: int = 0
 const WORLD_STRIDE: int = 1_000_000
 const WORLD_SIZE: int = 5
 const MIXED_WORLD_ID: int = 4
+
+# Variety floor: every result in a generated level must offer at least this many
+# distinct displayed operand pairs, so equal-result cards aren't all the same
+# exercise (a prime like 7 is excluded from a multiply world — only "1 × 7").
+# Matches STACK_CAPACITY: each result is dealt in groups of 3, so 3 options lets
+# the first group read all-different.
+const OPERAND_OPTIONS_MIN: int = 3
 # World id -> the single operation it prints (see [enum Operation.Type]). The
 # mixed world (MIXED_WORLD_ID) is handled separately in [method operations_for_level].
 const _WORLD_OPERATIONS: Array[int] = [
@@ -137,6 +144,29 @@ func _build_authored_level(index: int) -> LevelConfig:
 	return config
 
 
+# Widens a single-operation world's number range so enough results clear the
+# OPERAND_OPTIONS_MIN variety floor (the shared schedule is tuned for addition,
+# where small operands already give many options; ×/÷/− need bigger operands or a
+# narrower result band to offer 3+ ways). Addition and the mixed world keep the
+# schedule's range (addition options are plentiful; mixed qualifies via addition).
+func _apply_world_number_range(params: GeneratorParams, world: int) -> void:
+	match world:
+		1:  # subtraction: a − b = result needs b in [1, max−result]; ≥3 ⇒ result ≤ max−3.
+			params.max_operand = maxi(params.max_operand, 12)
+			params.result_min = 2
+			params.result_max = mini(params.result_max, params.max_operand - OPERAND_OPTIONS_MIN)
+		2:  # multiplication: only composites with 3+ factor pairs qualify (12,16,18,20,24…).
+			params.max_operand = maxi(params.max_operand, 12)
+			params.result_min = 8
+			params.result_max = maxi(params.result_max, 24)
+		3:  # division: a ÷ b = result needs b in [2, max/result]; ≥3 ⇒ small quotients.
+			params.max_operand = maxi(params.max_operand, 20)
+			params.result_min = 2
+			params.result_max = 5
+		_:  # addition (0) and mixed (4): the schedule's range already offers enough.
+			pass
+
+
 func _build_generated_level(n: int) -> LevelConfig:
 	var world: int = world_for_level(n)
 	var seed: int = world * WORLD_STRIDE + n
@@ -144,6 +174,10 @@ func _build_generated_level(n: int) -> LevelConfig:
 	# The schedule sets only difficulty knobs; the operation(s) are a world concern
 	# decided here (ADR-0007), keeping DifficultySchedule operation-agnostic.
 	params.allowed_operations = operations_for_level(n)
+	# Every result must offer >= OPERAND_OPTIONS_MIN distinct exercises so equal-result
+	# cards vary (e.g. a prime like 7 is never a multiply result — it'd be all "1 × 7").
+	params.min_operand_options = OPERAND_OPTIONS_MIN
+	_apply_world_number_range(params, world)
 	var result := LevelGenerator.generate(params)
 	if result.config == null:
 		# Graceful degradation (engine-code rule): the schedule should never

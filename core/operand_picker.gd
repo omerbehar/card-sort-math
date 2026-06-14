@@ -29,31 +29,47 @@ static func pick(result: int, index: int, max_operand: int, operation: int = Ope
 			return _pick_add(result, index, max_operand)
 
 
-## Whether [param result] has at least one legal operand pair under
-## [param operation] within [param max_operand] (GDD Formula 4). A result with no
-## valid pair for the world's operation(s) must be excluded from the candidate set.
-static func has_valid_pair(result: int, max_operand: int, operation: int = Operation.Type.ADD) -> bool:
+## How many distinct displayed operand pairs [method pick] will cycle for
+## [param result] under [param operation] within [param max_operand] — i.e. the
+## variety the player sees across equal-result cards. Used to require a minimum
+## variety so a prime like 7 (only "1 × 7") is never used as a multiply result.
+static func option_count(result: int, max_operand: int, operation: int = Operation.Type.ADD) -> int:
 	match operation:
 		Operation.Type.SUBTRACT:
-			# a − b = result, a = b + result, b >= 1, a <= max_operand.
-			return result >= 1 and max_operand - result >= 1
+			# b in [1, max_operand - result].
+			return maxi(0, max_operand - result) if result >= 1 else 0
 		Operation.Type.MULTIPLY:
-			return not _multiply_factors(result, max_operand).is_empty()
+			return _multiply_options(result, max_operand).size()
 		Operation.Type.DIVIDE:
-			# a ÷ b = result, a = result * b, b >= 1, a <= max_operand.
-			return result >= 1 and int(max_operand / result) >= 1
+			if result < 1:
+				return 0
+			var b_max: int = int(max_operand / result)
+			if b_max < 1:
+				return 0
+			var b_min: int = 2 if b_max >= 2 else 1
+			return b_max - b_min + 1
 		_:
-			return maxi(1, result - max_operand) <= mini(max_operand, result - 1)
+			# a in [max(1, r-max), min(max, r-1)] — empty (0) for r <= 1, where the
+			# only "pair" is the degenerate (0, r) with an out-of-bounds operand.
+			return maxi(0, mini(max_operand, result - 1) - maxi(1, result - max_operand) + 1)
 
 
-## The subset of [param allowed] operations that can produce [param result]
-## within [param max_operand]. Empty means [param result] is not a candidate for
-## this world (used by the generator to filter results, and per card to pick which
-## operation to print).
-static func valid_operations(result: int, max_operand: int, allowed: Array[int]) -> Array[int]:
+## Whether [param result] has at least one legal operand pair under
+## [param operation] within [param max_operand] (GDD Formula 4).
+static func has_valid_pair(result: int, max_operand: int, operation: int = Operation.Type.ADD) -> bool:
+	return option_count(result, max_operand, operation) >= 1
+
+
+## The subset of [param allowed] operations that can produce [param result] with at
+## least [param min_options] distinct displayed pairs within [param max_operand].
+## Empty means [param result] is not a candidate for this world (used by the
+## generator to filter results, and per card to pick which operation to print).
+## [param min_options] defaults to 1 (any legal pair); the generator passes the
+## variety floor (see [member GeneratorParams.min_operand_options]).
+static func valid_operations(result: int, max_operand: int, allowed: Array[int], min_options: int = 1) -> Array[int]:
 	var ops: Array[int] = []
 	for op: int in allowed:
-		if has_valid_pair(result, max_operand, op):
+		if option_count(result, max_operand, op) >= min_options:
 			ops.append(op)
 	return ops
 
@@ -87,31 +103,31 @@ static func _pick_subtract(result: int, index: int, max_operand: int) -> Vector2
 	return Vector2i(result + b, b)
 
 
-# a × b = result. Cycles the precomputed factor list (smaller factor first).
+# a × b = result. Cycles the full ordered factor list (both orientations), so e.g.
+# 12 shows 2×6, 6×2, 3×4, 4×3 — more variety than one orientation.
 static func _pick_multiply(result: int, index: int, max_operand: int) -> Vector2i:
-	var factors: Array[int] = _multiply_factors(result, max_operand)
-	if factors.is_empty():
+	var options: Array[int] = _multiply_options(result, max_operand)
+	if options.is_empty():
 		return Vector2i(1, maxi(result, 0))  # misuse fallback
-	var a: int = factors[index % factors.size()]
+	var a: int = options[index % options.size()]
 	return Vector2i(a, result / a)
 
 
-# Smaller operands a (a <= result/a) with a × (result/a) == result and both in
-# [1, max_operand]. Returns the non-trivial factors (a >= 2) when any exist, so a
-# board is not all "1 × n"; falls back to the trivial [1] for primes / no other
-# factorisation. Empty when result has no pair under max_operand at all.
-static func _multiply_factors(result: int, max_operand: int) -> Array[int]:
+# Every operand a in [1, max_operand] with result % a == 0 and result/a in
+# [1, max_operand] — both orientations (a=2,b=6 and a=6,b=2 are distinct displayed
+# pairs). Returns the non-trivial options (a >= 2 AND result/a >= 2) when any exist,
+# so a board is not all "1 × n"; falls back to the trivial options for primes / no
+# other factorisation. Empty when result has no pair under max_operand at all.
+static func _multiply_options(result: int, max_operand: int) -> Array[int]:
 	if result < 1:
 		return []
 	var all: Array[int] = []
 	var nontrivial: Array[int] = []
-	var a: int = 1
-	while a <= max_operand and a * a <= result:
+	for a in range(1, max_operand + 1):
 		if result % a == 0 and int(result / a) <= max_operand:
 			all.append(a)
-			if a >= 2:
+			if a >= 2 and int(result / a) >= 2:
 				nontrivial.append(a)
-		a += 1
 	return nontrivial if not nontrivial.is_empty() else all
 
 
