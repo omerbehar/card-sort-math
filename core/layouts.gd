@@ -57,11 +57,14 @@ static func _layout_0() -> Array[Dictionary]:
 
 
 # Layout 1 — 18 cards: 8 base, 6 mid (offset), 4 top.
+# Within a layer, dx >= CARD_W and dy >= CARD_H so same-layer cards never overlap
+# (only cross-layer coverage overlaps). The top layer previously used dy=90 < CARD_H
+# (96), which made its two rows overlap each other on screen; now 104 (8px gap).
 static func _layout_1() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	out.append_array(_grid(4, 2, 0, 35, 50, 80, 120))
 	out.append_array(_grid(3, 2, 1, 75, 110, 80, 120))
-	out.append_array(_grid(2, 2, 2, 115, 170, 80, 90))
+	out.append_array(_grid(2, 2, 2, 115, 170, 80, 104))
 	return out
 
 
