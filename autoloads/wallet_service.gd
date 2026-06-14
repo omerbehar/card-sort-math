@@ -202,6 +202,25 @@ func consume_booster(booster_type: int) -> bool:
 	return true
 
 
+## [b]Debug only.[/b] Forces the wallet to a known state: sets coins to [param coins]
+## (clamped to the wallet cap) and every booster's owned count to [param boosters_each].
+## Persists and emits [signal booster_stock_changed] for each booster so the HUD count
+## badges refresh. Deliberately bypasses the earn/spend policy layer (caps, compliance,
+## analytics) and emits no [signal economy_event] — the coin display is refreshed by the
+## caller — so this never pollutes the live economy or its telemetry. Wired to the
+## Settings debug button, which is itself gated behind [method OS.is_debug_build].
+func debug_set_inventory(coins: int, boosters_each: int) -> void:
+	if _save == null or _save.data == null:
+		return
+	_wallet.coins = clampi(coins, 0, _cap_for(EconomyEnums.Currency.COINS))
+	var n: int = maxi(0, boosters_each)
+	for booster_type: int in _BOOSTER_FIELD:
+		_save.data.set(_BOOSTER_FIELD[booster_type], n)
+	_persist()
+	for booster_type: int in _BOOSTER_FIELD:
+		booster_stock_changed.emit(booster_type, n)
+
+
 # Per-currency hard cap from the tuning config (Formula 4).
 func _cap_for(currency: int) -> int:
 	match currency:

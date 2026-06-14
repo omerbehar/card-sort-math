@@ -22,6 +22,9 @@ signal resumed()
 signal home_pressed()
 ## Emitted when the player taps "Reset Tutorial" (controller clears the flag).
 signal reset_tutorial_pressed()
+## Emitted when the player taps the debug "Reset Inventory" button (controller resets
+## coins + boosters). The button is only built in debug builds ([method OS.is_debug_build]).
+signal debug_reset_pressed()
 
 # Round audio toggles, left-to-right. Keys must exist in [constant Settings.KEYS].
 const _AUDIO_TOGGLES: Array[Dictionary] = [
@@ -96,17 +99,33 @@ func _build() -> void:
 	_build_actions()
 
 
-# A slim "Reset Tutorial" row between the switches and the Home/Continue actions.
+# A slim "Reset Tutorial" row between the switches and the Home/Continue actions. In
+# debug builds it shares the row with a "Reset Inventory" debug button (coins + buffs).
 func _build_reset_tutorial() -> void:
-	var size := Vector2(_PANEL_SIZE.x - 44.0, 40.0)
-	var pos := Vector2(_PANEL_POS.x + 22, _PANEL_POS.y + _PANEL_SIZE.y - 122.0)
-	var btn := _bare_button(pos, size)
-	UiFactory.nine_patch(btn, "kenney/rect_blue.png", Vector2.ZERO, size, 16, Color(0.12, 0.32, 0.58))
-	UiFactory.label(btn, "Reset Tutorial", Vector2.ZERO, size, 18, Color.WHITE)
+	var row_w: float = _PANEL_SIZE.x - 44.0
+	var y: float = _PANEL_POS.y + _PANEL_SIZE.y - 122.0
+	var x: float = _PANEL_POS.x + 22
+	var debug: bool = OS.is_debug_build()
+	var gap: float = 12.0
+	var tut_w: float = (row_w - gap) * 0.5 if debug else row_w
+
+	var btn := _bare_button(Vector2(x, y), Vector2(tut_w, 40.0))
+	UiFactory.nine_patch(btn, "kenney/rect_blue.png", Vector2.ZERO, Vector2(tut_w, 40.0), 16, Color(0.12, 0.32, 0.58))
+	UiFactory.label(btn, "Reset Tutorial", Vector2.ZERO, Vector2(tut_w, 40.0), 18, Color.WHITE)
 	btn.pressed.connect(func() -> void:
 		reset_tutorial_pressed.emit()
 		_resume())
 	_buttons["reset_tutorial"] = btn
+
+	if debug:
+		var dbg_size := Vector2((row_w - gap) * 0.5, 40.0)
+		var dbg_pos := Vector2(x + tut_w + gap, y)
+		var dbg := _bare_button(dbg_pos, dbg_size)
+		UiFactory.nine_patch(dbg, "kenney/rect_blue.png", Vector2.ZERO, dbg_size, 16, Color(0.78, 0.52, 0.16))
+		UiFactory.label(dbg, "Reset Inventory", Vector2.ZERO, dbg_size, 15, Color.WHITE)
+		dbg.pressed.connect(func() -> void:
+			debug_reset_pressed.emit())
+		_buttons["debug_reset"] = dbg
 
 
 func _build_audio_toggles() -> void:

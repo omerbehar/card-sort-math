@@ -803,3 +803,66 @@ func test_use_extra_discard_from_stock_with_no_stock_blocked() -> void:
 	assert_int(board.active_discard_slots()).is_equal(5)
 	assert_int(_event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED).reason) \
 		.is_equal(EconomyEnums.FailReason.NO_STOCK)
+
+
+# ============================================================================
+# Debug inventory reset (Settings debug button)
+# ============================================================================
+
+func test_debug_set_inventory_sets_coins_and_every_booster() -> void:
+	# Arrange: a depleted wallet (0 coins, 0 of every booster).
+	var w = _make(0, 0, _config_with_start(0))
+	# Act
+	w.debug_set_inventory(1000, 3)
+	# Assert
+	assert_int(w.balance(COINS)).is_equal(1000)
+	assert_int(w.booster_count(PICKER)).is_equal(3)
+	assert_int(w.booster_count(RESHUFFLE)).is_equal(3)
+	assert_int(w.booster_count(EXTRA_DISCARD)).is_equal(3)
+
+
+func test_debug_set_inventory_overwrites_existing_higher_values() -> void:
+	# Arrange: a wallet richer than the reset target.
+	var w = _make(5000, 0, _config_with_start(9))
+	# Act
+	w.debug_set_inventory(1000, 3)
+	# Assert: reset overwrites (does not add to) the existing values.
+	assert_int(w.balance(COINS)).is_equal(1000)
+	assert_int(w.booster_count(PICKER)).is_equal(3)
+
+
+func test_debug_set_inventory_persists_and_survives_reload() -> void:
+	# Arrange
+	var w = _make(0, 0, _config_with_start(0))
+	# Act
+	w.debug_set_inventory(1000, 3)
+	# Assert: values are mirrored into SaveData and restored by a fresh service.
+	assert_int(_save_stub.data.wallet_coins).is_equal(1000)
+	var w2 = auto_free(WALLET.new())
+	w2.configure(_save_stub, StubCompliance.new(), FixedTimeProvider.new(), _config_with_start(0))
+	assert_int(w2.balance(COINS)).is_equal(1000)
+	assert_int(w2.booster_count(PICKER)).is_equal(3)
+
+
+func test_debug_set_inventory_emits_stock_changed_per_booster() -> void:
+	# Arrange
+	var w = _make(0, 0, _config_with_start(0))
+	var seen: Array = []
+	w.booster_stock_changed.connect(func(t: int, n: int) -> void: seen.append([t, n]))
+	# Act
+	w.debug_set_inventory(1000, 3)
+	# Assert: one refresh signal per booster type, each carrying the new count.
+	assert_int(seen.size()).is_equal(3)
+	for entry in seen:
+		assert_int(entry[1]).is_equal(3)
+
+
+func test_debug_set_inventory_clamps_coins_to_wallet_cap() -> void:
+	# Arrange: a config with a small coin cap.
+	var cfg := _config_with_start(0)
+	cfg.coins_max = 500
+	var w = _make(0, 0, cfg)
+	# Act
+	w.debug_set_inventory(1000, 3)
+	# Assert: coins are clamped to the cap, never exceeding it.
+	assert_int(w.balance(COINS)).is_equal(500)

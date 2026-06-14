@@ -21,6 +21,10 @@ const STACK_BURST_OFFSET: Vector2 = Vector2(36.0, 24.0)
 # M4); the coin path spends real coins through WalletService.
 const PROTO_OPEN_COUNT: int = 1
 const UNLOCK_COST: int = 100          # coin price of adding a locked deck
+
+# --- debug: Settings "Reset Inventory" button (debug builds only) ---
+const DEBUG_RESET_COINS: int = 1000      # coins to grant on debug reset
+const DEBUG_RESET_BOOSTERS: int = 3      # per-booster owned count on debug reset
 var _coins_label: Label = null
 # The active unlock prompt; null when none is shown (only one at a time).
 var _unlock_popup: UnlockPopup = null
@@ -630,6 +634,7 @@ func _open_pause() -> void:
 	_pause_menu.resumed.connect(_close_pause)
 	_pause_menu.home_pressed.connect(_on_home_pressed)
 	_pause_menu.reset_tutorial_pressed.connect(_on_reset_tutorial)
+	_pause_menu.debug_reset_pressed.connect(_on_debug_reset)
 	_hud_layer.add_child(_pause_menu)
 
 
@@ -645,6 +650,16 @@ func _on_reset_tutorial() -> void:
 	SaveService.data.tutorial_seen = false
 	SaveService.save_game()
 	_arm_tutorial(GameManager.current_level)
+
+
+# Debug-only inventory reset (Settings → "Reset Inventory", gated to debug builds).
+# Restocks every booster to DEBUG_RESET_BOOSTERS and sets coins to DEBUG_RESET_COINS,
+# then refreshes the coin HUD (the booster badges refresh off booster_stock_changed).
+func _on_debug_reset() -> void:
+	var wallet := get_node_or_null("/root/WalletService")
+	if wallet != null and wallet.has_method("debug_set_inventory"):
+		wallet.debug_set_inventory(DEBUG_RESET_COINS, DEBUG_RESET_BOOSTERS)
+	_update_coins_hud()
 
 
 # No main-menu screen exists yet, so "home" restarts the current level. Rewire to

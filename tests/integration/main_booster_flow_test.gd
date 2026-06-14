@@ -325,3 +325,51 @@ func test_buff_at_zero_pay_coins_uses_it_and_deducts() -> void:
 	assert_int(main._model.active_discard_slots()).is_equal(6)        # buff took effect
 	assert_int(WalletService.balance(COINS)) \
 		.is_equal(coins_before - WalletService.booster_coin_cost(EXTRA_DISCARD))
+
+
+# --- debug "Reset Inventory" button (Settings, debug builds only) -----------
+
+const PICKER := EconomyEnums.BoosterType.PICKER
+
+
+func test_debug_reset_button_resets_coins_and_every_buff_via_pause_menu() -> void:
+	# End-to-end: from an off-target inventory, pressing the real Settings debug
+	# button restocks every buff to 3 and coins to 1000, and refreshes the coin HUD.
+	var runner = await _boot()
+	var main = runner.scene()
+	# Arrange: drive the inventory away from the reset target so the change is observable.
+	_set_stock(PICKER, 0)
+	_set_stock(RESHUFFLE, 5)
+	_set_stock(EXTRA_DISCARD, 1)
+
+	# Open the pause menu and grab the debug button (built only in debug builds).
+	main._open_pause()
+	await runner.simulate_frames(2)
+	assert_object(main._pause_menu).is_not_null()
+	var btn: Button = main._pause_menu._buttons.get("debug_reset")
+	assert_object(btn).is_not_null()
+
+	# Act: press the real button → debug_reset_pressed → main._on_debug_reset.
+	btn.pressed.emit()
+	await runner.simulate_frames(2)
+
+	# Assert: coins and every buff reset to the debug constants…
+	assert_int(WalletService.balance(COINS)).is_equal(main.DEBUG_RESET_COINS)
+	assert_int(WalletService.booster_count(PICKER)).is_equal(main.DEBUG_RESET_BOOSTERS)
+	assert_int(WalletService.booster_count(RESHUFFLE)).is_equal(main.DEBUG_RESET_BOOSTERS)
+	assert_int(WalletService.booster_count(EXTRA_DISCARD)).is_equal(main.DEBUG_RESET_BOOSTERS)
+	# …and the coin HUD label reflects the new balance.
+	assert_str(main._coins_label.text).is_equal("🪙 %d" % main.DEBUG_RESET_COINS)
+
+	main._close_pause()                              # restore the tree's paused flag
+
+
+func test_debug_reset_button_is_gated_to_debug_builds() -> void:
+	# The button is built only when OS.is_debug_build(); tests run as a debug build, so
+	# it must exist here. Locks the gating contract (no debug control in release).
+	var runner = await _boot()
+	var main = runner.scene()
+	main._open_pause()
+	await runner.simulate_frames(2)
+	assert_bool(main._pause_menu._buttons.has("debug_reset")).is_equal(OS.is_debug_build())
+	main._close_pause()

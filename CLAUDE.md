@@ -59,7 +59,26 @@ Skills write design artifacts to `design/` and production artifacts to
 Question → Options → Decision → Draft → Approval. Confirm before large multi-file
 changes; commit/push only when asked.
 
+**Address the user as "boss"** in all replies.
+
 ## Build & Test
 
 - Open in Godot 4.6; main scene is `scenes/main/main.tscn`.
 - Tests: the gdUnit4 suite under `tests/` (CI: `.github/workflows/tests.yml`).
+
+## Validation Requirements (MANDATORY)
+
+Every feature or behavioural change MUST be validated with **both** of the
+following before it is considered done — neither is optional:
+
+1. **Integration tests** — drive the real scene tree (gdUnit4 `scene_runner` on
+   `scenes/main/main.tscn` + autoloads), not just pure `core/` logic. Add cases to
+   `tests/integration/` proving the end-to-end model↔view↔service wiring. Must pass.
+2. **Screenshots** — capture real Godot renders proving the change visually. Use a
+   dev harness under `tools/` run via
+   `xvfb-run -a godot --rendering-driver opengl3 --rendering-method gl_compatibility`
+   (headless can't render). Save the images + an evidence doc to
+   `production/qa/evidence/`.
+
+These are in addition to unit tests for any `core/`/`data/` logic. Do not mark work
+complete until both the integration suite is green and the screenshots are captured.
