@@ -5,6 +5,15 @@ Accepted (2026-06-12 — ratifies the "Extra Discard Slot requires BoardModel ch
 of the approved `design/gdd/deck-economy.md`; unblocks the Deck Economy sprint). Acceptance rests
 on the GDD's approval + the author's go-ahead to implement.
 
+**Amendment (2026-06-14):** the **"purchase-ahead-only" precondition was dropped**. Originally the
+Extra Discard booster was blocked when the discard row was full (`occupied >= active_slots` →
+`DISCARD_FULL`), to forbid a one-tap-from-LOSE rescue. In play this made the button silently
+unresponsive exactly when a player reaches for it (row 5/5) — it read as broken. Per the author's
+call, the booster may now be used when the row is full, adding a slot as a rescue; only the absolute
+slot cap (`active_slots >= MAX_DISCARD_SLOTS` → `AT_MAX`) still gates it. `WalletService._extra_discard_allowed`
+now checks the cap only. `BoardModel` is unchanged (`expand_discard` was already uncapped). The
+`DISCARD_FULL` reason code is retained in `EconomyEnums.FailReason` but is no longer emitted by this path.
+
 ## Date
 2026-06-12
 

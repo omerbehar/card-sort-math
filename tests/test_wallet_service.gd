@@ -629,22 +629,25 @@ func test_use_extra_discard_at_max_blocked_no_spend() -> void:
 	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
 
 
-func test_use_extra_discard_when_row_full_blocked_no_spend() -> void:
-	# AC-E05 / EC-06: discard row full (purchase-ahead-only) → DISCARD_FULL, no spend, no slot.
+func test_use_extra_discard_when_row_full_now_expands_and_deducts() -> void:
+	# Updated rule (ADR-0010, 2026-06-14): the row may be full — adding a slot at
+	# 5/5 is the booster's whole point (rescue). It expands 5→6 and deducts; the old
+	# "purchase-ahead-only / DISCARD_FULL block" was removed. Only the cap still gates.
 	# 6 cards: fill all 5 slots, the 6th stays on the floor (no win).
 	var board := _discard_board(6)
 	for i in 5:
-		board.tap_card(i)                   # slots 0..4 full
+		board.tap_card(i)                   # slots 0..4 full (5/5)
 	assert_int(board.occupied_discard_count()).is_equal(5)
 	var w = _make(500)
 	var ok: bool = w.use_extra_discard(board)
-	assert_bool(ok).is_false()
-	assert_int(board.active_discard_slots()).is_equal(5)   # no slot added
-	assert_int(w.balance(COINS)).is_equal(500)             # no deduction
-	var pf := _event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)
-	assert_object(pf).is_not_null()
-	assert_int(pf.reason).is_equal(EconomyEnums.FailReason.DISCARD_FULL)
-	assert_object(_event_of(EconomyEvent.Kind.CURRENCY_SPENT)).is_null()
+	assert_bool(ok).is_true()
+	assert_int(board.active_discard_slots()).is_equal(6)   # slot added even when full
+	assert_int(board.discard_card(5)).is_equal(-1)         # new empty slot
+	assert_int(w.balance(COINS)).is_equal(150)             # 500 - 350
+	assert_bool(w.extra_discard_active).is_true()
+	assert_object(_event_of(EconomyEvent.Kind.BOOSTER_ACTIVATED)).is_not_null()
+	# No DISCARD_FULL precondition failure is emitted anymore.
+	assert_object(_event_of(EconomyEvent.Kind.BOOSTER_PRECONDITION_FAILED)).is_null()
 
 
 func test_use_extra_discard_insufficient_coins_returns_false() -> void:
