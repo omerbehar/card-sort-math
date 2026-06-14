@@ -40,9 +40,9 @@ save. Console confirms the end state: `coins=1000 picker=3 reshuffle=3 extra=3`.
 
 ## Behaviour / wiring
 
-- The button is built **only in debug builds** (`OS.is_debug_build()`), so it
-  never appears in a release export; in a release build the "Reset Tutorial"
-  button keeps the full row width. (`scenes/ui/pause_menu.gd`)
+- The button is **always shown** (every build, including release on device) per
+  boss request, sharing the row with "Reset Tutorial". It is not gated behind
+  `OS.is_debug_build()`. (`scenes/ui/pause_menu.gd`)
 - `PauseMenu` owns no state — it emits `debug_reset_pressed`; `main.gd` handles it
   via `_on_debug_reset`, calling `WalletService.debug_set_inventory(1000, 3)`
   (constants `DEBUG_RESET_COINS` / `DEBUG_RESET_BOOSTERS`) and refreshing the coin
@@ -59,5 +59,5 @@ save. Console confirms the end state: `coins=1000 picker=3 reshuffle=3 extra=3`.
   `booster_stock_changed` per buff, and clamps coins to the wallet cap.
 - `tests/integration/main_booster_flow_test.gd` (2 new integration tests,
   **BLOCKING**): pressing the real pause-menu button end-to-end resets coins +
-  every buff and updates the coin HUD label; and the button is gated to debug
-  builds (`OS.is_debug_build()`).
+  every buff and updates the coin HUD label; and the button is present in the
+  pause menu (always shown, every build).
