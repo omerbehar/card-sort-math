@@ -43,8 +43,8 @@ func test_deep_generated_level_is_reproducible() -> void:
 	for i in range(a.card_pool.size()):
 		assert_int(a.card_pool[i].result).is_equal(b.card_pool[i].result)
 		assert_int(a.card_pool[i].operand_a).is_equal(b.card_pool[i].operand_a)
-	# Provenance: seed = WORLD_ID * WORLD_STRIDE + n, level_index = n.
-	assert_int(a.seed).is_equal(LevelData.WORLD_ID * LevelData.WORLD_STRIDE + 50)
+	# Provenance: seed = world_for_level(n) * WORLD_STRIDE + n, level_index = n.
+	assert_int(a.seed).is_equal(LevelData.world_for_level(50) * LevelData.WORLD_STRIDE + 50)
 	assert_int(a.level_index).is_equal(50)
 
 
@@ -66,3 +66,40 @@ func test_generated_levels_are_solvable_across_indices() -> void:
 			.override_failure_message("level %d not generated" % n).is_true()
 		assert_bool(LevelData.is_solvable(config)) \
 			.override_failure_message("level %d not solvable" % n).is_true()
+
+
+# --- Operation worlds: every WORLD_SIZE levels advances one operation, then mix. ---
+func test_world_for_level_maps_bands_to_operations() -> void:
+	# Levels 1-5 +, 6-10 −, 11-15 ×, 16-20 ÷, 21+ mixed.
+	assert_int(LevelData.world_for_level(1)).is_equal(0)
+	assert_int(LevelData.world_for_level(5)).is_equal(0)
+	assert_int(LevelData.world_for_level(6)).is_equal(1)
+	assert_int(LevelData.world_for_level(11)).is_equal(2)
+	assert_int(LevelData.world_for_level(16)).is_equal(3)
+	assert_int(LevelData.world_for_level(21)).is_equal(LevelData.MIXED_WORLD_ID)
+	assert_int(LevelData.world_for_level(99)).is_equal(LevelData.MIXED_WORLD_ID)
+
+
+func test_single_operation_worlds_print_only_that_operation() -> void:
+	# A representative generated level in each single-operation band prints one op.
+	var bands := {
+		8: Operation.Type.SUBTRACT,
+		13: Operation.Type.MULTIPLY,
+		18: Operation.Type.DIVIDE,
+	}
+	for n: int in bands:
+		var config := LevelData.get_level(n)
+		assert_bool(LevelData.is_solvable(config)).is_true()
+		for card: CardData in config.card_pool:
+			assert_int(card.operation) \
+				.override_failure_message("level %d card op mismatch" % n) \
+				.is_equal(bands[n])
+
+
+func test_mixed_world_level_mixes_operations() -> void:
+	var config := LevelData.get_level(25)
+	assert_bool(LevelData.is_solvable(config)).is_true()
+	var ops_seen: Dictionary = {}
+	for card: CardData in config.card_pool:
+		ops_seen[card.operation] = true
+	assert_int(ops_seen.size()).is_greater(1)

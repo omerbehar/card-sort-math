@@ -1,17 +1,19 @@
 # Math Exercises (Card Content)
 
-> **Status**: Implemented (addition only)
+> **Status**: Implemented (+, −, ×, ÷ as operation worlds; ADR-0011)
 > **Author**: Reverse-engineered from `data/card_data.gd`
-> **Last Updated**: 2026-06-08
-> **Last Verified**: 2026-06-08
+> **Last Updated**: 2026-06-14
+> **Last Verified**: 2026-06-14
 > **Implements Pillar**: Math-is-the-mechanic
 
 ## Summary
 
 Defines what is printed on a card and the one value the sort engine cares about:
-its `result`. Today every card is an addition exercise (`a + b`); the player must
-compute the sum to know where the card belongs. This is the system that turns a
-sort puzzle into a math game.
+its `result`. A card is an arithmetic exercise (`a + b`, `a − b`, `a × b`, `a ÷ b`);
+the player must compute the result to know where the card belongs. This is the
+system that turns a sort puzzle into a math game. Operations are organised as
+**worlds** (ADR-0011): every 5 levels advances one operation (1–5 `+`, 6–10 `−`,
+11–15 `×`, 16–20 `÷`), and level 21 onward mixes all four on the same board.
 
 > **Quick reference** — Layer: `Feature` · Priority: `MVP` (addition); generalize in `Full Vision` · Key deps: `Level & Solvability`
 
@@ -34,15 +36,28 @@ interrupting play.
 
 ### Core Rules
 
-- `CardData` fields: `operand_a`, `operand_b`, `result`, `layout_layer`,
-  `layout_slot`.
-- Invariant (today): `result == operand_a + operand_b` (addition).
-- `CardData.create(a, b, layer, slot)` computes `result = a + b`.
-- `exercise_text()` returns `"%d + %d"` (operator hard-coded to `+`).
-- Operand selection is done by the level builder, not the card: `_split_operands(result, slot)`
-  picks `a = 1 + (slot % (result-1))`, `b = result - a`, so cards sharing a result
-  show different operand pairs (e.g. `3+4` and `5+2` both = 7). For `result ≤ 1`
-  it returns `(0, max(result,0))`.
+- `CardData` fields: `operand_a`, `operand_b`, `result`, `operation`,
+  `layout_layer`, `layout_slot`.
+- `operation` is an `Operation.Type` enum (`ADD`, `SUBTRACT`, `MULTIPLY`,
+  `DIVIDE`); ordinals are stable and default to `ADD` (0).
+- Invariant: `result == Operation.apply(operand_a, operand_b, operation)` — i.e.
+  `a + b`, `a − b`, `a × b`, or `a ÷ b` (exact integer division by construction).
+- `CardData.create(a, b, layer, slot, operation := ADD)` computes the result via
+  `Operation.apply`; the trailing default keeps addition callers unchanged.
+- `exercise_text()` returns `"%d %s %d"` with the operator glyph from
+  `Operation.glyph` (`+`, `−`, `×`, `÷`).
+- Operand selection is done by `OperandPicker.pick(result, index, max_operand, operation)`,
+  not the card. Each operation has a legal-operand window so the printed pair
+  evaluates back to `result` within `[1, max_operand]`, and `index` cycles the
+  window so equal-result cards show different pairs:
+  - `+`: `a ∈ [max(1, r−max), min(max, r−1)]`, `b = r − a`. `result ≤ 1` → `(0, max(r,0))`.
+  - `−`: `a = b + r`, divisor `b ∈ [1, max − r]`.
+  - `×`: factor pairs within `[1, max]`, preferring non-trivial (both `≥ 2`).
+  - `÷`: `a = r × b`, divisor `b ∈ [1, max / r]`, preferring `b ≥ 2`.
+- A result is a candidate for a world only if at least one of the world's allowed
+  operations has a valid pair (`OperandPicker.valid_operations`). In the mixed
+  world each card's operation is chosen (seeded) from the operations valid for its
+  result, so the board stays solvable.
 
 ### Interactions with Other Systems
 
@@ -98,15 +113,17 @@ All read differently, all equal 7.
 
 ## Acceptance Criteria
 
-- [x] `result == operand_a + operand_b` for every created card (test_card_data).
-- [x] `exercise_text()` renders `"a + b"`.
-- [x] Cards with the same result can display different operand pairs.
-- [x] `_split_operands` handles `result ≤ 1` without error.
-- [ ] (Future) An `operation` enum drives display + result for non-addition worlds.
+- [x] `result == Operation.apply(operand_a, operand_b, operation)` for every created card (test_card_data, test_operation).
+- [x] `exercise_text()` renders `"a + b"` / `"a − b"` / `"a × b"` / `"a ÷ b"`.
+- [x] Cards with the same result can display different operand pairs (test_operand_picker).
+- [x] `OperandPicker` handles `result ≤ 1` / no-pair misuse without error.
+- [x] An `operation` enum drives display + result for non-addition worlds (ADR-0011).
+- [x] Single-operation worlds and the mixed world stay solvable across seeds (test_level_generator, test_level_data_generation).
 
 ## Open Questions
 
 | Question | Owner | Resolution |
 |----------|-------|-----------|
-| Add an `operation` field to `CardData`? | systems-designer | Recommended before Phase 1 worlds; keeps engine result-only |
-| Subtraction framing (which operand larger) | game-designer | Open — split policy must guarantee non-negative for `−` world |
+| Add an `operation` field to `CardData`? | systems-designer | ✅ Resolved (ADR-0011): `Operation.Type` enum on `CardData`; engine still routes by `result` only |
+| Subtraction framing (which operand larger) | game-designer | ✅ Resolved: `−` picker sets `a = b + result`, guaranteeing `a > b ≥ 1` (no negatives) |
+| Per-world difficulty schedule | systems-designer | Open — single-op worlds currently share the addition-tuned schedule, so `÷`/`×` worlds skew easy/trivial; a per-world schedule is a future tuning task |

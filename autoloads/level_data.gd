@@ -11,11 +11,23 @@ extends Node
 const STACK_COUNT: int = 4
 const STACK_CAPACITY: int = 3
 
-# Generated-level seeding (ADR-0007): seed = WORLD_ID * WORLD_STRIDE + level index.
-# A single addition world for now; WORLD_STRIDE salts future operation worlds so
-# their seed spaces never overlap.
+# Operation worlds + generated-level seeding (ADR-0007). Each WORLD_SIZE-level
+# band advances one operation (+, −, ×, ÷); levels past the four single-operation
+# bands mix all four. seed = world_for_level(n) * WORLD_STRIDE + n, so every
+# world's seed space is disjoint and the same index always rebuilds the same
+# level. WORLD_ID (0 = addition) is retained for back-compatible references.
 const WORLD_ID: int = 0
 const WORLD_STRIDE: int = 1_000_000
+const WORLD_SIZE: int = 5
+const MIXED_WORLD_ID: int = 4
+# World id -> the single operation it prints (see [enum Operation.Type]). The
+# mixed world (MIXED_WORLD_ID) is handled separately in [method operations_for_level].
+const _WORLD_OPERATIONS: Array[int] = [
+	Operation.Type.ADD,
+	Operation.Type.SUBTRACT,
+	Operation.Type.MULTIPLY,
+	Operation.Type.DIVIDE,
+]
 const _SCHEDULE_PATH: String = "res://assets/data/difficulty_schedule.tres"
 
 # Per-level: the result printed on each slot's card. Length must equal the
@@ -67,6 +79,23 @@ func get_level(n: int) -> LevelConfig:
 	return config
 
 
+## The operation world for 1-based [param n]: 0 = +, 1 = −, 2 = ×, 3 = ÷ for the
+## first four [constant WORLD_SIZE]-level bands, then [constant MIXED_WORLD_ID]
+## (all four mixed) from level 21 onward.
+func world_for_level(n: int) -> int:
+	return mini((maxi(n, 1) - 1) / WORLD_SIZE, MIXED_WORLD_ID)
+
+
+## The operations a generated level at 1-based [param n] may print: one operation
+## per single-operation world, or all four in the mixed world. The generator
+## picks each card's operation from those valid for its result.
+func operations_for_level(n: int) -> Array[int]:
+	var world: int = world_for_level(n)
+	if world == MIXED_WORLD_ID:
+		return Operation.ALL.duplicate()
+	return [_WORLD_OPERATIONS[world]] as Array[int]
+
+
 ## Returns the next stack target drawn from [param queue] at [param draw_index],
 ## or -1 when the queue is exhausted (a cleared stack then goes empty).
 func next_target(queue: Array[int], draw_index: int) -> int:
@@ -109,8 +138,12 @@ func _build_authored_level(index: int) -> LevelConfig:
 
 
 func _build_generated_level(n: int) -> LevelConfig:
-	var seed: int = WORLD_ID * WORLD_STRIDE + n
-	var params := DifficultySchedule.params_for(n, _get_schedule(), seed, WORLD_ID, n)
+	var world: int = world_for_level(n)
+	var seed: int = world * WORLD_STRIDE + n
+	var params := DifficultySchedule.params_for(n, _get_schedule(), seed, world, n)
+	# The schedule sets only difficulty knobs; the operation(s) are a world concern
+	# decided here (ADR-0007), keeping DifficultySchedule operation-agnostic.
+	params.allowed_operations = operations_for_level(n)
 	var result := LevelGenerator.generate(params)
 	if result.config == null:
 		# Graceful degradation (engine-code rule): the schedule should never

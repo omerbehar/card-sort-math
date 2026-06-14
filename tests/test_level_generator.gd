@@ -260,3 +260,69 @@ func test_provenance_round_trips() -> void:
 func test_fresh_config_is_not_generated() -> void:
 	# Sentinel guard: a bare LevelConfig (default level_id = -1) is not "generated".
 	assert_bool(LevelConfig.new().is_generated()).is_false()
+
+
+# --- Group 5: operation worlds (subtraction / multiplication / division / mixed) ---
+
+# Builds a single-operation level and asserts it is solvable, every card prints
+# the requested operation, and each card's operands evaluate back to its result.
+func _assert_world(operation: int, result_max: int, max_operand: int) -> LevelConfig:
+	var params := GeneratorParams.create(
+		0, 4, 2, result_max, max_operand, 7, true, 0, 0, [operation] as Array[int])
+	var config := _generate(params)
+	assert_bool(Solvability.is_solvable(config)).is_true()
+	for card: CardData in config.card_pool:
+		assert_int(card.operation).is_equal(operation)
+		assert_int(Operation.apply(card.operand_a, card.operand_b, card.operation)) \
+			.is_equal(card.result)
+		assert_bool(card.operand_a >= 1 and card.operand_a <= max_operand).is_true()
+		assert_bool(card.operand_b >= 1 and card.operand_b <= max_operand).is_true()
+	return config
+
+
+func test_subtraction_world_is_solvable_and_all_minus() -> void:
+	_assert_world(Operation.Type.SUBTRACT, 6, 10)
+
+
+func test_multiplication_world_is_solvable_and_all_times() -> void:
+	_assert_world(Operation.Type.MULTIPLY, 16, 8)
+
+
+func test_division_world_is_solvable_and_all_divide() -> void:
+	_assert_world(Operation.Type.DIVIDE, 8, 10)
+
+
+func test_operation_worlds_are_solvable_across_seeds() -> void:
+	for op: int in [Operation.Type.SUBTRACT, Operation.Type.MULTIPLY, Operation.Type.DIVIDE]:
+		for seed in range(20):
+			var params := GeneratorParams.create(
+				1, 4, 2, 16, 10, seed, true, 0, 0, [op] as Array[int])
+			var config := _generate(params)
+			assert_bool(Solvability.is_solvable(config)) \
+				.override_failure_message("op %d seed %d unsolvable" % [op, seed]).is_true()
+
+
+func test_mixed_world_uses_multiple_operations_and_stays_solvable() -> void:
+	# All four operations allowed: the board must remain solvable and actually mix
+	# operations (more than one distinct operator appears across the pool).
+	var params := GeneratorParams.create(
+		1, 5, 2, 16, 10, 3, true, 0, 0, Operation.ALL)
+	var config := _generate(params)
+	assert_bool(Solvability.is_solvable(config)).is_true()
+	var ops_seen: Dictionary = {}
+	for card: CardData in config.card_pool:
+		ops_seen[card.operation] = true
+		assert_int(Operation.apply(card.operand_a, card.operand_b, card.operation)) \
+			.is_equal(card.result)
+	assert_int(ops_seen.size()).is_greater(1)
+
+
+func test_mixed_world_is_deterministic() -> void:
+	# Per-card operation choice draws from the seeded RNG, so it must reproduce.
+	var params := GeneratorParams.create(1, 5, 2, 16, 10, 99, true, 0, 0, Operation.ALL)
+	var a := _generate(params)
+	var b := _generate(params)
+	for i in range(a.card_pool.size()):
+		assert_int(a.card_pool[i].operation).is_equal(b.card_pool[i].operation)
+		assert_int(a.card_pool[i].operand_a).is_equal(b.card_pool[i].operand_a)
+		assert_int(a.card_pool[i].operand_b).is_equal(b.card_pool[i].operand_b)
