@@ -119,6 +119,7 @@ All read differently, all equal 7.
 - [x] `OperandPicker` handles `result ≤ 1` / no-pair misuse without error.
 - [x] An `operation` enum drives display + result for non-addition worlds (ADR-0011).
 - [x] Single-operation worlds and the mixed world stay solvable across seeds (test_level_generator, test_level_data_generation).
+- [x] Every result in a generated level offers >= 3 distinct displayed operand pairs, so equal-result cards aren't the same exercise — a prime is never a multiply result (no all-"1 × 7" groups). Enforced by `GeneratorParams.min_operand_options` (= `LevelData.OPERAND_OPTIONS_MIN` = 3) + per-world number-range tuning in `LevelData._apply_world_number_range`. (test_level_data_generation, test_operand_picker)
 
 ## Open Questions
 
@@ -126,4 +127,4 @@ All read differently, all equal 7.
 |----------|-------|-----------|
 | Add an `operation` field to `CardData`? | systems-designer | ✅ Resolved (ADR-0011): `Operation.Type` enum on `CardData`; engine still routes by `result` only |
 | Subtraction framing (which operand larger) | game-designer | ✅ Resolved: `−` picker sets `a = b + result`, guaranteeing `a > b ≥ 1` (no negatives) |
-| Per-world difficulty schedule | systems-designer | Open — single-op worlds currently share the addition-tuned schedule, so `÷`/`×` worlds skew easy/trivial; a per-world schedule is a future tuning task |
+| Per-world difficulty schedule | systems-designer | Partly addressed (2026-06-14): `LevelData._apply_world_number_range` widens each single-operation world's operand/result band so 3+ varied options exist (×: composites 8–24 at max_operand 12; ÷: small quotients at max_operand 20; −: result ≤ max−3 at max_operand 12). A full per-level difficulty *curve* per world is still future work |

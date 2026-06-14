@@ -96,11 +96,13 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 	var slot_count: int = Layouts.SLOT_COUNTS[params.layout_id]
 	var queue_length: int = slot_count / STACK_CAPACITY
 
-	# PICK_RESULTS — candidates are results with at least one legal operand pair
-	# under any of the world's allowed operations.
+	# PICK_RESULTS — candidates are results offering at least min_operand_options
+	# distinct displayed pairs under at least one of the world's allowed operations
+	# (variety floor: no result whose cards would all read identically).
 	var candidates: Array[int] = []
 	for r in range(params.result_min, params.result_max + 1):
-		if not OperandPicker.valid_operations(r, params.max_operand, params.allowed_operations).is_empty():
+		if not OperandPicker.valid_operations(
+				r, params.max_operand, params.allowed_operations, params.min_operand_options).is_empty():
 			candidates.append(r)
 	# Empty-pool guard MUST precede the clamp: clampi(D, 1, 0) returns 1, which
 	# would otherwise draw from an empty set (GDD Edge Cases / Formula 5).
@@ -149,7 +151,7 @@ static func _build_level(params: GeneratorParams, effective_seed: int) -> Dictio
 		# candidate filter). A single-operation world skips the RNG draw entirely,
 		# so addition levels stay byte-identical to the pre-operations generator.
 		var ops: Array[int] = OperandPicker.valid_operations(
-			result_value, params.max_operand, params.allowed_operations)
+			result_value, params.max_operand, params.allowed_operations, params.min_operand_options)
 		for i in range(card_count):
 			var slot: int = slot_order[next_slot_index]
 			next_slot_index += 1

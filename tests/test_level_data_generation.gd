@@ -103,3 +103,33 @@ func test_mixed_world_level_mixes_operations() -> void:
 	for card: CardData in config.card_pool:
 		ops_seen[card.operation] = true
 	assert_int(ops_seen.size()).is_greater(1)
+
+
+# Every result in a generated level must read at least OPERAND_OPTIONS_MIN distinct
+# ways, so equal-result cards aren't the same exercise (the "1 × 7" variety bug).
+func test_generated_results_offer_at_least_three_distinct_exercises() -> void:
+	# One level per world: addition, subtraction, multiplication, division, mixed.
+	for n in [4, 8, 13, 18, 25, 33]:
+		var config := LevelData.get_level(n)
+		assert_bool(LevelData.is_solvable(config)) \
+			.override_failure_message("level %d not solvable" % n).is_true()
+		var exercises_by_result: Dictionary = {}
+		for card: CardData in config.card_pool:
+			if not exercises_by_result.has(card.result):
+				exercises_by_result[card.result] = {}
+			exercises_by_result[card.result][card.exercise_text()] = true
+		for result: int in exercises_by_result:
+			assert_int((exercises_by_result[result] as Dictionary).size()) \
+				.override_failure_message(
+					"level %d, result %d shows only %s — needs >= %d distinct exercises"
+					% [n, result, str((exercises_by_result[result] as Dictionary).keys()), LevelData.OPERAND_OPTIONS_MIN]) \
+				.is_greater_equal(LevelData.OPERAND_OPTIONS_MIN)
+
+
+# A multiply-world level must never use a prime result (it would read all "1 × p").
+func test_multiplication_world_excludes_prime_results() -> void:
+	var config := LevelData.get_level(13)
+	var primes := {2: true, 3: true, 5: true, 7: true, 11: true, 13: true, 17: true, 19: true, 23: true}
+	for card: CardData in config.card_pool:
+		assert_bool(primes.has(card.result)) \
+			.override_failure_message("multiply level uses prime result %d" % card.result).is_false()
