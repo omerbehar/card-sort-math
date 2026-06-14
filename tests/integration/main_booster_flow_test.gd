@@ -364,12 +364,12 @@ func test_debug_reset_button_resets_coins_and_every_buff_via_pause_menu() -> voi
 	main._close_pause()                              # restore the tree's paused flag
 
 
-func test_debug_reset_button_is_gated_to_debug_builds() -> void:
-	# The button is built only when OS.is_debug_build(); tests run as a debug build, so
-	# it must exist here. Locks the gating contract (no debug control in release).
+func test_debug_reset_button_is_present_in_the_pause_menu() -> void:
+	# The button is always built (every build) so it is usable on-device, per boss
+	# request — it is not gated behind OS.is_debug_build().
 	var runner = await _boot()
 	var main = runner.scene()
 	main._open_pause()
 	await runner.simulate_frames(2)
-	assert_bool(main._pause_menu._buttons.has("debug_reset")).is_equal(OS.is_debug_build())
+	assert_bool(main._pause_menu._buttons.has("debug_reset")).is_true()
 	main._close_pause()
