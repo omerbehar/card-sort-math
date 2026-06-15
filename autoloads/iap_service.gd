@@ -49,6 +49,11 @@ const SKU_GEMS_SMALL: int = 200   ## Consumable: small gem pack.
 ## yet stable when autoloads parse — explicit preload is the reliable pattern).
 const IAPBackendClass := preload("res://autoloads/iap_backend.gd")
 
+## The authored IAP catalog resource (S4-006) and its preloaded classes. The autoload
+## loads this in [method _ready]; tests inject their own catalog via [method configure].
+const DEFAULT_CATALOG_PATH := "res://assets/data/iap_catalog.tres"
+const IAPCatalogClass := preload("res://data/iap_catalog.gd")
+
 
 # ---------------------------------------------------------------------------
 # Inner types
@@ -149,7 +154,7 @@ func _ready() -> void:
 	if _backend == null:
 		_backend = IAPBackendClass.new()
 	if _catalog.is_empty():
-		_catalog = _build_placeholder_catalog()
+		_catalog = _load_default_catalog()
 
 
 ## Injects all dependencies. Intended for tests; call before any other method.
@@ -177,7 +182,7 @@ func configure(
 	_compliance = compliance
 	_entitlement = entitlement
 	_backend = backend
-	_catalog = catalog if not catalog.is_empty() else _build_placeholder_catalog()
+	_catalog = catalog if not catalog.is_empty() else _load_default_catalog()
 	_state = State.IDLE
 
 
@@ -332,14 +337,38 @@ func _apply_entitlement_grant(_sku: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder catalog (S4-006 authors the real .tres — this is a temp stub)
+# Default catalog (loaded from the authored IAPCatalog resource — S4-006)
 # ---------------------------------------------------------------------------
 
-## [b]Placeholder catalog — replaced by S4-006.[/b]
-## Provides enough structure for the service to function (autoload, smoke tests)
-## without hardcoding grant amounts in purchase logic. S4-006 will load this
-## from an injected IAPCatalog resource; until then these sane defaults serve CI.
-func _build_placeholder_catalog() -> Dictionary:
+## Loads the authored [IAPCatalog] resource (S4-006) and converts it to the runtime
+## SKU → [IAPCatalogEntry] map the service uses. Falls back to a small built-in catalog
+## if the resource is missing or fails validation, so the service is never left without a
+## usable catalog (graceful degradation).
+func _load_default_catalog() -> Dictionary:
+	var res: Resource = load(DEFAULT_CATALOG_PATH)
+	if res is IAPCatalogClass and res.is_valid():
+		return _runtime_to_entries(res.to_runtime_dict())
+	push_warning("IAPService: catalog '%s' missing/invalid; using built-in fallback." % DEFAULT_CATALOG_PATH)
+	return _builtin_fallback_catalog()
+
+
+# Converts the catalog's flat runtime dict ({sku: {kind, currency, amount}}) into the
+# service's SKU → IAPCatalogEntry map. IAPCatalog kinds mirror ProductKind by ordinal.
+func _runtime_to_entries(runtime: Dictionary) -> Dictionary:
+	var cat: Dictionary = {}
+	for sku in runtime:
+		var d: Dictionary = runtime[sku]
+		if int(d.get("kind", ProductKind.CONSUMABLE_CURRENCY)) == ProductKind.NON_CONSUMABLE_ENTITLEMENT:
+			cat[sku] = IAPCatalogEntry.make_entitlement()
+		else:
+			cat[sku] = IAPCatalogEntry.make_currency(
+					int(d.get("currency", EconomyEnums.Currency.COINS)), int(d.get("amount", 0)))
+	return cat
+
+
+# Last-resort built-in catalog if the authored resource cannot be loaded — keeps the
+# service functional (autoload boot, smoke tests) without a hard dependency on the file.
+func _builtin_fallback_catalog() -> Dictionary:
 	var cat: Dictionary = {}
 	cat[SKU_REMOVE_ADS] = IAPCatalogEntry.make_entitlement()
 	cat[SKU_COINS_SMALL] = IAPCatalogEntry.make_currency(EconomyEnums.Currency.COINS, 500)

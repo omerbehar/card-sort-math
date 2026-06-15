@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="IAPCatalog" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://data/iap_catalog.gd" id="1_cat"]
+[ext_resource type="Script" path="res://data/iap_catalog_entry.gd" id="2_entry"]
+
+[sub_resource type="Resource" id="entry_remove_ads"]
+script = ExtResource("2_entry")
+sku_id = 1
+kind = 1
+currency = 0
+amount = 0
+price_cents = 299
+
+[sub_resource type="Resource" id="entry_coins_small"]
+script = ExtResource("2_entry")
+sku_id = 100
+kind = 0
+currency = 0
+amount = 500
+price_cents = 99
+
+[sub_resource type="Resource" id="entry_coins_medium"]
+script = ExtResource("2_entry")
+sku_id = 101
+kind = 0
+currency = 0
+amount = 1500
+price_cents = 299
+
+[sub_resource type="Resource" id="entry_gems_small"]
+script = ExtResource("2_entry")
+sku_id = 200
+kind = 0
+currency = 1
+amount = 50
+price_cents = 199
+
+[sub_resource type="Resource" id="entry_starter_bundle"]
+script = ExtResource("2_entry")
+sku_id = 300
+kind = 0
+currency = 0
+amount = 2500
+price_cents = 499
+
+[resource]
+script = ExtResource("1_cat")
+entries = [SubResource("entry_remove_ads"), SubResource("entry_coins_small"), SubResource("entry_coins_medium"), SubResource("entry_gems_small"), SubResource("entry_starter_bundle")]
