@@ -52,8 +52,9 @@ signal remove_ads_changed(owned: bool)
 # Resolves to the SaveService autoload and a no-op EntitlementBackend in _ready()
 # if configure() was not called first (normal play).
 var _save = null       # SaveService-compatible: .data (SaveData) + save_game()
-var _backend = null    # EntitlementBackend — untyped to avoid parse-time resolution issues;
-                       # runtime type checked via duck-typing (has_prior_receipt())
+# Typed via the preloaded const (not the global class_name) so the type resolves at
+# autoload parse time AND has_prior_receipt() is compile-time checked on every call.
+var _backend: EntitlementBackendClass = null
 
 
 func _ready() -> void:
@@ -76,7 +77,7 @@ func _ready() -> void:
 ## backend.receipt_present = true
 ## entitlement_svc.configure(save_svc, backend)
 ## [/codeblock]
-func configure(save: Object, backend: Object) -> void:
+func configure(save: Object, backend: EntitlementBackendClass) -> void:
 	_save = save
 	_backend = backend
 
@@ -156,4 +157,7 @@ func restore() -> bool:
 	if not _backend.has_prior_receipt():
 		return false
 	grant_remove_ads()
-	return true
+	# Return the ACTUAL ownership state, not an unconditional true: if grant_remove_ads()
+	# no-op'd because no save is wired (_save == null), ownership did not change and the
+	# caller must not be told the restore succeeded (review S4-003 #1).
+	return is_remove_ads_owned()

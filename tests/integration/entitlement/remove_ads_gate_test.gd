@@ -1,27 +1,26 @@
 extends GdUnitTestSuite
 ## Integration tests for the Remove-Ads gate through [EntitlementService] (S4-003, ADR-0014 §3).
 ##
-## These tests drive real [EntitlementService] and [SaveService] instances via the
-## [method EntitlementService.configure] DI seam — no scene tree required, no real file I/O
-## (except where a test explicitly exercises the save path, cleaned up unconditionally in
-## [method after_test]).
+## Most tests drive real [EntitlementService] and [SaveService] instances via the
+## [method EntitlementService.configure] DI seam; one test boots the real
+## [code]scenes/main/main.tscn[/code] + autoloads via gdUnit4's scene_runner to prove the
+## autoload registration and _ready() dependency resolution (CLAUDE.md mandatory
+## validation). File I/O is confined to tests that exercise the save path, cleaned up
+## unconditionally in [method after_test].
 ##
 ## Covers:
 ## - When owned: [method EntitlementService.should_suppress_interstitials] is true; rewarded
 ##   remains available.
 ## - When not owned: interstitials are not suppressed.
 ## - Save-write failure edge: in-memory owned survives the session (QA EC4/EC15).
-## - End-to-end: grant via configure → query gate → verify suppression.
+## - End-to-end: grant via configure → persist → reload → gate active.
+## - Real scene-tree boot: EntitlementService autoload resolves SaveService and reads the
+##   live save field.
 
 const ENTITLEMENT_SCRIPT := preload("res://autoloads/entitlement_service.gd")
 const SAVE_SCRIPT := preload("res://autoloads/save_service.gd")
-# Local test double — extends the backend by PATH so it resolves without the global
-# class cache (EntitlementBackend is new this session) and is a real typed local class
-# (avoids Variant inference; this project treats strict-typing warnings as errors).
-class _MockBackend extends "res://autoloads/entitlement_backend.gd":
-	var receipt_present: bool = false
-	func has_prior_receipt() -> bool:
-		return receipt_present
+const BACKEND_SCRIPT := preload("res://autoloads/entitlement_backend.gd")
+const MAIN := "res://scenes/main/main.tscn"
 
 # Temp save paths created by file-I/O tests; cleaned unconditionally in after_test().
 var _temp_save_paths: Array[String] = []
@@ -43,7 +42,7 @@ func after_test() -> void:
 func _make_svc(owned: bool, receipt_present: bool = false):
 	var save = auto_free(SAVE_SCRIPT.new())
 	save.data.remove_ads_owned = owned
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = receipt_present
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	svc.configure(save, backend)
@@ -114,7 +113,7 @@ func test_grant_persists_in_memory_even_if_save_path_unwritable() -> void:
 	# Data is in memory (fresh defaults — no disk load).
 	save.data.remove_ads_owned = false
 
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = false
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	svc.configure(save, backend)
@@ -122,6 +121,10 @@ func test_grant_persists_in_memory_even_if_save_path_unwritable() -> void:
 	# Act: grant — the save will fail (bad path), but grant_remove_ads must still
 	# set the in-memory flag so the session retains the entitlement (EC4/EC15).
 	svc.grant_remove_ads()
+
+	# Assert the write ACTUALLY failed — otherwise this test would silently stop
+	# exercising the EC15 path (e.g. if save_game() ever auto-created the subdir).
+	assert_bool(FileAccess.file_exists(bad_path)).is_false()
 
 	# Assert: in-memory flag is true despite the write failure.
 	assert_bool(save.data.remove_ads_owned).is_true()
@@ -142,7 +145,7 @@ func test_grant_persists_across_save_reload_cycle() -> void:
 	var save1 = auto_free(SAVE_SCRIPT.new())
 	save1.configure(path)
 	var svc1 = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc1.configure(save1, _MockBackend.new())
+	svc1.configure(save1, BACKEND_SCRIPT.MockEntitlementBackend.new())
 	svc1.grant_remove_ads()
 	# Verify in-memory before reload.
 	assert_bool(svc1.is_remove_ads_owned()).is_true()
@@ -152,9 +155,34 @@ func test_grant_persists_across_save_reload_cycle() -> void:
 	save2.configure(path)
 	save2.load_game()
 	var svc2 = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc2.configure(save2, _MockBackend.new())
+	svc2.configure(save2, BACKEND_SCRIPT.MockEntitlementBackend.new())
 
 	# Assert: the gate is active after reload.
 	assert_bool(svc2.is_remove_ads_owned()).is_true()
 	assert_bool(svc2.should_suppress_interstitials()).is_true()
 	assert_bool(svc2.is_rewarded_available()).is_true()
+
+
+# ---------------------------------------------------------------------------
+# Real scene-tree boot: EntitlementService registers as an autoload, resolves
+# SaveService in _ready(), and the gate reads the live save end-to-end
+# (CLAUDE.md mandatory validation + ADR-0014 validation criteria).
+# ---------------------------------------------------------------------------
+
+func test_entitlement_service_boots_as_autoload_and_resolves_save() -> void:
+	# Arrange: boot the real main scene + all autoloads.
+	var runner := scene_runner(MAIN)
+	await runner.simulate_frames(5)
+	var root := get_tree().root
+
+	# Assert: the new autoload is registered, and so is its SaveService dependency.
+	var ent := root.get_node_or_null("EntitlementService")
+	var save := root.get_node_or_null("SaveService")
+	assert_object(ent).is_not_null()
+	assert_object(save).is_not_null()
+
+	# Assert: _ready() resolved _save = SaveService — the gate reads the LIVE save field
+	# (proves end-to-end wiring, not an isolated unit). Holds for either owned state.
+	assert_bool(ent.should_suppress_interstitials()).is_equal(save.data.remove_ads_owned)
+	assert_bool(ent.is_remove_ads_owned()).is_equal(save.data.remove_ads_owned)
+	assert_bool(ent.is_rewarded_available()).is_true()

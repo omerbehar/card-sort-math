@@ -15,13 +15,6 @@ extends GdUnitTestSuite
 const ENTITLEMENT_SCRIPT := preload("res://autoloads/entitlement_service.gd")
 const SAVE_SCRIPT := preload("res://autoloads/save_service.gd")
 const BACKEND_SCRIPT := preload("res://autoloads/entitlement_backend.gd")
-# Local test double — extends the backend by PATH so it resolves without the global
-# class cache (EntitlementBackend is new this session) and is a real typed local class
-# (avoids Variant inference; this project treats strict-typing warnings as errors).
-class _MockBackend extends "res://autoloads/entitlement_backend.gd":
-	var receipt_present: bool = false
-	func has_prior_receipt() -> bool:
-		return receipt_present
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +174,7 @@ func test_grant_remove_ads_sets_owned_true() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
 	save.data.remove_ads_owned = false
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	svc.configure(save, backend)
 
 	svc.grant_remove_ads()
@@ -193,7 +186,7 @@ func test_grant_remove_ads_idempotent_second_call_stays_owned() -> void:
 	# Calling grant_remove_ads() when already owned must not error or emit again.
 	var save = auto_free(SAVE_SCRIPT.new())
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	svc.configure(save, backend)
 
 	svc.grant_remove_ads()
@@ -213,7 +206,7 @@ func test_grant_remove_ads_emits_signal_exactly_once() -> void:
 	# redundant (idempotent) second call.
 	var save = auto_free(SAVE_SCRIPT.new())
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	svc.configure(save, backend)
 
 	_emitted_signal_args.clear()
@@ -235,7 +228,7 @@ func test_grant_remove_ads_emits_signal_exactly_once() -> void:
 func test_restore_with_receipt_present_grants_entitlement() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = true
 	svc.configure(save, backend)
 
@@ -248,7 +241,7 @@ func test_restore_with_receipt_present_grants_entitlement() -> void:
 func test_restore_without_receipt_does_not_grant() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = false
 	svc.configure(save, backend)
 
@@ -263,7 +256,7 @@ func test_restore_after_grant_is_idempotent_returns_true() -> void:
 	# after the call the entitlement is (still) owned.
 	var save = auto_free(SAVE_SCRIPT.new())
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	var backend = _MockBackend.new()
+	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = true
 	svc.configure(save, backend)
 
@@ -283,7 +276,7 @@ func test_not_owned_interstitials_not_suppressed() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
 	save.data.remove_ads_owned = false
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc.configure(save, _MockBackend.new())
+	svc.configure(save, BACKEND_SCRIPT.MockEntitlementBackend.new())
 	assert_bool(svc.should_suppress_interstitials()).is_false()
 
 
@@ -291,7 +284,7 @@ func test_owned_interstitials_suppressed() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
 	save.data.remove_ads_owned = true
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc.configure(save, _MockBackend.new())
+	svc.configure(save, BACKEND_SCRIPT.MockEntitlementBackend.new())
 	assert_bool(svc.should_suppress_interstitials()).is_true()
 
 
@@ -300,12 +293,55 @@ func test_rewarded_always_available_regardless_of_entitlement() -> void:
 	var save_not_owned = auto_free(SAVE_SCRIPT.new())
 	save_not_owned.data.remove_ads_owned = false
 	var svc_not_owned = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc_not_owned.configure(save_not_owned, _MockBackend.new())
+	svc_not_owned.configure(save_not_owned, BACKEND_SCRIPT.MockEntitlementBackend.new())
 
 	var save_owned = auto_free(SAVE_SCRIPT.new())
 	save_owned.data.remove_ads_owned = true
 	var svc_owned = auto_free(ENTITLEMENT_SCRIPT.new())
-	svc_owned.configure(save_owned, _MockBackend.new())
+	svc_owned.configure(save_owned, BACKEND_SCRIPT.MockEntitlementBackend.new())
 
 	assert_bool(svc_not_owned.is_rewarded_available()).is_true()
 	assert_bool(svc_owned.is_rewarded_available()).is_true()
+
+
+# ---------------------------------------------------------------------------
+# Single-reader chokepoint: remove_ads_owned is referenced ONLY by the serializer
+# (SaveData), the persistence autoload (SaveService), and EntitlementService — the
+# entitlement-gating analogue of the consent single-reader rule (ADR-0014 §3). Mirrors
+# test_consent_fields_read_only_by_permitted_files in the consent suite.
+# ---------------------------------------------------------------------------
+
+func test_remove_ads_owned_read_only_by_permitted_files() -> void:
+	var permitted: Array[String] = [
+		"res://core/save_data.gd",
+		"res://autoloads/save_service.gd",
+		"res://autoloads/entitlement_service.gd",
+	]
+	var scan_dirs: Array[String] = ["res://autoloads", "res://core"]
+	var violations: Array[String] = []
+
+	for dir_path: String in scan_dirs:
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var fname: String = dir.get_next()
+		while fname != "":
+			if not dir.current_is_dir() and fname.ends_with(".gd"):
+				var full_path: String = dir_path + "/" + fname
+				var is_permitted: bool = false
+				for p: String in permitted:
+					if full_path == p:
+						is_permitted = true
+						break
+				if not is_permitted:
+					var file := FileAccess.open(full_path, FileAccess.READ)
+					if file != null:
+						var content: String = file.get_as_text()
+						file.close()
+						if content.contains("remove_ads_owned"):
+							violations.append(full_path + " references remove_ads_owned")
+			fname = dir.get_next()
+		dir.list_dir_end()
+
+	assert_int(violations.size()).is_equal(0)
