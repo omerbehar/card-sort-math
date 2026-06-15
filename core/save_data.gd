@@ -15,7 +15,8 @@ extends RefCounted
 ## [member boosters_picker], [member boosters_reshuffle], [member boosters_extra_discard],
 ## [member boosters_seeded],
 ## [member consent_personalized_ads], [member consent_analytics], [member consent_iap],
-## [member consent_captured], [member consent_version].
+## [member consent_captured], [member consent_version],
+## [member remove_ads_owned].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
 const CURRENT_SCHEMA_VERSION: int = 6
@@ -111,6 +112,14 @@ var consent_captured: bool = false
 ## is NOT yet implemented. Defaults to [code]0[/code]. Added in schema v6.
 var consent_version: int = 0
 
+## Whether the player owns the Remove-Ads entitlement (purchased or restored). Defaults to
+## [code]false[/code] (not owned). [b]Protected field[/b] — never served by missing-key-default
+## (save-service.md Core Rule 6 / Edge Case 9, ADR-0014 §3). Read only through
+## [EntitlementService] (the sole reader); set via [EntitlementService.grant_remove_ads].
+## Added in schema v6 (S4-003) — same migration step as the consent fields (M4-R4: never a
+## second [code]if version == 5:[/code] block).
+var remove_ads_owned: bool = false
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -143,6 +152,9 @@ func to_dict() -> Dictionary:
 		"consent_iap": consent_iap,
 		"consent_captured": consent_captured,
 		"consent_version": consent_version,
+		# Entitlement field — protected (ADR-0014 §3, S4-003). Conservative: absent/null → not-owned.
+		# Read only through EntitlementService.
+		"remove_ads_owned": remove_ads_owned,
 	}
 
 
@@ -179,6 +191,10 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.consent_iap = _parse_bool_conservative(migrated.get("consent_iap", false))
 	data.consent_captured = _parse_bool_conservative(migrated.get("consent_captured", false))
 	data.consent_version = maxi(0, _safe_int(migrated.get("consent_version", 0)))
+	# Entitlement field — protected (ADR-0014 §3). Conservative parsing: null / non-bool /
+	# missing → false (not-owned). A missing key on downgrade must never silently grant
+	# Remove-Ads (same protected-field rule as consent — save-service.md Core Rule 6 / EC9).
+	data.remove_ads_owned = _parse_bool_conservative(migrated.get("remove_ads_owned", false))
 	return data
 
 
@@ -227,6 +243,7 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 		out["consent_iap"] = false
 		out["consent_captured"] = false
 		out["consent_version"] = 0
+		out["remove_ads_owned"] = false  # S4-003 (ADR-0014 §3): entitlement in same v6 step (M4-R4).
 		version = 6
 	return out
 

@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 SaveService="*res://autoloads/save_service.gd"
 ComplianceService="*res://autoloads/compliance_service.gd"
+EntitlementService="*res://autoloads/entitlement_service.gd"
 SettingsService="*res://autoloads/settings_service.gd"
 AudioService="*res://autoloads/audio_service.gd"
 JuiceService="*res://autoloads/juice_service.gd"
