@@ -128,16 +128,22 @@ func is_rewarded_available() -> bool:
 ##
 ## Called by [IAPService] (S4-002) on a successful Remove-Ads SKU purchase, and by
 ## [method restore] when a prior receipt is found.
-func grant_remove_ads() -> void:
+##
+## Returns [code]true[/code] only when this call [b]newly[/b] granted the entitlement;
+## [code]false[/code] when it was a no-op (already owned, or no save wired). This lets
+## callers count real grants without reaching across the single-reader chokepoint for the
+## ownership flag (ADR-0014 §3; review S4-002 #3).
+func grant_remove_ads() -> bool:
 	if _save == null or _save.data == null:
-		return
+		return false
 	if _save.data.remove_ads_owned:
-		return  # Idempotent: already owned — no write, no signal
+		return false  # Idempotent: already owned — no write, no signal
 	_save.data.remove_ads_owned = true
 	# Attempt to persist. On failure, in-memory value remains true (EC4/EC15).
 	# save_game() logs its own error; we do not propagate it.
 	_save.save_game()
 	remove_ads_changed.emit(true)
+	return true
 
 
 ## Attempts to restore the Remove-Ads entitlement from a prior purchase receipt.

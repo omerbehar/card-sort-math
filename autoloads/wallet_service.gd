@@ -275,6 +275,26 @@ func _earn_raw(currency: int, amount: int, source: int) -> int:
 	return actual
 
 
+## Credits an IAP currency purchase [b]uncapped[/b]. Real-money purchases bypass the
+## wallet hard cap that clamps earned income ([method earn]/[method _earn_raw]), so the
+## player always receives the full pack they paid for (ADR-0014 §2). Returns the amount
+## credited; a 0-or-negative amount is a no-op guard (returns 0). Emits a single
+## [code]CURRENCY_EARNED(IAP)[/code] event.
+##
+## Intended to be called by [IAPService] on a verified successful purchase, never
+## directly by gameplay — IAP is the only uncapped income source.
+func grant_iap_currency(currency: int, amount: int) -> int:
+	if amount <= 0:
+		return 0  # EC-14 guard
+	var current: int = _wallet.balance_of(currency)
+	var new_balance: int = current + amount
+	_wallet.set_balance(currency, new_balance)
+	_persist()
+	economy_event.emit(
+			EconomyEvent.currency_earned(currency, amount, EconomyEnums.EarnSource.IAP, new_balance))
+	return amount
+
+
 ## Grants the coin reward for a level win (Formula 1 + 1b). Returns the actual coins
 ## credited (after the wallet cap clamp). Emits a single [code]CURRENCY_EARNED(LEVEL_WIN)[/code]
 ## for the summed total.

@@ -2,10 +2,11 @@ extends Node
 ## Autoload: IAP purchase state machine and receipt restore (S4-002, ADR-0014 §2).
 ##
 ## Owns the deterministic purchase state machine (IDLE → PENDING → SUCCESS / FAILED)
-## and the restore path for non-consumable entitlements (Remove-Ads). Currency grants
-## route through [method WalletService.initiate_iap] (the economy chokepoint); Remove-Ads
-## routes through [method EntitlementService.grant_remove_ads]. No wallet mutation lives
-## here — all economy outcomes go through the existing call-ins (ADR-0008, ADR-0014 §2).
+## and the restore path for non-consumable entitlements (Remove-Ads). On a verified
+## successful purchase, currency packs are credited via [method WalletService.grant_iap_currency]
+## (the uncapped IAP credit path) and Remove-Ads via [method EntitlementService.grant_remove_ads].
+## No wallet mutation lives here — all economy outcomes go through those service call-ins
+## (ADR-0008, ADR-0014 §2).
 ##
 ## All dependencies are injected via [method configure] (DI seam, ADR-0014 §1) so this
 ## service is fully unit-testable headlessly. In normal play they resolve to the autoloads
@@ -85,7 +86,7 @@ class IAPCatalogEntry extends RefCounted:
 
 ## Product kind — drives the grant path on success and the restore-eligibility check.
 enum ProductKind {
-	CONSUMABLE_CURRENCY,       ## Currency pack: grant via WalletService.initiate_iap(); not restored.
+	CONSUMABLE_CURRENCY,       ## Currency pack: grant via WalletService.grant_iap_currency(); not restored.
 	NON_CONSUMABLE_ENTITLEMENT ## Remove-Ads: grant via EntitlementService.grant_remove_ads(); restorable.
 }
 
@@ -118,7 +119,7 @@ signal restore_completed(restored_count: int)
 # Injected dependencies (resolve to autoloads in _ready() if not configured)
 # ---------------------------------------------------------------------------
 
-var _wallet = null           # WalletService: initiate_iap(sku) + earn(currency, amount, source)
+var _wallet = null           # WalletService: grant_iap_currency(currency, amount) + economy_event
 var _compliance = null       # ComplianceService: can_process_iap()
 var _entitlement = null      # EntitlementService: grant_remove_ads()
 # Typed via the preloaded const (not the global class_name) so the type resolves at
@@ -152,8 +153,8 @@ func _ready() -> void:
 
 
 ## Injects all dependencies. Intended for tests; call before any other method.
-## [param wallet]: WalletService-compatible (must expose [method initiate_iap] and
-## [method earn]). [param compliance]: ComplianceService-compatible
+## [param wallet]: WalletService-compatible (must expose [method grant_iap_currency] and
+## the [signal economy_event] signal). [param compliance]: ComplianceService-compatible
 ## ([method can_process_iap]). [param entitlement]: EntitlementService-compatible
 ## ([method grant_remove_ads]). [param backend]: [IAPBackend]-compatible.
 ## [param catalog]: Dictionary[int, IAPCatalogEntry] mapping SKU → entry; pass an
@@ -207,7 +208,7 @@ func is_valid_sku(sku: int) -> bool:
 ## 2. Unknown/invalid SKU: returns [code]false[/code] immediately, no state change.
 ## 3. Already PENDING: returns [code]false[/code] (one purchase at a time).
 ##
-## On SUCCESS: grants exactly once — consumable → [method WalletService.earn];
+## On SUCCESS: grants exactly once — consumable → [method WalletService.grant_iap_currency];
 ## non-consumable → [method EntitlementService.grant_remove_ads]. State → SUCCESS,
 ## then immediately resets to IDLE so the service accepts a new purchase.
 ##
@@ -218,8 +219,8 @@ func is_valid_sku(sku: int) -> bool:
 ##
 ## Source: ADR-0014 §2; design/gdd/deck-economy.md Rule 5/6, AC-CL01.
 func purchase(sku: int) -> bool:
-	# --- Gate 1: compliance ---
-	if _compliance != null and not _compliance.can_process_iap():
+	# --- Gate 1: compliance (fail-closed — a missing/unresolved compliance dep blocks) ---
+	if _compliance == null or not _compliance.can_process_iap():
 		if _wallet != null:
 			_wallet.economy_event.emit(
 					EconomyEvent.iap_blocked(sku, EconomyEnums.FailReason.COMPLIANCE_RESTRICTED))
@@ -236,25 +237,33 @@ func purchase(sku: int) -> bool:
 		purchase_completed.emit(sku, State.FAILED)
 		return false
 
+	# --- Gate 4: the grant dependency for this SKU's kind must be wired ---
+	# Refuse before charging the backend rather than reporting a false SUCCESS with no
+	# grant when a required service was never injected (fail-closed; review S4-002 #2).
+	var entry: IAPCatalogEntry = _catalog[sku]
+	if entry.kind == ProductKind.CONSUMABLE_CURRENCY and _wallet == null:
+		purchase_completed.emit(sku, State.FAILED)
+		return false
+	if entry.kind == ProductKind.NON_CONSUMABLE_ENTITLEMENT and _entitlement == null:
+		purchase_completed.emit(sku, State.FAILED)
+		return false
+
 	# --- Transition: IDLE → PENDING ---
 	_state = State.PENDING
 
 	# --- Drive the backend ---
 	var result: int = _backend.purchase(sku)
 
-	# --- Handle result ---
+	# --- Handle result (State.SUCCESS/FAILED are transient outcome codes carried by
+	# purchase_completed; the machine itself only ever rests in IDLE or PENDING) ---
+	_state = State.IDLE
 	if result == IAPBackendClass.PurchaseResult.SUCCESS:
 		_apply_grant(sku)
-		_state = State.SUCCESS
 		purchase_completed.emit(sku, State.SUCCESS)
-		_state = State.IDLE
 		return true
-	else:
-		# FAILED or CANCELLED — wallet unchanged
-		_state = State.FAILED
-		purchase_completed.emit(sku, State.FAILED)
-		_state = State.IDLE
-		return false
+	# FAILED or CANCELLED — wallet/entitlement unchanged
+	purchase_completed.emit(sku, State.FAILED)
+	return false
 
 
 # ---------------------------------------------------------------------------
@@ -278,10 +287,14 @@ func restore() -> bool:
 		if not _catalog.has(sku):
 			continue
 		var entry: IAPCatalogEntry = _catalog[sku]
-		if entry.kind == ProductKind.NON_CONSUMABLE_ENTITLEMENT:
-			_apply_entitlement_grant(sku)
+		# Consumable SKUs are never restored (already spent/credited — ADR-0014 §2).
+		if entry.kind != ProductKind.NON_CONSUMABLE_ENTITLEMENT:
+			continue
+		# Count only entitlements actually NEWLY granted: the grant call returns false when
+		# it no-ops (already owned, or no save wired), so re-restoring must not inflate the
+		# restored count or the return value (review S4-002 #3).
+		if _apply_entitlement_grant(sku):
 			granted += 1
-		# Consumable SKUs are silently ignored (restore semantics — ADR-0014 §2)
 	restore_completed.emit(granted)
 	return granted > 0
 
@@ -301,18 +314,21 @@ func _apply_grant(sku: int) -> void:
 			_apply_entitlement_grant(sku)
 
 
-# Credits the currency pack amount via WalletService.earn() (IAP earn source).
-# WalletService.earn() already guards amount <= 0, so we don't double-gate it.
+# Credits the currency pack amount via WalletService.grant_iap_currency() — the uncapped
+# IAP credit path, so a player near the wallet cap still receives the full paid pack
+# (review S4-002 #1). grant_iap_currency() guards amount <= 0 internally.
 func _apply_currency_grant(_sku: int, entry: IAPCatalogEntry) -> void:
 	if _wallet != null:
-		_wallet.earn(entry.currency, entry.amount, EconomyEnums.EarnSource.IAP)
+		_wallet.grant_iap_currency(entry.currency, entry.amount)
 
 
-# Grants the Remove-Ads (non-consumable) entitlement. Idempotent — safe to call
-# on restore when the entitlement is already owned.
-func _apply_entitlement_grant(_sku: int) -> void:
+# Grants the Remove-Ads (non-consumable) entitlement. Idempotent — safe to call on
+# restore when the entitlement is already owned. Returns true only when this call newly
+# granted it (false on a no-op), so restore() can count real grants.
+func _apply_entitlement_grant(_sku: int) -> bool:
 	if _entitlement != null:
-		_entitlement.grant_remove_ads()
+		return _entitlement.grant_remove_ads()
+	return false
 
 
 # ---------------------------------------------------------------------------

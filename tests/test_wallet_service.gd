@@ -156,6 +156,24 @@ func test_earn_clamps_at_cap_and_returns_actual_credited() -> void:
 	assert_int(_last().amount).is_equal(10)        # event reports actual credited
 
 
+func test_grant_iap_currency_bypasses_cap_credits_full_amount() -> void:
+	# Review S4-002 #1: real-money IAP purchases are uncapped — a player at/near the cap
+	# must still receive the full pack (unlike earn(), which clamps to the cap).
+	var w = _make(990, 0, _config_with_coins_max(1000))
+	var actual: int = w.grant_iap_currency(COINS, 100)
+	assert_int(actual).is_equal(100)              # full pack, not clamped to 10
+	assert_int(w.balance(COINS)).is_equal(1090)   # balance exceeds the earned-income cap
+	assert_int(_last().amount).is_equal(100)
+	assert_int(_last().source).is_equal(EconomyEnums.EarnSource.IAP)
+
+
+func test_grant_iap_currency_zero_amount_no_mutation_no_event() -> void:
+	var w = _make(100)
+	assert_int(w.grant_iap_currency(COINS, 0)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(100)
+	assert_int(_events.size()).is_equal(0)
+
+
 func test_earn_zero_amount_no_mutation_no_event() -> void:
 	var w = _make(100)
 	assert_int(w.earn(COINS, 0, LEVEL_WIN)).is_equal(0)

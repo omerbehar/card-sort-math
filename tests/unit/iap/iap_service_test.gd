@@ -14,9 +14,9 @@ const IAP_BACKEND := preload("res://autoloads/iap_backend.gd")
 
 class StubWallet extends RefCounted:
 	signal economy_event(event: EconomyEvent)
-	var earn_calls: Array = []  # each entry: [currency, amount, source]
-	func earn(currency: int, amount: int, source: int) -> int:
-		earn_calls.append([currency, amount, source])
+	var grant_calls: Array = []  # each entry: [currency, amount]
+	func grant_iap_currency(currency: int, amount: int) -> int:
+		grant_calls.append([currency, amount])
 		return amount
 
 
@@ -27,9 +27,16 @@ class StubCompliance extends RefCounted:
 
 
 class StubEntitlement extends RefCounted:
-	var grant_calls: int = 0
-	func grant_remove_ads() -> void:
+	var grant_calls: int = 0   # total grant_remove_ads() invocations
+	var new_grants: int = 0    # invocations that actually flipped ownership
+	var owned: bool = false
+	func grant_remove_ads() -> bool:
 		grant_calls += 1
+		if owned:
+			return false
+		owned = true
+		new_grants += 1
+		return true
 
 
 # --- Fixture members (set by _make) -----------------------------------------
@@ -95,12 +102,11 @@ func test_purchase_currency_success_credits_wallet_exactly_once() -> void:
 	var svc = _make(IAP_BACKEND.PurchaseResult.SUCCESS)
 	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_COINS_SMALL)
 	assert_bool(ok).is_true()
-	# Exactly one earn() call — no double-grant.
-	assert_int(_wallet.earn_calls.size()).is_equal(1)
-	var call: Array = _wallet.earn_calls[0]
+	# Exactly one credit call — no double-grant.
+	assert_int(_wallet.grant_calls.size()).is_equal(1)
+	var call: Array = _wallet.grant_calls[0]
 	assert_int(call[0]).is_equal(EconomyEnums.Currency.COINS)
 	assert_int(call[1]).is_equal(500)
-	assert_int(call[2]).is_equal(EconomyEnums.EarnSource.IAP)
 	# Currency pack must NOT touch the entitlement.
 	assert_int(_entitlement.grant_calls).is_equal(0)
 
@@ -110,14 +116,14 @@ func test_purchase_remove_ads_success_grants_entitlement_not_currency() -> void:
 	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_REMOVE_ADS)
 	assert_bool(ok).is_true()
 	assert_int(_entitlement.grant_calls).is_equal(1)
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 
 
 func test_purchase_failed_leaves_wallet_and_entitlement_unchanged() -> void:
 	var svc = _make(IAP_BACKEND.PurchaseResult.FAILED)
 	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_COINS_SMALL)
 	assert_bool(ok).is_false()
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 	assert_int(_entitlement.grant_calls).is_equal(0)
 
 
@@ -127,7 +133,7 @@ func test_purchase_unknown_sku_rejected_no_grant() -> void:
 	var svc = _make(IAP_BACKEND.PurchaseResult.SUCCESS)
 	var ok: bool = svc.purchase(99999)  # not in the catalog
 	assert_bool(ok).is_false()
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 	assert_int(_entitlement.grant_calls).is_equal(0)
 	assert_int(svc.current_state()).is_equal(IAP_SCRIPT.State.IDLE)
 
@@ -138,7 +144,7 @@ func test_purchase_compliance_denied_blocked_emits_iap_blocked() -> void:
 	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_COINS_SMALL)
 	assert_bool(ok).is_false()
 	# Blocked before any grant.
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 	assert_int(_entitlement.grant_calls).is_equal(0)
 	# An IAP_BLOCKED economy event was emitted with the compliance reason.
 	assert_int(_captured_events.size()).is_equal(1)
@@ -161,7 +167,7 @@ func test_restore_with_remove_ads_receipt_regrants_entitlement_only() -> void:
 	assert_bool(did).is_true()
 	assert_int(_entitlement.grant_calls).is_equal(1)
 	# Restore must never re-credit currency.
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 
 
 func test_restore_ignores_consumable_currency_receipts() -> void:
@@ -170,7 +176,7 @@ func test_restore_ignores_consumable_currency_receipts() -> void:
 	_backend.prior_receipts = receipts
 	var did: bool = svc.restore()
 	assert_bool(did).is_false()
-	assert_int(_wallet.earn_calls.size()).is_equal(0)
+	assert_int(_wallet.grant_calls.size()).is_equal(0)
 	assert_int(_entitlement.grant_calls).is_equal(0)
 
 
@@ -179,3 +185,48 @@ func test_restore_no_prior_receipts_no_grant_no_error() -> void:
 	var did: bool = svc.restore()
 	assert_bool(did).is_false()
 	assert_int(_entitlement.grant_calls).is_equal(0)
+
+
+func test_restore_already_owned_entitlement_not_recounted() -> void:
+	# Review S4-002 #3: re-granting an already-owned entitlement must not inflate the
+	# restored count or return true (grant_remove_ads is idempotent).
+	var svc = _make(IAP_BACKEND.PurchaseResult.FAILED)
+	_entitlement.owned = true  # player already owns Remove-Ads
+	var receipts: Array[int] = [IAP_SCRIPT.SKU_REMOVE_ADS]
+	_backend.prior_receipts = receipts
+	var did: bool = svc.restore()
+	assert_bool(did).is_false()
+	# grant_remove_ads() may be invoked, but it no-ops (returns false) so nothing is
+	# newly granted and the restored count stays 0.
+	assert_int(_entitlement.new_grants).is_equal(0)
+
+
+# --- Fail-closed dependency gates -------------------------------------------
+
+func test_purchase_currency_with_null_wallet_fails_without_false_success() -> void:
+	# Review S4-002 #2: a currency SKU with no wallet wired must FAIL, never report a
+	# SUCCESS with no credit. Build the service directly to inject a null wallet.
+	var compliance = StubCompliance.new()
+	var entitlement = StubEntitlement.new()
+	var backend = IAP_BACKEND.MockIAPBackend.new()
+	backend.next_result = IAP_BACKEND.PurchaseResult.SUCCESS
+	var svc = auto_free(IAP_SCRIPT.new())
+	svc.configure(null, compliance, entitlement, backend, _catalog())
+	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_COINS_SMALL)
+	assert_bool(ok).is_false()
+	# Never transitioned past the dep gate.
+	assert_int(svc.current_state()).is_equal(IAP_SCRIPT.State.IDLE)
+
+
+func test_purchase_with_null_compliance_is_blocked_fail_closed() -> void:
+	# Review S4-002 #4: a missing compliance dep must fail CLOSED (block), not open.
+	var wallet = StubWallet.new()
+	var entitlement = StubEntitlement.new()
+	var backend = IAP_BACKEND.MockIAPBackend.new()
+	backend.next_result = IAP_BACKEND.PurchaseResult.SUCCESS
+	var svc = auto_free(IAP_SCRIPT.new())
+	svc.configure(wallet, null, entitlement, backend, _catalog())
+	var ok: bool = svc.purchase(IAP_SCRIPT.SKU_COINS_SMALL)
+	assert_bool(ok).is_false()
+	assert_int(wallet.grant_calls.size()).is_equal(0)
+	assert_int(entitlement.grant_calls).is_equal(0)
