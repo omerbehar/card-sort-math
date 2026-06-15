@@ -86,3 +86,11 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - S4-003 code-review: 7 findings, ALL fixed by orchestrator directly (agents kept getting cut off). #1 restore() return semantics (real bug), #2 real scene_runner integration test (CLAUDE.md mandate), #3 use production MockEntitlementBackend, #4 chokepoint grep test, #5+#7 typed _backend/configure, #6 assert write actually failed.
 - Suite 690 -> 692 green. S4-003 CLOSED (status: done, 2026-06-15).
 - Next ready: S4-002 (IAPService → calls EntitlementService.grant_remove_ads() on Remove-Ads SKU). Sequence: S4-002 → S4-004a → S4-004b → S4-007 (+ S4-005, S4-006).
+
+## Session Extract — /dev-story 2026-06-15 (S4-002)
+- Story: S4-002 IAPService — Integration(+Logic), implemented (status in-progress pending /code-review)
+- Decision: IAPService owns flow; credits via WalletService.earn(EarnSource.IAP), Remove-Ads via EntitlementService.grant_remove_ads(); gates on can_process_iap(); initiate_iap() got the consent backstop (defense-in-depth).
+- Files: autoloads/iap_service.gd (new), autoloads/iap_backend.gd (new), autoloads/wallet_service.gd (initiate_iap consent gate), project.godot (autoload). Tests: tests/unit/iap/iap_service_test.gd (12), tests/integration/iap/iap_grant_test.gd (3), + StubCompliance.can_process_iap() in both wallet tests + a consent-backstop regression test.
+- Agent cut off before writing ANY tests (empty dirs) AND before verifying; orchestrator wrote all IAP tests, fixed the StubCompliance regression, and verified. Suite 692 -> 708 green.
+- Catalog is a placeholder in iap_service.gd pending S4-006 (the real .tres). Note for code-review: header docstring line ~6 still says currency routes 'through initiate_iap' but code uses earn() — stale comment.
+- Next: /code-review then close S4-002. Remaining: S4-004a/b, S4-005, S4-006, S4-007.
