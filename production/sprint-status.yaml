@@ -14,18 +14,18 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"
+updated: "2026-06-15"  # S4-000 done (ADR-0012/0013/0014, m4-definition, m4-risks)
 
 stories:
   - id: "S4-000"
     name: "Kickoff docs: Hint→Picker ADR + m4-definition + m4-risks (S2-011) + consent ADR + service-seam ADR"
     file: "production/milestones/m4-definition.md"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "producer + technical-director"
     estimate_days: 1.25
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-001"
     name: "Consent/CMP model + SaveData v5→v6 migration (routed through ComplianceService)"
     file: "core/save_data.gd"

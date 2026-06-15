@@ -15,6 +15,10 @@ immutable once Accepted; to change a decision, write a new ADR that supersedes i
 | [0008](ADR-0008-economy-event-type.md) | `EconomyEvent` — separate `core/` type from board `GameEvent` | Accepted |
 | [0009](ADR-0009-time-provider-seam.md) | Injectable `TimeProvider` seam (deterministic reshuffle seeds + daily caps/streaks) | Accepted |
 | [0010](ADR-0010-extra-discard-slot-board-change.md) | Extra Discard Slot — mutable `_active_discard_slots` + `expand_discard()` | Accepted |
+| [0011](ADR-0011-arithmetic-operations-worlds.md) | Arithmetic operations & worlds | Accepted |
+| [0012](ADR-0012-hint-to-picker-booster.md) | Hint → Picker booster (no-scoring; protects the math core) | Accepted |
+| [0013](ADR-0013-consent-cmp-model.md) | Consent / CMP model — consent fields in `SaveData`, gated through `ComplianceService` (consent × age_band) | Accepted |
+| [0014](ADR-0014-monetization-service-seam.md) | Monetization service seam — thin autoloads behind interfaces with injectable mock backends | Accepted |
 
 Create new ADRs with `/architecture-decision`. Template:
 `.claude/docs/templates/architecture-decision-record.md`.
