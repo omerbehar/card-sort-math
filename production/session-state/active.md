@@ -68,3 +68,8 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Single-reader grep gate: PASS (consent fields read only by ComplianceService/SaveService).
 - Blockers: None.
 - Next: /code-review then /story-done for S4-001; then S4-003 (extends the SAME v6 migration with the entitlement field — M4-R4 collision rule).
+
+## Session Extract — story-done 2026-06-15 (S4-001)
+- S4-001 CLOSED (status: done, 2026-06-15). All 4 sprint-04 acceptance criteria + 6 ADR-0013 validation criteria covered by tests; 7 code-review findings fixed. Suite 663 green.
+- Note: no /story-done skill in this project — closed out manually (criteria check + status update).
+- Next ready: S4-003 (Remove-Ads EntitlementService) per the sequence S4-000→S4-001→S4-003→S4-002→S4-004a. S4-003 extends the SAME v6 migration with the entitlement field (now a one-line unconditional add after review fix #1).
