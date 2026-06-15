@@ -51,3 +51,5 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test: full suite 410/410 green, exit 0 (was 388; +22)
 - Notes: gameplay-programmer agent was truncated mid-test-writing — it finished the SaveData v3 + migration tests + ALL WalletService impl, but did NOT add the WalletService S3-005 behavior tests. I added the 14 missing AC tests (C01/C02/C03, CH01/CH02, CL01, GC01/GC02/GC03, EC-13/14, rollover, count cap, is_ad_earn_available). Impl verified correct. AC-CL03/M02 advisory gate passes (no direct age_band/CardData.result reads).
 - ALL 6 MUST-HAVES DONE. Should-Have: S3-006 (Extra Discard), S3-008 (earn triggers). Nice: S3-009/010/011.
+
+<!-- QA-PLAN: 2026-06-15 | System: sprint-4 (M4 Monetize service core) | Plan written: production/qa/qa-plan-sprint-4-2026-06-15.md -->
