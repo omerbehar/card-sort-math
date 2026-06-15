@@ -25,8 +25,8 @@ own scoped work (mock-first, mirroring how M3 deferred UI).
 ## Capacity
 
 - **Total days**: 10 (1 dev, 2 weeks) · **Buffer (20%)**: 2 · **Available**: 8
-- Committed (Must-Have) ≈ **7.5 days** (incl. ~1.25d of ADR/milestone/doc work that the
-  first-pass estimate omitted) → thin margin before the buffer, per the producer gate:
+- Committed (Must-Have) ≈ **7.75 days** (1.25 + 2.0 + 2.0 + 1.0 + 1.5; incl. the ADR/milestone/doc
+  work the first-pass estimate omitted) → ~0.25d margin before the buffer, per the producer gate:
   protect the consent model + service seams; AdService cross-gating and the real
   RemoteConfig subclass are the pull-in queue.
 
