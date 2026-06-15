@@ -14,7 +14,7 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-001 done (consent model + v6 migration, reviewed, 663 green)
+updated: "2026-06-15"  # S4-003 in-progress (Remove-Ads EntitlementService)
 
 stories:
   - id: "S4-000"
@@ -48,7 +48,7 @@ stories:
     name: "Remove-Ads EntitlementService (persisted on shared v6 migration, restore stub, gates AdService)"
     file: "autoloads/entitlement_service.gd"
     priority: must-have
-    status: ready-for-dev
+    status: in-progress
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
