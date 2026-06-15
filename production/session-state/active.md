@@ -81,3 +81,8 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Note: implementing agent got cut off twice mid-fix; orchestrator finished the test fixes (local _MockBackend extends-by-path test double + `=` instead of `:=` to dodge Variant-inference-as-error) and verified the suite directly.
 - Single v6 migration block confirmed (1 actual `if version == 5:`). M4-R4 respected.
 - Next: /code-review then story-done for S4-003. Then S4-002 (IAPService → calls EntitlementService.grant_remove_ads() on Remove-Ads SKU).
+
+## Session Extract — code-review + close 2026-06-15 (S4-003)
+- S4-003 code-review: 7 findings, ALL fixed by orchestrator directly (agents kept getting cut off). #1 restore() return semantics (real bug), #2 real scene_runner integration test (CLAUDE.md mandate), #3 use production MockEntitlementBackend, #4 chokepoint grep test, #5+#7 typed _backend/configure, #6 assert write actually failed.
+- Suite 690 -> 692 green. S4-003 CLOSED (status: done, 2026-06-15).
+- Next ready: S4-002 (IAPService → calls EntitlementService.grant_remove_ads() on Remove-Ads SKU). Sequence: S4-002 → S4-004a → S4-004b → S4-007 (+ S4-005, S4-006).
