@@ -28,8 +28,11 @@ class StubSave extends RefCounted:
 ## Implements only the is_restricted() surface the economy consults (AC-CL02/CL03).
 class StubCompliance extends RefCounted:
 	var restricted: bool = false
+	var iap_ok: bool = true  # can_process_iap() result (consent x age); true by default
 	func is_restricted() -> bool:
 		return restricted
+	func can_process_iap() -> bool:
+		return iap_ok
 
 
 var _events: Array = []
@@ -445,6 +448,20 @@ func test_unrestricted_iap_proceeds_without_block_event() -> void:
 	var w = _make(0, 100)                                # default permissive compliance
 	assert_bool(w.initiate_iap(3)).is_true()
 	assert_object(_event_of(EconomyEvent.Kind.IAP_BLOCKED)).is_null()
+
+
+func test_adult_without_iap_consent_blocked_by_consent_backstop() -> void:
+	# S4-002 / ADR-0013 §2: even an unrestricted (adult) user is blocked when IAP
+	# consent is absent — the economy-chokepoint consent backstop in initiate_iap().
+	var c := StubCompliance.new()
+	c.restricted = false   # adult / not age-restricted
+	c.iap_ok = false       # can_process_iap() false (no IAP consent)
+	var w = _make(0, 100, null, c)
+	assert_bool(w.initiate_iap(3)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(100)
+	var e := _event_of(EconomyEvent.Kind.IAP_BLOCKED)
+	assert_object(e).is_not_null()
+	assert_int(e.reason).is_equal(EconomyEnums.FailReason.COMPLIANCE_RESTRICTED)
 
 
 func test_convert_gems_to_coins_spends_gems_credits_coins() -> void:

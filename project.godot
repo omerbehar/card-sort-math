@@ -27,6 +27,7 @@ GameManager="*res://autoloads/game_manager.gd"
 LevelData="*res://autoloads/level_data.gd"
 EconomyConfigLoader="*res://autoloads/economy_config_loader.gd"
 WalletService="*res://autoloads/wallet_service.gd"
+IAPService="*res://autoloads/iap_service.gd"
 
 [display]
 
