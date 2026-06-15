@@ -60,3 +60,11 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Test written: None — Config/Data (Docs) story
 - Blockers: None. ADR-0013/0014 now unblock the code stories.
 - Next: S4-001 (consent/CMP model + SaveData v5->v6 migration) — /dev-story; governing ADR-0013 now exists
+
+## Session Extract — /dev-story 2026-06-15 (S4-001)
+- Story: S4-001 consent/CMP model + SaveData v5->v6 migration — Integration(+Logic), implemented (status in-progress pending /code-review + /story-done)
+- Files changed: core/save_data.gd (v6 + 5 consent fields), autoloads/compliance_service.gd (consent x age_band verdicts + can_process_iap, sole reader), autoloads/save_service.gd (capture/withdrawal setters), tests/test_compliance_service.gd + tests/test_save_data.gd (updated for stricter verdicts)
+- Tests written: tests/unit/save/consent_migration_test.gd (34), tests/integration/compliance/consent_gate_test.gd (26). Suite 596 -> 657 green.
+- Single-reader grep gate: PASS (consent fields read only by ComplianceService/SaveService).
+- Blockers: None.
+- Next: /code-review then /story-done for S4-001; then S4-003 (extends the SAME v6 migration with the entitlement field — M4-R4 collision rule).
