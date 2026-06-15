@@ -36,7 +36,7 @@ signal economy_event(event: EconomyEvent)
 ## refresh the per-booster count badge. Prototype buff inventory; see [member _booster_stock].
 signal booster_stock_changed(booster_type: int, new_count: int)
 
-const DEFAULT_CONFIG_PATH: String = "res://assets/data/economy_config.tres"
+const DEFAULT_CONFIG_PATH: String = "res://assets/data/economy_config.tres"  # fallback only; EconomyConfigLoader is the normal source (S3-011)
 
 # --- injected dependencies (resolve to autoloads in _ready if not configured) ---
 var _save = null                    # SaveService (has `data: SaveData` + save_game())
@@ -76,7 +76,11 @@ func _ready() -> void:
 	if _time == null:
 		_time = TimeProvider.new()
 	if _config == null:
-		_config = load(DEFAULT_CONFIG_PATH)
+		# S3-011: the loader resolves remote overrides over the local .tres; it
+		# degrades to a plain local load today (no remote backend until M4). Guard
+		# against a missing autoload (defensive) by falling back to a direct load.
+		var loader: Node = get_node_or_null("/root/EconomyConfigLoader")
+		_config = loader.get_config() if loader != null else load(DEFAULT_CONFIG_PATH)
 	_load_wallet()
 	_seed_booster_stock()
 	_connect_game_manager()

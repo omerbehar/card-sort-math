@@ -120,6 +120,24 @@ func test_defaults_extra_discard_cost_gems() -> void:
 	assert_int(cfg.extra_discard_cost_gems).is_equal(10)
 
 
+func test_defaults_milestone_coin_gifts_table() -> void:
+	# S3-010: the Rule 17 one-time milestone coin table.
+	var cfg := EconomyConfig.new()
+	assert_int(int(cfg.milestone_coin_gifts.get(5, -1))).is_equal(100)
+	assert_int(int(cfg.milestone_coin_gifts.get(200, -1))).is_equal(750)
+	assert_int(cfg.milestone_coin_gifts.size()).is_equal(6)
+
+
+func test_defaults_gem_gift_tutorial() -> void:
+	var cfg := EconomyConfig.new()
+	assert_int(cfg.gem_gift_tutorial).is_equal(15)
+
+
+func test_defaults_gem_gift_per_10_levels() -> void:
+	var cfg := EconomyConfig.new()
+	assert_int(cfg.gem_gift_per_10_levels).is_equal(5)
+
+
 # ---------------------------------------------------------------------------
 # .tres instance — integrity check
 # This load catches a malformed .tres (bad ext_resource path, missing script,

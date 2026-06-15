@@ -2,7 +2,7 @@
 
 > **Status**: Approved (post-/design-review revision accepted 2026-06-12) — ready for programmer handoff
 > **Author**: omer.behar + agents
-> **Last Updated**: 2026-06-12
+> **Last Updated**: 2026-06-13
 > **Implements Pillar**: Meta/Retention — currencies, boosters, spend sinks that power player progression without trivialising the math
 > **Creative Director Review (CD-GDD-ALIGN)**: CONCERNS (accepted) 2026-06-12 — cleared for programmer handoff. 4 accepted concerns: streak reset loss-aversion risk; "double reward" ad framing (keep quiet/dismissible in UX); Hint routing-info leak (acknowledged as intentional, note added); Reshuffle-into-stuck feels unfair.
 > **Independent /design-review (2026-06-12)**: NEEDS REVISION → revised. Resolutions: efficiency bonus now mechanized (`CLEAN_CLEAR_BONUS`); streak reset softened to a day-3 floor; Extra Discard Slot reframed purchase-ahead-only (no rescue); Reshuffle now guarantees a routable card; canonical `EconomyEvent` type introduced; `ComplianceService` method names corrected to `is_restricted()`; Undo replay approach specified against the real `BoardModel`; Hint ceiling corrected 585→405; streak average corrected 37→39; rollback uses a pre-spend snapshot; `DAILY_COINS_CAP` scope declared (ad-earn only).

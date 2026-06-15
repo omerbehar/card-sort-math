@@ -84,6 +84,34 @@ extends Resource
 @export var daily_gem_convert_cap: int = 50
 
 # ---------------------------------------------------------------------------
+# Milestone & gem gifts (Rules 17–18)
+# ---------------------------------------------------------------------------
+
+## One-time coin gift awarded the first time each level milestone is reached
+## (Rule 17, "Milestone coin gift table"). Keyed by level → coin gift. A level
+## not present in the table awards no milestone gift. The "fire exactly once"
+## guarantee (AC-EF05) is the caller's responsibility (persisted in SaveData);
+## [EconomyEarn.milestone_coin_gift] only reports the gift amount for a level.
+## Drives [method EconomyEarn.milestone_coin_gift]. Defaults match the GDD table.
+@export var milestone_coin_gifts: Dictionary = {
+	5: 100,
+	10: 150,
+	25: 200,
+	50: 300,
+	100: 500,
+	200: 750,
+}
+
+## One-time gem gift for completing the first-time tutorial (Rule 18, gem gift
+## table). Drives [method EconomyEarn.tutorial_gem_gift]. Safe range: 5–30.
+@export var gem_gift_tutorial: int = 15
+
+## Recurring gem gift awarded each time the player clears a multiple of 10
+## levels (Rule 18, "Every 10 levels cleared: 5 gems"). Drives
+## [method EconomyEarn.level_clear_gem_gift]. Safe range: 3–10.
+@export var gem_gift_per_10_levels: int = 5
+
+# ---------------------------------------------------------------------------
 # Booster costs
 # ---------------------------------------------------------------------------
 

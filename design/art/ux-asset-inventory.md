@@ -248,7 +248,7 @@ Per-level 1–3 star efficiency rating. Shown on the win result screen (placehol
 
 ---
 
-### System: Undo / Hint (Picker) / Reshuffle — already covered in P0 HUD booster tray
+### System: Picker / Reshuffle / Extra Discard Slot — already covered in P0 HUD booster tray
 
 The booster icons are P0 assets (see §2.2). No additional Phase 1 art unless world themes introduce
 themed booster tile frames.
