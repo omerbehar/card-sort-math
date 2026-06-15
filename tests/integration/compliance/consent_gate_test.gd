@@ -14,6 +14,20 @@ extends GdUnitTestSuite
 const COMPLIANCE_SCRIPT := preload("res://autoloads/compliance_service.gd")
 const SAVE_SCRIPT := preload("res://autoloads/save_service.gd")
 
+# Temp save paths used by the file-I/O tests; cleaned unconditionally in after_test().
+var _temp_save_paths: Array[String] = []
+
+
+func after_test() -> void:
+	# Fix #6: unconditional teardown so a failing assert never leaks user:// files.
+	for path: String in _temp_save_paths:
+		if FileAccess.file_exists(path):
+			DirAccess.open("user://").remove(path.get_file())
+		var tmp: String = path + ".tmp"
+		if FileAccess.file_exists(tmp):
+			DirAccess.open("user://").remove(tmp.get_file())
+	_temp_save_paths.clear()
+
 
 ## Builds a ComplianceService backed by an in-memory SaveService with the given
 ## age band and explicit per-capability consent flags.
@@ -200,6 +214,59 @@ func test_grant_after_withdrawal_restores_permissive_verdict() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Fix #3 — Null-_save guard: unconfigured ComplianceService returns restrictive verdicts
+# A freshly-new()'d ComplianceService with _save unset must never crash and must
+# return false (denied / restricted) for every can_* verdict (fail-closed).
+# ---------------------------------------------------------------------------
+
+func test_unconfigured_compliance_service_can_show_targeted_ads_returns_false() -> void:
+	var svc = auto_free(COMPLIANCE_SCRIPT.new())
+	# _save is null — no configure() call
+	assert_bool(svc.can_show_targeted_ads()).is_false()
+
+
+func test_unconfigured_compliance_service_can_collect_personal_data_returns_false() -> void:
+	var svc = auto_free(COMPLIANCE_SCRIPT.new())
+	assert_bool(svc.can_collect_personal_data()).is_false()
+
+
+func test_unconfigured_compliance_service_can_process_iap_returns_false() -> void:
+	var svc = auto_free(COMPLIANCE_SCRIPT.new())
+	assert_bool(svc.can_process_iap()).is_false()
+
+
+# ---------------------------------------------------------------------------
+# Fix #4 — End-to-end withdrawal: calling the real SaveService.withdraw_consent()
+# must flip the corresponding ComplianceService verdict on the next call.
+# This proves ADR-0013 Criterion 5 through the real method, not a hand-mirrored
+# field mutation.
+# ---------------------------------------------------------------------------
+
+func test_withdraw_consent_via_save_service_flips_compliance_verdict() -> void:
+	# Arrange: adult with all consents granted, wired into a ComplianceService.
+	var save = auto_free(SAVE_SCRIPT.new())
+	var path: String = "user://test_consent_e2e_withdrawal.json"
+	_temp_save_paths.append(path)
+	save.configure(path)
+	save.data.age_band = SaveData.AgeBand.ADULT
+	save.capture_consent(true, true, true)
+	var svc = auto_free(COMPLIANCE_SCRIPT.new())
+	svc.configure(save)
+	# Pre-condition: all permissive.
+	assert_bool(svc.can_show_targeted_ads()).is_true()
+	assert_bool(svc.can_collect_personal_data()).is_true()
+	assert_bool(svc.can_process_iap()).is_true()
+	# Act: withdraw each consent through the real SaveService API.
+	save.withdraw_consent("personalized_ads")
+	save.withdraw_consent("analytics")
+	save.withdraw_consent("iap")
+	# Assert: every verdict flips to restricted on the next call — no restart.
+	assert_bool(svc.can_show_targeted_ads()).is_false()
+	assert_bool(svc.can_collect_personal_data()).is_false()
+	assert_bool(svc.can_process_iap()).is_false()
+
+
+# ---------------------------------------------------------------------------
 # SaveService consent setters (capture_consent / withdraw_consent)
 # Integration: verify the setters persist and verdicts reflect them.
 # ---------------------------------------------------------------------------
@@ -229,57 +296,45 @@ func test_capture_consent_sets_all_flags_and_captured_marker() -> void:
 func test_save_service_capture_consent_method_sets_captured_true() -> void:
 	# Verify SaveService.capture_consent() sets the captured marker.
 	var save = auto_free(SAVE_SCRIPT.new())
-	save.configure("user://test_consent_gate_capture.json")
+	var path: String = "user://test_consent_gate_capture.json"
+	_temp_save_paths.append(path)
+	save.configure(path)
 	save.data.age_band = SaveData.AgeBand.ADULT
 	save.capture_consent(true, true, true)
 	assert_bool(save.data.consent_personalized_ads).is_true()
 	assert_bool(save.data.consent_analytics).is_true()
 	assert_bool(save.data.consent_iap).is_true()
 	assert_bool(save.data.consent_captured).is_true()
-	# Cleanup
-	if FileAccess.file_exists("user://test_consent_gate_capture.json"):
-		DirAccess.open("user://").remove("test_consent_gate_capture.json")
-	if FileAccess.file_exists("user://test_consent_gate_capture.json.tmp"):
-		DirAccess.open("user://").remove("test_consent_gate_capture.json.tmp")
 
 
 func test_save_service_withdraw_consent_personalized_ads_sets_denied() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
-	save.configure("user://test_consent_gate_withdraw.json")
+	var path: String = "user://test_consent_gate_withdraw.json"
+	_temp_save_paths.append(path)
+	save.configure(path)
 	save.data.age_band = SaveData.AgeBand.ADULT
 	save.data.consent_personalized_ads = true
 	save.withdraw_consent("personalized_ads")
 	assert_bool(save.data.consent_personalized_ads).is_false()
-	# Cleanup
-	if FileAccess.file_exists("user://test_consent_gate_withdraw.json"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw.json")
-	if FileAccess.file_exists("user://test_consent_gate_withdraw.json.tmp"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw.json.tmp")
 
 
 func test_save_service_withdraw_consent_analytics_sets_denied() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
-	save.configure("user://test_consent_gate_withdraw_analytics.json")
+	var path: String = "user://test_consent_gate_withdraw_analytics.json"
+	_temp_save_paths.append(path)
+	save.configure(path)
 	save.data.age_band = SaveData.AgeBand.ADULT
 	save.data.consent_analytics = true
 	save.withdraw_consent("analytics")
 	assert_bool(save.data.consent_analytics).is_false()
-	# Cleanup
-	if FileAccess.file_exists("user://test_consent_gate_withdraw_analytics.json"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw_analytics.json")
-	if FileAccess.file_exists("user://test_consent_gate_withdraw_analytics.json.tmp"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw_analytics.json.tmp")
 
 
 func test_save_service_withdraw_consent_iap_sets_denied() -> void:
 	var save = auto_free(SAVE_SCRIPT.new())
-	save.configure("user://test_consent_gate_withdraw_iap.json")
+	var path: String = "user://test_consent_gate_withdraw_iap.json"
+	_temp_save_paths.append(path)
+	save.configure(path)
 	save.data.age_band = SaveData.AgeBand.ADULT
 	save.data.consent_iap = true
 	save.withdraw_consent("iap")
 	assert_bool(save.data.consent_iap).is_false()
-	# Cleanup
-	if FileAccess.file_exists("user://test_consent_gate_withdraw_iap.json"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw_iap.json")
-	if FileAccess.file_exists("user://test_consent_gate_withdraw_iap.json.tmp"):
-		DirAccess.open("user://").remove("test_consent_gate_withdraw_iap.json.tmp")

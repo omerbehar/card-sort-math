@@ -104,10 +104,11 @@ var consent_iap: bool = false
 ## [member consent_personalized_ads]. Added in schema v6.
 var consent_captured: bool = false
 
-## Monotonically increasing consent-version stamp. A policy change bumps this constant
-## (in [ComplianceService] or a future CMP config); when the persisted stamp is lower than
-## the current value, re-presentation of the consent flow is triggered. Defaults to
-## [code]0[/code]. Added in schema v6.
+## Monotonically increasing consent-version stamp persisted to support a future consent-version
+## re-presentation check (comparator deferred to the native-SDK sprint, per ADR-0013 §3).
+## A policy change will bump a CURRENT_CONSENT_VERSION constant; when the persisted stamp is
+## lower than that value, re-presentation of the consent flow will be triggered. The comparator
+## is NOT yet implemented. Defaults to [code]0[/code]. Added in schema v6.
 var consent_version: int = 0
 
 
@@ -214,20 +215,18 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 		version = 5
 	# v5 → v6: consent fields (ADR-0013 §1) — protected fields seeded to conservative
 	# (denied / not-captured) defaults. S4-003 extends THIS SAME STEP with the Remove-Ads
-	# entitlement field — no second `if version == 5:` block (M4-R4).
-	# IDEMPOTENT: each field is only set when it is absent from the dict, so re-running this
-	# step on an already-v6 dict never overwrites a granted consent back to denied.
+	# entitlement field as one unconditional line — no second `if version == 5:` block (M4-R4).
+	# IDEMPOTENT: idempotency is provided by the VERSION GATE — a v6 dict arrives with
+	# from_version == 6 and skips this block entirely; re-running _migrate on a v6 dict
+	# executes no step. The unconditional assignments here (matching the v1–v5 ladder style)
+	# are strictly safer: a tampered/forward-written version-5 dict carrying a granted consent
+	# is conservatively re-seeded to denied, and denying is never a compliance leak.
 	if version == 5:
-		if not out.has("consent_personalized_ads"):
-			out["consent_personalized_ads"] = false
-		if not out.has("consent_analytics"):
-			out["consent_analytics"] = false
-		if not out.has("consent_iap"):
-			out["consent_iap"] = false
-		if not out.has("consent_captured"):
-			out["consent_captured"] = false
-		if not out.has("consent_version"):
-			out["consent_version"] = 0
+		out["consent_personalized_ads"] = false
+		out["consent_analytics"] = false
+		out["consent_iap"] = false
+		out["consent_captured"] = false
+		out["consent_version"] = 0
 		version = 6
 	return out
 

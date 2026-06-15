@@ -47,7 +47,10 @@ func configure(save: Object) -> void:
 
 
 # The resolved audience band. Internal — consumers call the can_* / is_* helpers.
+# Returns UNKNOWN (restrictive) when _save has not been configured.
 func _band() -> SaveData.AgeBand:
+	if _save == null:
+		return SaveData.AgeBand.UNKNOWN
 	return _save.data.age_band
 
 
@@ -63,21 +66,32 @@ func is_restricted() -> bool:
 
 # --- Consent helpers (ADR-0013 §2) ---
 # These are the SOLE readers of the consent fields in SaveData.
-# Returns false (denied) if the save has not been configured, guarding null-_save.
+# Each helper returns false (denied) when _save is null — fail-closed guard for
+# a service queried before configure() is called (e.g. in tests or early boot).
 
 ## True only when personalized-ads consent has been explicitly granted.
-## Returns false (denied) on any absent or non-bool value (conservative default).
+## Reads the live field from SaveData; conservative coercion (null/non-bool → denied)
+## is performed by SaveData.from_dict, not by this helper.
+## Returns false (denied) when _save has not been configured.
 func _consent_personalized_ads() -> bool:
+	if _save == null:
+		return false
 	return _save.data.consent_personalized_ads
 
 
 ## True only when analytics consent has been explicitly granted.
+## Returns false (denied) when _save has not been configured.
 func _consent_analytics() -> bool:
+	if _save == null:
+		return false
 	return _save.data.consent_analytics
 
 
 ## True only when IAP data-processing consent has been explicitly granted.
+## Returns false (denied) when _save has not been configured.
 func _consent_iap() -> bool:
+	if _save == null:
+		return false
 	return _save.data.consent_iap
 
 

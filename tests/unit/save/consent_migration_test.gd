@@ -347,6 +347,90 @@ func test_defaults_consent_fields_are_conservative() -> void:
 
 
 # JSON string round-trip (booleans may come back as int 1/0 from some parsers)
+# ---------------------------------------------------------------------------
+# Fix #2 — Explicit _migrate step idempotency test (ADR Criterion 2)
+# Proves the VERSION GATE (not a has()-guard) provides idempotency:
+# _migrate on a v6 dict executes no block and preserves any granted consent.
+# ---------------------------------------------------------------------------
+
+func test_migrate_on_v6_dict_preserves_granted_consent() -> void:
+	# Step 1: migrate a v5 dict → v6 dict via the static function.
+	var v5_dict: Dictionary = {
+		"schema_version": 5,
+		"current_level": 2,
+		"wallet_coins": 50,
+		"boosters_seeded": true,
+	}
+	var v6_dict: Dictionary = SaveData._migrate(v5_dict, 5)
+	assert_int(v6_dict.get("schema_version", -1)).is_equal(5)  # _migrate does not bump schema_version key
+
+	# Step 2: simulate the user granting personalized ads consent in the v6 result.
+	v6_dict["consent_personalized_ads"] = true
+	v6_dict["consent_captured"] = true
+
+	# Step 3: run _migrate on the v6 dict with from_version = 6 — must be a no-op.
+	var re_migrated: Dictionary = SaveData._migrate(v6_dict, 6)
+
+	# Assert: the granted consent and captured marker are unchanged (version gate preserved them).
+	assert_bool(re_migrated.get("consent_personalized_ads", false)).is_true()
+	assert_bool(re_migrated.get("consent_captured", false)).is_true()
+	# Denied fields are also unchanged.
+	assert_bool(re_migrated.get("consent_analytics", true)).is_false()
+	assert_bool(re_migrated.get("consent_iap", true)).is_false()
+
+
+# ---------------------------------------------------------------------------
+# Fix #5 — Single-reader invariant: consent fields appear only in the
+# permitted files (ADR-0013 Criterion 6 / Implementation Guidelines).
+# Scans autoloads/ and core/ .gd files and asserts the consent field
+# identifiers are confined to the chokepoint files.
+# ---------------------------------------------------------------------------
+
+func test_consent_fields_read_only_by_permitted_files() -> void:
+	# Files permitted to reference consent field names (read or write).
+	var permitted: Array[String] = [
+		"res://core/save_data.gd",
+		"res://autoloads/save_service.gd",
+		"res://autoloads/compliance_service.gd",
+	]
+	var consent_identifiers: Array[String] = [
+		"consent_personalized_ads",
+		"consent_analytics",
+		"consent_iap",
+	]
+	# Directories to scan (autoloads/ and core/).
+	var scan_dirs: Array[String] = ["res://autoloads", "res://core"]
+	var violations: Array[String] = []
+
+	for dir_path: String in scan_dirs:
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var fname: String = dir.get_next()
+		while fname != "":
+			if not dir.current_is_dir() and fname.ends_with(".gd"):
+				var full_path: String = dir_path + "/" + fname
+				# Skip permitted files.
+				var is_permitted: bool = false
+				for p: String in permitted:
+					if full_path == p:
+						is_permitted = true
+						break
+				if not is_permitted:
+					var file := FileAccess.open(full_path, FileAccess.READ)
+					if file != null:
+						var content: String = file.get_as_text()
+						file.close()
+						for ident: String in consent_identifiers:
+							if content.contains(ident):
+								violations.append(full_path + " references " + ident)
+			fname = dir.get_next()
+		dir.list_dir_end()
+
+	assert_int(violations.size()).is_equal(0)
+
+
 func test_json_string_round_trip_preserves_granted_consent() -> void:
 	var original := SaveData.new()
 	original.consent_personalized_ads = true
