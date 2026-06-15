@@ -16,9 +16,10 @@ extends Node
 ## entirely while the Remove-Ads entitlement is owned (S4-003), and never presented during
 ## active arithmetic (GAME_PLAN §9 "no ad mid-puzzle").
 ##
-## [b]Scope (S4-004a):[/b] the audience × consent personalized-vs-contextual cross-gating
-## matrix is S4-004b; this story wires the entitlement suppression + frequency cap + rewarded
-## earn-in. All dependencies are injected via [method configure] (DI seam, ADR-0014 §1).
+## [b]Triple gate (S4-004a + S4-004b):[/b] interstitials are gated by Remove-Ads entitlement
+## (suppress, S4-003) + the frequency cap, and targeted by the audience × consent verdict —
+## personalized only for an ADULT with personalized-ads consent, contextual for everyone else
+## (ADR-0013 / ADR-0005). All dependencies are injected via [method configure] (DI, ADR-0014 §1).
 ##
 ## Source: ADR-0014 §1/§"AdService", GAME_PLAN §9, design/gdd/deck-economy.md Rule 15/Formula 8.
 
@@ -44,13 +45,20 @@ enum InterstitialOutcome {
 	NO_FILL,                ## All gates passed but the backend reported no ad available.
 }
 
+## How an ad request may be targeted (S4-004b triple gate, ADR-0013 consent × ADR-0005 audience).
+enum AdType {
+	PERSONALIZED, ## Behavioural targeting — permitted only for ADULT + personalized-ads consent.
+	CONTEXTUAL,   ## Non-personalized — the privacy-safe default for everyone else.
+}
+
 
 # ---------------------------------------------------------------------------
 # Signals (the deferred monetization UI subscribes — model/view seam, ADR-0001)
 # ---------------------------------------------------------------------------
 
 ## Emitted when an interstitial is actually presented.
-signal interstitial_shown()
+## [param ad_type]: the [enum AdType] requested (personalized vs contextual).
+signal interstitial_shown(ad_type: int)
 
 ## Emitted when a rewarded ad is completed and the reward credited.
 ## [param coins]: coins actually credited (after WalletService's compliance + daily caps).
@@ -62,6 +70,7 @@ signal rewarded_earned(coins: int)
 # ---------------------------------------------------------------------------
 
 var _wallet = null        # WalletService: is_ad_earn_available() + _earn_rewarded_ad(amount)
+var _compliance = null    # ComplianceService: can_show_targeted_ads() (personalized vs contextual)
 var _entitlement = null   # EntitlementService: should_suppress_interstitials() + is_rewarded_available()
 var _time: TimeProvider = null
 var _config: EconomyConfig = null
@@ -85,6 +94,8 @@ var _puzzle_active: bool = false
 func _ready() -> void:
 	if _wallet == null:
 		_wallet = WalletService
+	if _compliance == null:
+		_compliance = ComplianceService
 	if _entitlement == null:
 		_entitlement = EntitlementService
 	if _time == null:
@@ -98,19 +109,22 @@ func _ready() -> void:
 
 ## Injects all dependencies. Intended for tests; call before any other method.
 ## [param wallet]: WalletService-compatible ([method is_ad_earn_available] +
-## [method _earn_rewarded_ad]). [param entitlement]: EntitlementService-compatible
+## [method _earn_rewarded_ad]). [param compliance]: ComplianceService-compatible
+## ([method can_show_targeted_ads]). [param entitlement]: EntitlementService-compatible
 ## ([method should_suppress_interstitials] + [method is_rewarded_available]).
 ## [param time]: a [TimeProvider] (inject a [FixedTimeProvider] in tests).
 ## [param config]: an [EconomyConfig] supplying the ad tuning knobs.
 ## [param backend]: an [AdBackend]-compatible presenter.
 func configure(
 		wallet: Object,
+		compliance: Object,
 		entitlement: Object,
 		time: TimeProvider,
 		config: EconomyConfig,
 		backend: AdBackendClass,
 ) -> void:
 	_wallet = wallet
+	_compliance = compliance
 	_entitlement = entitlement
 	_time = time
 	_config = config
@@ -138,14 +152,17 @@ func notify_level_completed() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Interstitial (frequency-capped, entitlement-suppressed, no mid-puzzle)
+# Interstitial (triple gate: compliance × consent × entitlement, + frequency cap)
 # ---------------------------------------------------------------------------
 
 ## Considers presenting an interstitial at a between-levels boundary and returns the
 ## [enum InterstitialOutcome]. Gates, in order: puzzle-active → entitlement suppression →
-## frequency cap (every-N-levels AND min-seconds). On success the backend is invoked; a
-## [constant InterstitialOutcome.NO_FILL] result leaves the counters untouched so the next
-## boundary retries. Emits [signal interstitial_shown] only on an actual presentation.
+## frequency cap (every-N-levels AND min-seconds). When all pass, the request is targeted
+## per [method resolve_ad_type] (the audience × consent half of the triple gate, S4-004b):
+## [constant AdType.PERSONALIZED] only for an ADULT with personalized-ads consent, else
+## [constant AdType.CONTEXTUAL]. A [constant InterstitialOutcome.NO_FILL] result leaves the
+## counters untouched so the next boundary retries. Emits [signal interstitial_shown] with
+## the requested [enum AdType] only on an actual presentation.
 func maybe_show_interstitial() -> int:
 	if _puzzle_active:
 		return InterstitialOutcome.SUPPRESSED_PUZZLE
@@ -154,13 +171,25 @@ func maybe_show_interstitial() -> int:
 	if not _frequency_allows():
 		return InterstitialOutcome.SUPPRESSED_FREQUENCY
 
-	if _backend.show_interstitial() != AdBackendClass.InterstitialResult.SHOWN:
+	var ad_type: int = resolve_ad_type()
+	if _backend.show_interstitial(ad_type) != AdBackendClass.InterstitialResult.SHOWN:
 		return InterstitialOutcome.NO_FILL  # no-fill: do not reset the cap, retry next boundary
 
 	_last_interstitial_unix = _time.unix_seconds()
 	_levels_since_interstitial = 0
-	interstitial_shown.emit()
+	interstitial_shown.emit(ad_type)
 	return InterstitialOutcome.SHOWN
+
+
+## Resolves how an ad request may be targeted (the audience × consent half of the triple
+## gate, S4-004b). Returns [constant AdType.PERSONALIZED] only when
+## [method ComplianceService.can_show_targeted_ads] is true (ADULT + personalized-ads
+## consent — ADR-0013 §2 / ADR-0005); otherwise [constant AdType.CONTEXTUAL]. Fails safe to
+## CONTEXTUAL when no compliance service is wired (privacy-safe default).
+func resolve_ad_type() -> int:
+	if _compliance != null and _compliance.can_show_targeted_ads():
+		return AdType.PERSONALIZED
+	return AdType.CONTEXTUAL
 
 
 # True when BOTH the every-N-levels and the min-seconds windows are satisfied.

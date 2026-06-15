@@ -52,9 +52,9 @@ func _build_stack(path: String):
 
 	var backend = AD_BACKEND.MockAdBackend.new()
 	var ad = auto_free(AD_SCRIPT.new())
-	ad.configure(wallet, entitlement, time, config, backend)
-	return {"save": save, "wallet": wallet, "entitlement": entitlement, "ad": ad,
-			"backend": backend, "config": config}
+	ad.configure(wallet, compliance, entitlement, time, config, backend)
+	return {"save": save, "wallet": wallet, "compliance": compliance,
+			"entitlement": entitlement, "ad": ad, "backend": backend, "config": config}
 
 
 # ---------------------------------------------------------------------------

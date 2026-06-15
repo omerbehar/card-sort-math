@@ -31,19 +31,28 @@ class StubEntitlement extends RefCounted:
 		return rewarded_ok
 
 
+class StubCompliance extends RefCounted:
+	var targeted_ok: bool = true  # can_show_targeted_ads() — ADULT + personalized consent
+	func can_show_targeted_ads() -> bool:
+		return targeted_ok
+
+
 # --- Fixture members (set by _make) -----------------------------------------
 
 var _wallet: StubWallet
+var _compliance: StubCompliance
 var _entitlement: StubEntitlement
 var _time: FixedTimeProvider
 var _config: EconomyConfig
 var _backend  # AdBackend.MockAdBackend (untyped: inner-class access yields Variant)
 var _shown_count: int = 0
+var _shown_types: Array = []
 var _rewarded_coins: Array = []
 
 
-func _on_interstitial_shown() -> void:
+func _on_interstitial_shown(ad_type: int) -> void:
 	_shown_count += 1
+	_shown_types.append(ad_type)
 
 
 func _on_rewarded_earned(coins: int) -> void:
@@ -52,6 +61,7 @@ func _on_rewarded_earned(coins: int) -> void:
 
 func _make(every_n: int = 2, min_seconds: int = 60):
 	_wallet = StubWallet.new()
+	_compliance = StubCompliance.new()
 	_entitlement = StubEntitlement.new()
 	_time = FixedTimeProvider.new()
 	_time.now_seconds = 1000
@@ -61,9 +71,10 @@ func _make(every_n: int = 2, min_seconds: int = 60):
 	_config.coins_rewarded_ad = 60
 	_backend = AD_BACKEND.MockAdBackend.new()
 	_shown_count = 0
+	_shown_types = []
 	_rewarded_coins = []
 	var svc = auto_free(AD_SCRIPT.new())
-	svc.configure(_wallet, _entitlement, _time, _config, _backend)
+	svc.configure(_wallet, _compliance, _entitlement, _time, _config, _backend)
 	return svc
 
 
@@ -212,3 +223,35 @@ func test_is_rewarded_available_reflects_wallet_and_entitlement() -> void:
 	_wallet.ad_available = true
 	_entitlement.rewarded_ok = false
 	assert_bool(svc.is_rewarded_available()).is_false()
+
+
+# ---------------------------------------------------------------------------
+# Ad-type resolution (audience × consent half of the triple gate — S4-004b)
+# ---------------------------------------------------------------------------
+
+func test_interstitial_personalized_when_targeted_ads_allowed() -> void:
+	var svc = _make(2, 60)
+	svc.interstitial_shown.connect(_on_interstitial_shown)
+	_compliance.targeted_ok = true  # ADULT + personalized consent
+	_complete_levels(svc, 2)
+	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(_backend.last_ad_type).is_equal(AD_SCRIPT.AdType.PERSONALIZED)
+	assert_array(_shown_types).is_equal([AD_SCRIPT.AdType.PERSONALIZED])
+
+
+func test_interstitial_contextual_when_targeted_ads_denied() -> void:
+	var svc = _make(2, 60)
+	svc.interstitial_shown.connect(_on_interstitial_shown)
+	_compliance.targeted_ok = false  # non-adult OR personalized consent denied
+	_complete_levels(svc, 2)
+	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(_backend.last_ad_type).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)
+	assert_array(_shown_types).is_equal([AD_SCRIPT.AdType.CONTEXTUAL])
+
+
+func test_resolve_ad_type_reflects_compliance_verdict() -> void:
+	var svc = _make()
+	_compliance.targeted_ok = true
+	assert_int(svc.resolve_ad_type()).is_equal(AD_SCRIPT.AdType.PERSONALIZED)
+	_compliance.targeted_ok = false
+	assert_int(svc.resolve_ad_type()).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)

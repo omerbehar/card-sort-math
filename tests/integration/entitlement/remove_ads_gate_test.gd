@@ -38,9 +38,13 @@ func after_test() -> void:
 
 
 ## Builds an in-memory [EntitlementService] wired to a fresh [SaveService] with the given
-## owned state and a configurable mock backend.
+## owned state and a configurable mock backend. The save is pointed at a unique temp path so
+## grant/restore persistence never leaks into the real user://save.json (test hygiene).
 func _make_svc(owned: bool, receipt_present: bool = false):
+	var path: String = "user://test_entitlement_gate_%d.json" % _temp_save_paths.size()
+	_temp_save_paths.append(path)
 	var save = auto_free(SAVE_SCRIPT.new())
+	save.configure(path)
 	save.data.remove_ads_owned = owned
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = receipt_present

@@ -170,8 +170,32 @@ func test_json_string_round_trip_remove_ads_owned_true() -> void:
 # EntitlementService.grant_remove_ads() — idempotent
 # ---------------------------------------------------------------------------
 
-func test_grant_remove_ads_sets_owned_true() -> void:
+# Temp save paths for the persisting (grant/restore) tests; cleaned in after_test so
+# entitlement persistence never leaks into the real user://save.json (test hygiene).
+var _temp_save_paths: Array[String] = []
+
+
+func after_test() -> void:
+	for path: String in _temp_save_paths:
+		if FileAccess.file_exists(path):
+			DirAccess.open("user://").remove(path.get_file())
+		var tmp: String = path + ".tmp"
+		if FileAccess.file_exists(tmp):
+			DirAccess.open("user://").remove(tmp.get_file())
+	_temp_save_paths.clear()
+
+
+# A SaveService pointed at a unique temp path so save_game() never touches the real save.
+func _temp_save():
+	var path: String = "user://test_entitlement_unit_%d.json" % _temp_save_paths.size()
+	_temp_save_paths.append(path)
 	var save = auto_free(SAVE_SCRIPT.new())
+	save.configure(path)
+	return save
+
+
+func test_grant_remove_ads_sets_owned_true() -> void:
+	var save = _temp_save()
 	save.data.remove_ads_owned = false
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
@@ -184,7 +208,7 @@ func test_grant_remove_ads_sets_owned_true() -> void:
 
 func test_grant_remove_ads_idempotent_second_call_stays_owned() -> void:
 	# Calling grant_remove_ads() when already owned must not error or emit again.
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	svc.configure(save, backend)
@@ -204,7 +228,7 @@ func _capture_remove_ads_changed(owned: bool) -> void:
 func test_grant_remove_ads_emits_signal_exactly_once() -> void:
 	# The remove_ads_changed signal must fire on the first grant and NOT again on a
 	# redundant (idempotent) second call.
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	svc.configure(save, backend)
@@ -226,7 +250,7 @@ func test_grant_remove_ads_emits_signal_exactly_once() -> void:
 # ---------------------------------------------------------------------------
 
 func test_restore_with_receipt_present_grants_entitlement() -> void:
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = true
@@ -239,7 +263,7 @@ func test_restore_with_receipt_present_grants_entitlement() -> void:
 
 
 func test_restore_without_receipt_does_not_grant() -> void:
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = false
@@ -254,7 +278,7 @@ func test_restore_without_receipt_does_not_grant() -> void:
 func test_restore_after_grant_is_idempotent_returns_true() -> void:
 	# Grant first, then restore — owned stays owned; restore returns true because
 	# after the call the entitlement is (still) owned.
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	var backend = BACKEND_SCRIPT.MockEntitlementBackend.new()
 	backend.receipt_present = true
@@ -273,7 +297,7 @@ func test_restore_after_grant_is_idempotent_returns_true() -> void:
 # ---------------------------------------------------------------------------
 
 func test_not_owned_interstitials_not_suppressed() -> void:
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	save.data.remove_ads_owned = false
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	svc.configure(save, BACKEND_SCRIPT.MockEntitlementBackend.new())
@@ -281,7 +305,7 @@ func test_not_owned_interstitials_not_suppressed() -> void:
 
 
 func test_owned_interstitials_suppressed() -> void:
-	var save = auto_free(SAVE_SCRIPT.new())
+	var save = _temp_save()
 	save.data.remove_ads_owned = true
 	var svc = auto_free(ENTITLEMENT_SCRIPT.new())
 	svc.configure(save, BACKEND_SCRIPT.MockEntitlementBackend.new())
