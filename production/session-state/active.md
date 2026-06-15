@@ -73,3 +73,11 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - S4-001 CLOSED (status: done, 2026-06-15). All 4 sprint-04 acceptance criteria + 6 ADR-0013 validation criteria covered by tests; 7 code-review findings fixed. Suite 663 green.
 - Note: no /story-done skill in this project — closed out manually (criteria check + status update).
 - Next ready: S4-003 (Remove-Ads EntitlementService) per the sequence S4-000→S4-001→S4-003→S4-002→S4-004a. S4-003 extends the SAME v6 migration with the entitlement field (now a one-line unconditional add after review fix #1).
+
+## Session Extract — /dev-story 2026-06-15 (S4-003)
+- Story: S4-003 Remove-Ads EntitlementService — Integration(+Logic), implemented (status in-progress pending /code-review)
+- Files: autoloads/entitlement_service.gd (new), autoloads/entitlement_backend.gd (new, mock receipt seam), core/save_data.gd (remove_ads_owned on shared v6 step), project.godot (autoload registered)
+- Tests: tests/unit/entitlement/entitlement_service_test.gd, tests/integration/entitlement/remove_ads_gate_test.gd. Suite 663 -> 690 green.
+- Note: implementing agent got cut off twice mid-fix; orchestrator finished the test fixes (local _MockBackend extends-by-path test double + `=` instead of `:=` to dodge Variant-inference-as-error) and verified the suite directly.
+- Single v6 migration block confirmed (1 actual `if version == 5:`). M4-R4 respected.
+- Next: /code-review then story-done for S4-003. Then S4-002 (IAPService → calls EntitlementService.grant_remove_ads() on Remove-Ads SKU).
