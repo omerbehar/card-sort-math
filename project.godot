@@ -29,6 +29,7 @@ EconomyConfigLoader="*res://autoloads/economy_config_loader.gd"
 WalletService="*res://autoloads/wallet_service.gd"
 IAPService="*res://autoloads/iap_service.gd"
 AdService="*res://autoloads/ad_service.gd"
+AnalyticsService="*res://autoloads/analytics_service.gd"
 
 [display]
 
