@@ -53,3 +53,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - ALL 6 MUST-HAVES DONE. Should-Have: S3-006 (Extra Discard), S3-008 (earn triggers). Nice: S3-009/010/011.
 
 <!-- QA-PLAN: 2026-06-15 | System: sprint-4 (M4 Monetize service core) | Plan written: production/qa/qa-plan-sprint-4-2026-06-15.md -->
+
+## Session Extract — /dev-story 2026-06-15 (S4-000)
+- Story: S4-000 (Sprint 4 kickoff docs) — Config/Data (Docs), DONE
+- Files created: docs/architecture/ADR-0012-hint-to-picker-booster.md, ADR-0013-consent-cmp-model.md, ADR-0014-monetization-service-seam.md, production/milestones/m4-definition.md, production/risk-register/m4-risks.md; updated docs/architecture/README.md (ADR index 0011-0014), sprint-status.yaml (S4-000 done)
+- Test written: None — Config/Data (Docs) story
+- Blockers: None. ADR-0013/0014 now unblock the code stories.
+- Next: S4-001 (consent/CMP model + SaveData v5->v6 migration) — /dev-story; governing ADR-0013 now exists
