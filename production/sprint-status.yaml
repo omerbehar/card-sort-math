@@ -14,7 +14,7 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-002 done (IAPService, 713 green, code-review applied)
+updated: "2026-06-15"  # S4-004a done (AdService, 731 green)
 
 stories:
   - id: "S4-000"
@@ -57,11 +57,11 @@ stories:
     name: "AdService interface + mock + interstitial frequency cap (TimeProvider) + rewarded earn-in"
     file: "autoloads/ad_service.gd"
     priority: must-have
-    status: ready-for-dev
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-004b"
     name: "AdService consent/entitlement cross-gating (triple gate + integration matrix)"
     file: "autoloads/ad_service.gd"
