@@ -108,6 +108,24 @@ func test_type_mismatched_value_is_ignored() -> void:
 	loader.free()
 
 
+func test_whole_float_override_coerced_onto_int_knob() -> void:
+	# JSON numbers arrive as float; a whole-number float must apply to an int knob (S4-005).
+	var remote := StubRemoteSource.new()
+	remote.overrides = {"picker_cost_coins": 90.0}
+	var loader := _make_loader(_local_base(), remote)
+	assert_int(loader.get_config().picker_cost_coins).is_equal(90)
+	loader.free()
+
+
+func test_fractional_float_override_rejected_for_int_knob() -> void:
+	# A non-whole float can't losslessly become an int → ignored; local kept.
+	var remote := StubRemoteSource.new()
+	remote.overrides = {"picker_cost_coins": 90.5}
+	var loader := _make_loader(_local_base(), remote)
+	assert_int(loader.get_config().picker_cost_coins).is_equal(120)
+	loader.free()
+
+
 # ---------------------------------------------------------------------------
 # Non-mutation + caching
 # ---------------------------------------------------------------------------
