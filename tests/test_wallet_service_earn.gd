@@ -28,8 +28,11 @@ class StubSave extends RefCounted:
 
 class StubCompliance extends RefCounted:
 	var restricted: bool = false
+	var iap_ok: bool = true  # can_process_iap() result (consent x age); true by default
 	func is_restricted() -> bool:
 		return restricted
+	func can_process_iap() -> bool:
+		return iap_ok
 
 
 var _events: Array = []

@@ -28,8 +28,11 @@ class StubSave extends RefCounted:
 ## Implements only the is_restricted() surface the economy consults (AC-CL02/CL03).
 class StubCompliance extends RefCounted:
 	var restricted: bool = false
+	var iap_ok: bool = true  # can_process_iap() result (consent x age); true by default
 	func is_restricted() -> bool:
 		return restricted
+	func can_process_iap() -> bool:
+		return iap_ok
 
 
 var _events: Array = []
@@ -151,6 +154,24 @@ func test_earn_clamps_at_cap_and_returns_actual_credited() -> void:
 	assert_int(actual).is_equal(10)               # only 10 fit under the cap
 	assert_int(w.balance(COINS)).is_equal(1000)
 	assert_int(_last().amount).is_equal(10)        # event reports actual credited
+
+
+func test_grant_iap_currency_bypasses_cap_credits_full_amount() -> void:
+	# Review S4-002 #1: real-money IAP purchases are uncapped — a player at/near the cap
+	# must still receive the full pack (unlike earn(), which clamps to the cap).
+	var w = _make(990, 0, _config_with_coins_max(1000))
+	var actual: int = w.grant_iap_currency(COINS, 100)
+	assert_int(actual).is_equal(100)              # full pack, not clamped to 10
+	assert_int(w.balance(COINS)).is_equal(1090)   # balance exceeds the earned-income cap
+	assert_int(_last().amount).is_equal(100)
+	assert_int(_last().source).is_equal(EconomyEnums.EarnSource.IAP)
+
+
+func test_grant_iap_currency_zero_amount_no_mutation_no_event() -> void:
+	var w = _make(100)
+	assert_int(w.grant_iap_currency(COINS, 0)).is_equal(0)
+	assert_int(w.balance(COINS)).is_equal(100)
+	assert_int(_events.size()).is_equal(0)
 
 
 func test_earn_zero_amount_no_mutation_no_event() -> void:
@@ -445,6 +466,20 @@ func test_unrestricted_iap_proceeds_without_block_event() -> void:
 	var w = _make(0, 100)                                # default permissive compliance
 	assert_bool(w.initiate_iap(3)).is_true()
 	assert_object(_event_of(EconomyEvent.Kind.IAP_BLOCKED)).is_null()
+
+
+func test_adult_without_iap_consent_blocked_by_consent_backstop() -> void:
+	# S4-002 / ADR-0013 §2: even an unrestricted (adult) user is blocked when IAP
+	# consent is absent — the economy-chokepoint consent backstop in initiate_iap().
+	var c := StubCompliance.new()
+	c.restricted = false   # adult / not age-restricted
+	c.iap_ok = false       # can_process_iap() false (no IAP consent)
+	var w = _make(0, 100, null, c)
+	assert_bool(w.initiate_iap(3)).is_false()
+	assert_int(w.balance(GEMS)).is_equal(100)
+	var e := _event_of(EconomyEvent.Kind.IAP_BLOCKED)
+	assert_object(e).is_not_null()
+	assert_int(e.reason).is_equal(EconomyEnums.FailReason.COMPLIANCE_RESTRICTED)
 
 
 func test_convert_gems_to_coins_spends_gems_credits_coins() -> void:

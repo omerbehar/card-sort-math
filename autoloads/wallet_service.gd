@@ -275,6 +275,26 @@ func _earn_raw(currency: int, amount: int, source: int) -> int:
 	return actual
 
 
+## Credits an IAP currency purchase [b]uncapped[/b]. Real-money purchases bypass the
+## wallet hard cap that clamps earned income ([method earn]/[method _earn_raw]), so the
+## player always receives the full pack they paid for (ADR-0014 §2). Returns the amount
+## credited; a 0-or-negative amount is a no-op guard (returns 0). Emits a single
+## [code]CURRENCY_EARNED(IAP)[/code] event.
+##
+## Intended to be called by [IAPService] on a verified successful purchase, never
+## directly by gameplay — IAP is the only uncapped income source.
+func grant_iap_currency(currency: int, amount: int) -> int:
+	if amount <= 0:
+		return 0  # EC-14 guard
+	var current: int = _wallet.balance_of(currency)
+	var new_balance: int = current + amount
+	_wallet.set_balance(currency, new_balance)
+	_persist()
+	economy_event.emit(
+			EconomyEvent.currency_earned(currency, amount, EconomyEnums.EarnSource.IAP, new_balance))
+	return amount
+
+
 ## Grants the coin reward for a level win (Formula 1 + 1b). Returns the actual coins
 ## credited (after the wallet cap clamp). Emits a single [code]CURRENCY_EARNED(LEVEL_WIN)[/code]
 ## for the summed total.
@@ -441,18 +461,24 @@ func convert_gems_to_coins(gems_amount: int) -> bool:
 	return true
 
 
-## Initiates an IAP purchase for [param sku]. Gated by [method ComplianceService.is_restricted]:
-## restricted (CHILD / UNKNOWN) users are blocked before [code]IAPService[/code] is ever called.
+## Initiates an IAP purchase for [param sku]. Defense-in-depth compliance gate:
+## blocks restricted (CHILD / UNKNOWN) users via [method ComplianceService.is_restricted],
+## AND blocks when [method ComplianceService.can_process_iap] is false (consent × age_band
+## conjunction, ADR-0013 §2 / S4-002).
 ##
 ## Returns [code]true[/code] if the IAP flow may proceed; [code]false[/code] if blocked.
-## On block: [code]IAP_BLOCKED(sku, COMPLIANCE_RESTRICTED)[/code] emitted, gems unchanged (AC-CL01).
-## IAPService integration is deferred to M4; this method is the compliance chokepoint stub.
-## Source: design/gdd/deck-economy.md Rule 5/6, AC-CL01, EC-12.
+## On block: [code]IAP_BLOCKED(sku, COMPLIANCE_RESTRICTED)[/code] emitted, wallet unchanged (AC-CL01).
+## [IAPService] is the primary gate; this is the economy-chokepoint backstop (ADR-0014 §2).
+## Source: design/gdd/deck-economy.md Rule 5/6, AC-CL01, EC-12; ADR-0013 §2.
 func initiate_iap(sku: int) -> bool:
+	# Primary age-band gate (is_restricted covers CHILD and UNKNOWN).
 	if _compliance != null and _compliance.is_restricted():
 		economy_event.emit(EconomyEvent.iap_blocked(sku, EconomyEnums.FailReason.COMPLIANCE_RESTRICTED))
 		return false
-	# IAPService.purchase(sku) deferred to M4 — stub returns true (flow may proceed).
+	# Secondary consent gate (ADULT + IAP consent required — ADR-0013 §2, S4-002).
+	if _compliance != null and not _compliance.can_process_iap():
+		economy_event.emit(EconomyEvent.iap_blocked(sku, EconomyEnums.FailReason.COMPLIANCE_RESTRICTED))
+		return false
 	return true
 
 

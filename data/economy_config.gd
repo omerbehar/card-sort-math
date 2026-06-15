@@ -58,6 +58,14 @@ extends Resource
 ## (Rule 15 / Formula 8). Safe range: 1–10.
 @export var max_ads_per_day: int = 3
 
+## Interstitial ad cadence: minimum number of level completions between interstitials
+## (GAME_PLAN §9, "every 3–4 levels"). 0 disables interstitials entirely. Safe range: 2–5.
+@export var interstitial_every_n_levels: int = 3
+
+## Minimum wall-clock seconds between interstitials (GAME_PLAN §9, "≥60–90s apart"),
+## measured via the injected [TimeProvider] (deterministic, never Time.*). Safe range: 45–120.
+@export var interstitial_min_seconds: int = 90
+
 ## Additive streak bonus on the daily-challenge coin for days 2–4 of a
 ## login streak (Rule 16). Safe range: 10–50.
 @export var streak_day_2_to_4_bonus: int = 25

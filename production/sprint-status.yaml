@@ -9,122 +9,92 @@
 #   done           ↔  Complete
 #   blocked        ↔  Blocked
 
-sprint: 3
-goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn with snapshot rollback, compliance gating, daily caps, gem-to-coin conversion) behind the model/view seam, plus the first booster (Hint), end-to-end. M3 economy foundation. UI/IAP/Ad/Analytics deferred."
-start: "2026-06-12"
-end: "2026-06-25"
-generated: "2026-06-12"
-updated: "2026-06-15"  # ALL stories done (6 Must + 2 Should + S3-009/010/011/012). Sprint 3 complete.
+sprint: 4
+goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads EntitlementService, AdService — pure, DI-injected, mockable autoloads wired into the existing WalletService earn/spend call-ins and ComplianceService gating. Native SDK plugins and monetization UI deferred (mock-first)."
+start: "2026-06-15"
+end: "2026-06-29"
+generated: "2026-06-15"
+updated: "2026-06-15"  # S4-005/006/007 done — M4 sprint complete (773 green)
 
 stories:
-  - id: "S3-001"
-    name: "EconomyEvent + economy enums (ADR-0008)"
-    file: "core/economy_event.gd"
+  - id: "S4-000"
+    name: "Kickoff docs: Hint→Picker ADR + m4-definition + m4-risks (S2-011) + consent ADR + service-seam ADR"
+    file: "production/milestones/m4-definition.md"
     priority: must-have
     status: done
-    owner: "gdscript-specialist"
-    estimate_days: 0.5
+    owner: "producer + technical-director"
+    estimate_days: 1.25
     blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-003"
-    name: "TimeProvider seam + explicit-int reshuffle mix() (ADR-0009)"
-    file: "core/time_provider.gd"
-    priority: must-have
-    status: done
-    owner: "gdscript-specialist"
-    estimate_days: 0.5
-    blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-002"
-    name: "WalletData + SaveData v1->v2 migration + EconomyConfig resource"
-    file: "core/wallet_data.gd"
-    priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-004"
-    name: "WalletService transaction core (atomic spend/earn, snapshot rollback, DI, per-level reset)"
-    file: "autoloads/wallet_service.gd"
+    completed: "2026-06-15"
+  - id: "S4-001"
+    name: "Consent/CMP model + SaveData v5→v6 migration (routed through ComplianceService)"
+    file: "core/save_data.gd"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-007"
-    name: "Hint booster (hint_score Formula 5 + use_booster + HINT_RESULT)"
-    file: "core/hint_score.gd"
+    completed: "2026-06-15"
+  - id: "S4-002"
+    name: "IAPService interface + mock backend (purchase state machine, catalog, receipt-restore) → WalletService.initiate_iap"
+    file: "autoloads/iap_service.gd"
+    priority: must-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 2.0
+    blocker: ""
+    completed: "2026-06-15"
+  - id: "S4-003"
+    name: "Remove-Ads EntitlementService (persisted on shared v6 migration, restore stub, gates AdService)"
+    file: "autoloads/entitlement_service.gd"
+    priority: must-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: "2026-06-15"
+  - id: "S4-004a"
+    name: "AdService interface + mock + interstitial frequency cap (TimeProvider) + rewarded earn-in"
+    file: "autoloads/ad_service.gd"
     priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-005"
-    name: "Compliance gating + daily caps + gem-to-coin conversion"
-    file: "autoloads/wallet_service.gd"
-    priority: must-have
+    completed: "2026-06-15"
+  - id: "S4-004b"
+    name: "AdService consent/entitlement cross-gating (triple gate + integration matrix)"
+    file: "autoloads/ad_service.gd"
+    priority: should-have
     status: done
     owner: "gameplay-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: "2026-06-15"
+  - id: "S4-005"
+    name: "Real RemoteConfigSource subclass (injectable transport, remote-wins/local-fallback)"
+    file: "autoloads/remote_config_source.gd"
+    priority: should-have
+    status: done
+    owner: "tools-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: "2026-06-12"
-  - id: "S3-006"
-    name: "Extra Discard Slot booster (ADR-0010 BoardModel change)"
-    file: "core/board_model.gd"
-    priority: should-have
-    status: done
-    owner: "gdscript-specialist + gameplay-programmer"
-    estimate_days: 2.0
-    blocker: ""
-    completed: "2026-06-13"
-  - id: "S3-008"
-    name: "Earn triggers: level-win coins + clean-clear bonus (flat fallback)"
-    file: "autoloads/wallet_service.gd"
-    priority: should-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-06-13"
-  - id: "S3-009"
-    name: "Reshuffle booster (BoardModel.reshuffle coverage re-permute + use_reshuffle)"
-    file: "core/board_model.gd"
-    priority: nice-to-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 2.0
-    blocker: ""
-    completed: "2026-06-13"
-  # Picker booster (2026-06-13 design change): replaces the Hint booster (S3-007).
-  # BoardModel.pick_card + WalletService.use_picker; Hint/HintScore removed.
-  # Code + tests done; GDD/registry/UX-asset Hint→Picker doc sync completed 2026-06-15.
-  - id: "S3-012"
-    name: "Picker booster (replaces Hint): pick_card + use_picker"
-    file: "core/board_model.gd"
-    priority: should-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-06-13"
-  - id: "S3-010"
-    name: "Streak + milestone earn math (TimeProvider-driven)"
-    file: "core/economy_earn.gd"
+    completed: "2026-06-15"
+  - id: "S4-006"
+    name: "IAP catalog/offer config resource (currency packs, bundles, Remove-Ads SKU)"
+    file: "data/iap_catalog.gd"
     priority: nice-to-have
     status: done
     owner: "systems-designer"
     estimate_days: 1.0
     blocker: ""
     completed: "2026-06-15"
-  - id: "S3-011"
-    name: "EconomyConfig remote-config-ready loader + local fallback"
-    file: "autoloads/economy_config_loader.gd"
+  - id: "S4-007"
+    name: "Analytics interface seam + monetization funnel events to mock sink (consent-gated, M5 prep)"
+    file: "autoloads/analytics_service.gd"
     priority: nice-to-have
     status: done
-    owner: "tools-programmer"
-    estimate_days: 0.5
+    owner: "gameplay-programmer"
+    estimate_days: 1.0
     blocker: ""
     completed: "2026-06-15"

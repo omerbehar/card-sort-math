@@ -116,9 +116,25 @@ func _apply_overrides(cfg: EconomyConfig, overrides: Dictionary) -> int:
 			continue
 		var current: Variant = cfg.get(key)
 		var value: Variant = overrides[key]
+		# JSON number literals always parse as float; coerce losslessly to the knob's
+		# numeric type so a remote int knob isn't silently dropped as "type-mismatched"
+		# (S4-005). Non-numeric mismatches (e.g. a String for an int) still fall through.
+		value = _coerce_numeric(current, value)
 		if typeof(current) != typeof(value):
 			push_warning("EconomyConfigLoader: ignoring type-mismatched override '%s'." % str(key))
 			continue
 		cfg.set(key, value)
 		applied += 1
 	return applied
+
+
+# Losslessly aligns a remote numeric value to the local knob's numeric type:
+# a whole-number float onto an int knob, or an int onto a float knob. Anything else
+# (a fractional float onto an int, or a non-numeric type) is returned unchanged so the
+# type-mismatch guard still rejects it.
+func _coerce_numeric(current: Variant, value: Variant) -> Variant:
+	if typeof(current) == TYPE_INT and typeof(value) == TYPE_FLOAT and value == floorf(value):
+		return int(value)
+	if typeof(current) == TYPE_FLOAT and typeof(value) == TYPE_INT:
+		return float(value)
+	return value
