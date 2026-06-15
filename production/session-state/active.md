@@ -108,3 +108,9 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - 14 unit (tests/unit/ads) + 4 integration (tests/integration/ads). Implemented directly by orchestrator (agent-cutoff pattern) + full-suite verified.
 - S4-004b (NEXT, should-have): audience x consent personalized-vs-contextual cross-gating matrix. configure() will ADD compliance param; AdService currently injects wallet/entitlement/time/config/backend (no compliance yet — kept DI surface honest).
 - FOLLOW-UP (test hygiene, pre-existing S4-003, not blocking): tests/unit/entitlement/entitlement_service_test.gd and tests/integration/entitlement/remove_ads_gate_test.gd construct SaveService.new() WITHOUT configure(path) and call grant_remove_ads()/restore(), persisting remove_ads_owned:true to the REAL user://save.json. Harmless to current suite (no test reads real boot entitlement state) but a landmine for future boot-reading integration tests — my AdService boot test avoids it by asserting only the in-memory no-mid-puzzle gate. Recommend configuring temp paths in those tests.
+
+## S4-004b AdService triple gate — done 2026-06-15 (740 green)
+- configure() adds ComplianceService; resolve_ad_type() → PERSONALIZED only for ADULT+personalized consent (can_show_targeted_ads), else CONTEXTUAL (incl UNKNOWN/CHILD/denied). AdBackend.show_interstitial(ad_type); interstitial_shown(ad_type). Rewarded gate unchanged.
+- +3 unit (ad-type) + 6 matrix integration (tests/integration/ads/ad_gate_matrix_test.gd).
+- FOLLOW-UP RESOLVED: the S4-003 save-hygiene bug (entitlement tests persisting remove_ads_owned to real user://save.json) is fixed — both entitlement test files now use temp paths + after_test cleanup. Verified save.json stays clean.
+- M4 service core now complete: S4-001..S4-004b done. Remaining: S4-005 (real RemoteConfigSource subclass), S4-006 (IAP catalog .tres + replace placeholder), S4-007 (Analytics seam).

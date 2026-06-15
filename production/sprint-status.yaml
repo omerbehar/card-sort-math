@@ -14,7 +14,7 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-004a done (AdService, 731 green)
+updated: "2026-06-15"  # S4-004b done (AdService triple gate, 740 green)
 
 stories:
   - id: "S4-000"
@@ -66,11 +66,11 @@ stories:
     name: "AdService consent/entitlement cross-gating (triple gate + integration matrix)"
     file: "autoloads/ad_service.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-005"
     name: "Real RemoteConfigSource subclass (injectable transport, remote-wins/local-fallback)"
     file: "autoloads/remote_config_source.gd"
