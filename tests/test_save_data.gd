@@ -172,10 +172,10 @@ func test_tutorial_seen_does_not_bump_schema_version() -> void:
 # design/gdd/deck-economy.md §Dependencies → Save Service
 # ---------------------------------------------------------------------------
 
-func test_schema_version_is_5() -> void:
+func test_schema_version_is_6() -> void:
 	# Bumped 2 → 3 (S3-005 daily cap counters), 3 → 4 (S3-008 daily win counter),
-	# then 4 → 5 (prototype buff inventory: owned booster counts + seed flag).
-	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(5)
+	# 4 → 5 (prototype buff inventory), 5 → 6 (consent fields, ADR-0013 S4-001).
+	assert_int(SaveData.CURRENT_SCHEMA_VERSION).is_equal(6)
 
 
 func test_defaults_include_wallet_fields_at_zero() -> void:
@@ -546,7 +546,7 @@ func test_migrate_v4_to_v5_sets_booster_fields_and_unseeded() -> void:
 	assert_int(data.current_level).is_equal(6)
 
 
-func test_migrate_v1_flows_all_the_way_to_v5() -> void:
+func test_migrate_v1_flows_all_the_way_to_current() -> void:
 	var data := SaveData.from_dict({"schema_version": 1, "current_level": 9})
 	assert_int(data.schema_version).is_equal(SaveData.CURRENT_SCHEMA_VERSION)
 	assert_int(data.boosters_picker).is_equal(0)

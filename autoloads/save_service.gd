@@ -102,3 +102,43 @@ func set_current_level(level: int) -> void:
 func set_age_band(band: SaveData.AgeBand) -> void:
 	data.age_band = band
 	save_game()
+
+
+## Records player consent choices from the CMP flow (ADR-0013 §3) and persists.
+##
+## Writes all three consent flags atomically (one save), sets [member SaveData.consent_captured]
+## to [code]true[/code], and persists. [ComplianceService] verdicts reflect the new state on
+## the very next call — no restart required.
+##
+## Usage (future CMP/UMP UI adapter, not yet built — vendor SDK deferred to native-SDK sprint):
+## [codeblock]
+## SaveService.capture_consent(personalized_ads: true, analytics: false, iap: true)
+## [/codeblock]
+func capture_consent(personalized_ads: bool, analytics: bool, iap: bool) -> void:
+	data.consent_personalized_ads = personalized_ads
+	data.consent_analytics = analytics
+	data.consent_iap = iap
+	data.consent_captured = true
+	save_game()
+
+
+## Withdraws a specific consent field and persists (ADR-0013 §3, "withdrawal immediacy").
+##
+## The withdrawal flips the relevant field to [code]false[/code] (denied) and persists.
+## Because [ComplianceService] reads the live [SaveData] on every [code]can_*[/code] call,
+## the corresponding verdict flips to restricted immediately — no restart, no cache.
+##
+## [param field] must be one of [code]"personalized_ads"[/code], [code]"analytics"[/code],
+## or [code]"iap"[/code]. An unknown field is ignored with a warning.
+func withdraw_consent(field: String) -> void:
+	match field:
+		"personalized_ads":
+			data.consent_personalized_ads = false
+		"analytics":
+			data.consent_analytics = false
+		"iap":
+			data.consent_iap = false
+		_:
+			push_warning("SaveService.withdraw_consent: unknown field '%s'" % field)
+			return
+	save_game()

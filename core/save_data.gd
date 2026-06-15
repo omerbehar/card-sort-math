@@ -13,10 +13,12 @@ extends RefCounted
 ## [member daily_key], [member ad_coins_today],
 ## [member ads_watched_today], [member gems_converted_today], [member wins_today],
 ## [member boosters_picker], [member boosters_reshuffle], [member boosters_extra_discard],
-## [member boosters_seeded].
+## [member boosters_seeded],
+## [member consent_personalized_ads], [member consent_analytics], [member consent_iap],
+## [member consent_captured], [member consent_version].
 
 ## Bump when the persisted shape changes, and add a step to [method _migrate].
-const CURRENT_SCHEMA_VERSION: int = 5
+const CURRENT_SCHEMA_VERSION: int = 6
 
 ## Audience band from the neutral age gate (see ADR-0005). Drives ad / analytics /
 ## IAP behaviour via the future ComplianceService.
@@ -81,6 +83,33 @@ var boosters_extra_discard: int = 0
 ## exactly once (distinguishes "new player" from "spent everything to 0"). Added in schema v5.
 var boosters_seeded: bool = false
 
+## Whether the player has granted consent for personalized (behavioural) ads. Defaults to
+## [code]false[/code] (denied). [b]Protected field[/b] — never served by missing-key-default
+## (save-service.md Core Rule 6 / Edge Case 9, ADR-0013 §1). Read only through
+## [ComplianceService] (the sole reader); set via [SaveService] consent setters. Added in schema v6.
+var consent_personalized_ads: bool = false
+
+## Whether the player has granted consent for analytics data collection. Defaults to
+## [code]false[/code] (denied). [b]Protected field[/b] — see [member consent_personalized_ads].
+## Added in schema v6.
+var consent_analytics: bool = false
+
+## Whether the player has granted consent for IAP data processing. Defaults to
+## [code]false[/code] (denied). [b]Protected field[/b] — see [member consent_personalized_ads].
+## Added in schema v6.
+var consent_iap: bool = false
+
+## Whether the CMP flow has been completed at least once (capture marker). Defaults to
+## [code]false[/code] (not yet captured). [b]Protected field[/b] — see
+## [member consent_personalized_ads]. Added in schema v6.
+var consent_captured: bool = false
+
+## Monotonically increasing consent-version stamp. A policy change bumps this constant
+## (in [ComplianceService] or a future CMP config); when the persisted stamp is lower than
+## the current value, re-presentation of the consent flow is triggered. Defaults to
+## [code]0[/code]. Added in schema v6.
+var consent_version: int = 0
+
 
 ## A fresh save with safe defaults.
 static func defaults() -> SaveData:
@@ -106,6 +135,13 @@ func to_dict() -> Dictionary:
 		"boosters_reshuffle": boosters_reshuffle,
 		"boosters_extra_discard": boosters_extra_discard,
 		"boosters_seeded": boosters_seeded,
+		# Consent fields — protected (ADR-0013 §1, save-service.md Core Rule 6 / EC9).
+		# Never served by missing-key-default; always written via the migration step.
+		"consent_personalized_ads": consent_personalized_ads,
+		"consent_analytics": consent_analytics,
+		"consent_iap": consent_iap,
+		"consent_captured": consent_captured,
+		"consent_version": consent_version,
 	}
 
 
@@ -133,6 +169,15 @@ static func from_dict(dict: Dictionary) -> SaveData:
 	data.boosters_reshuffle = maxi(0, _safe_int(migrated.get("boosters_reshuffle", 0)))
 	data.boosters_extra_discard = maxi(0, _safe_int(migrated.get("boosters_extra_discard", 0)))
 	data.boosters_seeded = bool(migrated.get("boosters_seeded", false))
+	# Consent fields — protected (ADR-0013 §1). Conservative parsing: null / non-bool /
+	# missing -> false (denied). A missing key on downgrade is a compliance defect; the
+	# migration step seeds these for every pre-v6 save, and _parse_bool_conservative ensures
+	# an absent or corrupt value is never silently treated as granted.
+	data.consent_personalized_ads = _parse_bool_conservative(migrated.get("consent_personalized_ads", false))
+	data.consent_analytics = _parse_bool_conservative(migrated.get("consent_analytics", false))
+	data.consent_iap = _parse_bool_conservative(migrated.get("consent_iap", false))
+	data.consent_captured = _parse_bool_conservative(migrated.get("consent_captured", false))
+	data.consent_version = maxi(0, _safe_int(migrated.get("consent_version", 0)))
 	return data
 
 
@@ -167,7 +212,39 @@ static func _migrate(dict: Dictionary, from_version: int) -> Dictionary:
 		out["boosters_extra_discard"] = 0
 		out["boosters_seeded"] = false
 		version = 5
+	# v5 → v6: consent fields (ADR-0013 §1) — protected fields seeded to conservative
+	# (denied / not-captured) defaults. S4-003 extends THIS SAME STEP with the Remove-Ads
+	# entitlement field — no second `if version == 5:` block (M4-R4).
+	# IDEMPOTENT: each field is only set when it is absent from the dict, so re-running this
+	# step on an already-v6 dict never overwrites a granted consent back to denied.
+	if version == 5:
+		if not out.has("consent_personalized_ads"):
+			out["consent_personalized_ads"] = false
+		if not out.has("consent_analytics"):
+			out["consent_analytics"] = false
+		if not out.has("consent_iap"):
+			out["consent_iap"] = false
+		if not out.has("consent_captured"):
+			out["consent_captured"] = false
+		if not out.has("consent_version"):
+			out["consent_version"] = 0
+		version = 6
 	return out
+
+
+# Coerces a Variant to bool conservatively (denied / false). Any value that is not
+# an explicit `true` is treated as denied — null, non-bool, non-int, any int other
+# than 1. This implements the ADR-0013 §1 protected-field rule: an absent or corrupt
+# consent value must NEVER default to a permissive (granted) value.
+static func _parse_bool_conservative(value: Variant) -> bool:
+	if value == null:
+		return false
+	if value is bool:
+		return value
+	# JSON may round-trip booleans as int 1/0 depending on the serializer.
+	if value is int:
+		return value == 1
+	return false
 
 
 # Coerces a Variant to int, treating null and non-numeric values as 0.

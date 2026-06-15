@@ -1,16 +1,24 @@
 extends Node
-## Autoload: the single compliance chokepoint for audience-gated behaviour (ADR-0005).
+## Autoload: the single compliance chokepoint for audience-gated and consent-gated behaviour
+## (ADR-0005 extended by ADR-0013).
 ##
-## This is the ONLY code permitted to read [member SaveData.age_band]. Every
-## ad / analytics / data-collection decision must call this service — never read
-## [code]age_band[/code] directly — so the rule "UNKNOWN is treated as CHILD
-## (restrictive)" is enforced in exactly one place and cannot be forgotten by a
-## future consumer. See design/gdd/save-service.md Core Rule 9.
+## This is the ONLY code permitted to read [member SaveData.age_band] or the consent fields
+## ([member SaveData.consent_personalized_ads], [member SaveData.consent_analytics],
+## [member SaveData.consent_iap]). Every ad / analytics / IAP data-processing decision must
+## call this service — never read a consent field directly — so the conjunctive rule
+## "ADULT AND consent-granted is permissive; everything else is restricted" is enforced in
+## exactly one place and cannot be forgotten by any consumer. See ADR-0013 §2 and
+## design/gdd/save-service.md Core Rule 9.
 ##
-## The permissive path is keyed on [code]== ADULT[/code], so both UNKNOWN and
-## CHILD fall through to the restricted verdict. Writing [code]== CHILD[/code]
-## anywhere would silently leak the UNKNOWN cohort into the adult path — which is
-## exactly the mistake this chokepoint exists to prevent.
+## The permissive path is [code]is_adult() AND <consent granted>[/code], so UNKNOWN, CHILD,
+## or a denied/absent consent each independently flip the verdict to restricted. The guard is
+## [code]AND consent_granted[/code] (never [code]AND NOT consent_denied[/code]) so that an
+## absent or unknown consent can never leak into the permissive path — the same reasoning
+## that makes the age guard [code]== ADULT[/code] and never [code]!= CHILD[/code].
+##
+## Verdicts are computed from the live [SaveData] on every call — no cached bool — so
+## consent withdrawal immediately flips the corresponding verdict on the next query
+## (ADR-0013 §3, "withdrawal immediacy").
 ##
 ## Usage:
 ## [codeblock]
@@ -20,9 +28,9 @@ extends Node
 ##     _request_contextual_ad()
 ## [/codeblock]
 ##
-## NOTE (M1): plain-JSON [code]age_band[/code] is tamperable; an HMAC/signature is
-## a required prerequisite before the first AdService/Analytics ships (GDD Open
-## Questions). This service is the seam that fix will live behind.
+## NOTE (M4-R2, OPEN-DEFERRED): plain-JSON [code]age_band[/code] is tamperable; an
+## HMAC/signature is a required prerequisite before the first real AdService/Analytics ships
+## (ADR-0013 §4, ADR-0005). This service is the seam that fix will live behind.
 
 # SaveService dependency; resolves to the autoload at runtime, injectable in tests.
 var _save = null
@@ -53,16 +61,48 @@ func is_restricted() -> bool:
 	return not is_adult()
 
 
-## May personal data be collected? Only for a declared adult.
+# --- Consent helpers (ADR-0013 §2) ---
+# These are the SOLE readers of the consent fields in SaveData.
+# Returns false (denied) if the save has not been configured, guarding null-_save.
+
+## True only when personalized-ads consent has been explicitly granted.
+## Returns false (denied) on any absent or non-bool value (conservative default).
+func _consent_personalized_ads() -> bool:
+	return _save.data.consent_personalized_ads
+
+
+## True only when analytics consent has been explicitly granted.
+func _consent_analytics() -> bool:
+	return _save.data.consent_analytics
+
+
+## True only when IAP data-processing consent has been explicitly granted.
+func _consent_iap() -> bool:
+	return _save.data.consent_iap
+
+
+# --- Verdict methods (consent × age_band conjunction, ADR-0013 §2) ---
+
+## May personal data be collected? Permissive only for ADULT + analytics consent granted.
+## UNKNOWN, CHILD, or denied/absent analytics consent each independently → restricted.
 func can_collect_personal_data() -> bool:
-	return is_adult()
+	return is_adult() and _consent_analytics()
 
 
-## May targeted (behavioural) ads be shown? Only for a declared adult.
+## May targeted (behavioural) ads be shown? Permissive only for ADULT + personalized-ads
+## consent granted. UNKNOWN, CHILD, or denied consent → restricted (contextual ads only).
 func can_show_targeted_ads() -> bool:
-	return is_adult()
+	return is_adult() and _consent_personalized_ads()
 
 
-## May a device advertising identifier be used? Only for a declared adult.
+## May a device advertising identifier be used? Gated on personalized-ads consent (the
+## advertising ID is a personalisation signal). Permissive only for ADULT + ads consent.
 func can_use_advertising_id() -> bool:
-	return is_adult()
+	return is_adult() and _consent_personalized_ads()
+
+
+## May IAP data processing proceed? New verdict added for S4-002 (ADR-0013 §2).
+## Permissive only for ADULT + IAP consent granted. S4-002 wires this into
+## WalletService.initiate_iap(); see that story for the call-site integration.
+func can_process_iap() -> bool:
+	return is_adult() and _consent_iap()
