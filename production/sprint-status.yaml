@@ -14,7 +14,7 @@ goal: "Pure, tested wallet transaction core (two currencies, atomic spend/earn w
 start: "2026-06-12"
 end: "2026-06-25"
 generated: "2026-06-12"
-updated: "2026-06-15"  # 6 Must-Haves + Should-Haves + S3-009/S3-012 done. S3-012 doc-sync closed. Only nice-to-haves S3-010/S3-011 remain.
+updated: "2026-06-15"  # 6 Must-Haves + Should-Haves + S3-009/S3-012/S3-010 done. Only nice-to-have S3-011 (remote-config loader) remains.
 
 stories:
   - id: "S3-001"
@@ -114,11 +114,11 @@ stories:
     name: "Streak + milestone earn math (TimeProvider-driven)"
     file: "core/economy_earn.gd"
     priority: nice-to-have
-    status: backlog
+    status: done
     owner: "systems-designer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S3-011"
     name: "EconomyConfig remote-config-ready loader + local fallback"
     file: "autoloads/economy_config_loader.gd"

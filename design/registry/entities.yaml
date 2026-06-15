@@ -154,6 +154,27 @@ constants:
     description: Daily cap on gem-to-coin conversions
     referenced_by: []
 
+  - name: MILESTONE_COIN_GIFTS
+    source: design/gdd/deck-economy.md
+    value: {5: 100, 10: 150, 25: 200, 50: 300, 100: 500, 200: 750}
+    unit: "coins per level milestone"
+    description: One-time coin gift table for reaching a level milestone (Rule 17). Read by EconomyEarn.milestone_coin_gift (S3-010); "fire exactly once" is the caller's SaveData bookkeeping (AC-EF05).
+    referenced_by: [core/economy_earn.gd]
+
+  - name: GEM_GIFT_TUTORIAL
+    source: design/gdd/deck-economy.md
+    value: 15
+    unit: gems
+    description: One-time gem gift for first-time tutorial completion (Rule 18, AC-EF06). Read by EconomyEarn.tutorial_gem_gift (S3-010).
+    referenced_by: [core/economy_earn.gd]
+
+  - name: GEM_GIFT_PER_10_LEVELS
+    source: design/gdd/deck-economy.md
+    value: 5
+    unit: gems
+    description: Recurring gem gift each time a multiple of 10 levels is cleared (Rule 18). Read by EconomyEarn.level_clear_gem_gift (S3-010).
+    referenced_by: [core/economy_earn.gd]
+
 items:
   - name: WalletData
     type: class
