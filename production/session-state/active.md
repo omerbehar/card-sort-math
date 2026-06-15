@@ -114,3 +114,10 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - +3 unit (ad-type) + 6 matrix integration (tests/integration/ads/ad_gate_matrix_test.gd).
 - FOLLOW-UP RESOLVED: the S4-003 save-hygiene bug (entitlement tests persisting remove_ads_owned to real user://save.json) is fixed — both entitlement test files now use temp paths + after_test cleanup. Verified save.json stays clean.
 - M4 service core now complete: S4-001..S4-004b done. Remaining: S4-005 (real RemoteConfigSource subclass), S4-006 (IAP catalog .tres + replace placeholder), S4-007 (Analytics seam).
+
+## S4-005/006/007 — done 2026-06-15 (773 green) — M4 service core COMPLETE
+- S4-005: JsonRemoteConfigSource (extends RemoteConfigSource) + ConfigTransport seam (base no-op + StubConfigTransport). Loader gained lossless float<->int coercion (JSON numbers are float; without it remote int overrides were dropped). 7 unit + 5 integration + 2 coercion.
+- S4-006: IAPCatalog + IAPCatalogEntryResource (data/) + assets/data/iap_catalog.tres (Remove-Ads + coin/gem packs + starter bundle). validate()/from_dict() (S4-005 remote shape). IAPService._load_default_catalog() replaces the placeholder (built-in fallback retained). 8 unit. NOTE gotcha: data classes must reference sibling/self new class_names via preloaded const / runtime load(), not bare class_name (cold-cache parse errors) — fixed Array[EntryResource] + from_dict load().
+- S4-007: AnalyticsService autoload + AnalyticsSink seam (base no-op + MockAnalyticsSink). Consent-gated on ComplianceService.can_collect_personal_data() (live-read → withdrawal stops emission). Funnel helpers. 7 unit + 4 integration.
+- All 11 M4 stories (S4-000..S4-007) now done. Autoload graph: SaveService, ComplianceService, EntitlementService, ..., WalletService, IAPService, AdService, AnalyticsService.
+- Suggest /milestone-review or M4 gate-check next; monetization UI + native SDK plugins remain deferred (separate future sprint).

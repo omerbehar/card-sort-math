@@ -14,7 +14,7 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-004b done (AdService triple gate, 740 green)
+updated: "2026-06-15"  # S4-005/006/007 done — M4 sprint complete (773 green)
 
 stories:
   - id: "S4-000"
@@ -75,26 +75,26 @@ stories:
     name: "Real RemoteConfigSource subclass (injectable transport, remote-wins/local-fallback)"
     file: "autoloads/remote_config_source.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "tools-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-006"
     name: "IAP catalog/offer config resource (currency packs, bundles, Remove-Ads SKU)"
     file: "data/iap_catalog.gd"
     priority: nice-to-have
-    status: backlog
+    status: done
     owner: "systems-designer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-007"
     name: "Analytics interface seam + monetization funnel events to mock sink (consent-gated, M5 prep)"
     file: "autoloads/analytics_service.gd"
     priority: nice-to-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
