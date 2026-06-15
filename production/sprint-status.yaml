@@ -14,7 +14,7 @@ goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-002 in-progress (IAPService)
+updated: "2026-06-15"  # S4-002 done (IAPService, 713 green, code-review applied)
 
 stories:
   - id: "S4-000"
@@ -39,11 +39,11 @@ stories:
     name: "IAPService interface + mock backend (purchase state machine, catalog, receipt-restore) → WalletService.initiate_iap"
     file: "autoloads/iap_service.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 2.0
     blocker: ""
-    completed: ""
+    completed: "2026-06-15"
   - id: "S4-003"
     name: "Remove-Ads EntitlementService (persisted on shared v6 migration, restore stub, gates AdService)"
     file: "autoloads/entitlement_service.gd"

@@ -94,3 +94,11 @@ Next: /design-review design/gdd/deck-economy.md (fresh session) → then scoring
 - Agent cut off before writing ANY tests (empty dirs) AND before verifying; orchestrator wrote all IAP tests, fixed the StubCompliance regression, and verified. Suite 692 -> 708 green.
 - Catalog is a placeholder in iap_service.gd pending S4-006 (the real .tres). Note for code-review: header docstring line ~6 still says currency routes 'through initiate_iap' but code uses earn() — stale comment.
 - Next: /code-review then close S4-002. Remaining: S4-004a/b, S4-005, S4-006, S4-007.
+
+## S4-002 /code-review — applied 2026-06-15 (713 green)
+- #1 cap: IAP currency now credits via WalletService.grant_iap_currency() (uncapped) per boss decision — real money bypasses earn() clamp.
+- #2 null-wallet / #4 null-compliance: purchase() now fails CLOSED (no false SUCCESS, no fail-open gate).
+- #3 restore over-count: grant_remove_ads() returns bool (newly-granted); restore() counts via return → preserves remove_ads_owned single-reader chokepoint (the is_remove_ads_owned() approach tripped entitlement_service_test.gd:347 guard, reverted).
+- #5 docstrings fixed; #6 dead State.SUCCESS/FAILED writes removed.
+- DEFERRED (intentional, not bugs): #7 WalletService.initiate_iap() retains the consent backstop though IAPService bypasses it (defense-in-depth for the deferred monetization UI / future direct callers; docstrings no longer overclaim it as the grant path). #8 State enum omits RESTORED — restore() is a separate non-blocking flow with its own restore_completed signal; revisit if restore must participate in PENDING mutual-exclusion. Both worth an ADR-0014 amendment note when S4-006 lands.
+- Next: S4-004a (AdService) — rewarded earn-in + interstitial freq cap (TimeProvider) + triple gate (can_show_ads + entitlement suppression).
