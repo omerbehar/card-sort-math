@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-006 done — Remove-Ads offer surface (802 green + screenshot)
+updated: "2026-07-15"  # S5-008 done — a11y/reduced-motion pass; Sprint 5 COMPLETE (802 green)
 
 stories:
   - id: "S5-000"
@@ -93,8 +93,8 @@ stories:
     name: "Accessibility + reduced-motion pass; screenshot evidence for all monetization surfaces"
     file: "production/qa/evidence/"
     priority: should-have
-    status: backlog
+    status: done
     owner: "accessibility-specialist"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"

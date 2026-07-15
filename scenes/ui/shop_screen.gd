@@ -296,7 +296,16 @@ func _show_toast(text: String) -> void:
 	_toast_label.modulate.a = 1.0
 	var t := create_tween()
 	t.tween_interval(1.4)
-	t.tween_property(_toast_label, "modulate:a", 0.0, 0.4)
+	# Reduced-motion: hold, then hide instantly instead of fading (S5-008 a11y pass).
+	if _is_reduced_motion():
+		t.tween_callback(func() -> void: _toast_label.visible = false)
+	else:
+		t.tween_property(_toast_label, "modulate:a", 0.0, 0.4)
+
+
+func _is_reduced_motion() -> bool:
+	var s := get_node_or_null(^"/root/SettingsService")
+	return s != null and s.get_value("reduced_motion")
 
 
 # ---------------------------------------------------------------------------
