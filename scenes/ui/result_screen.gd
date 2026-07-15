@@ -28,6 +28,9 @@ signal retry_pressed
 signal next_pressed
 ## Player chose to leave to "home" (restarts the current level until a menu lands).
 signal home_pressed
+## Player tapped the rewarded-ad bonus offer (S5-004). Revealed only when
+## [method AdService.is_rewarded_available]; the controller opens the [RewardedPrompt].
+signal rewarded_offer_pressed
 
 const _VIEWPORT_W: float = 390.0
 
@@ -52,6 +55,18 @@ var _revive_button: Control = null     # M4 ads
 var _play_on_button: Control = null    # M4 IAP/currency
 var _special_offer: Control = null     # M4 IAP
 var _tournament_strip: Control = null  # M3 live-ops
+
+
+## Reveals the opt-in rewarded-ad bonus offer (S5-004) as a button above the primary
+## action. Called by the controller only when [method AdService.is_rewarded_available];
+## the button emits [signal rewarded_offer_pressed]. [param text] is the service-provided
+## offer label (e.g. "Watch for +60 coins").
+func reveal_rewarded_offer(text: String) -> Button:
+	var offer := _action_button(text, _HEADER_BLUE, Color(0.18, 0.36, 0.72),
+		func() -> void: rewarded_offer_pressed.emit())
+	offer.name = "RewardedOffer"
+	_anchor_bottom(offer, 284.0, 54.0, 300.0)
+	return offer
 
 
 ## Builds the layout for [param result_mode] into the pop-up body and plays the

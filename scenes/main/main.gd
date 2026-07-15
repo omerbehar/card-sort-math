@@ -39,6 +39,8 @@ var _hud_layer: CanvasLayer
 var _pause_menu: PauseMenu
 ## Shop screen (S5-003); null when closed (only one at a time).
 var _shop_screen: ShopScreen = null
+## Rewarded-ad prompt (S5-004); null when closed (only one at a time).
+var _rewarded_prompt: RewardedPrompt = null
 
 ## Tutorial overlay; null when not active (seen or not Level 1).
 var _coach: CoachOverlay = null
@@ -681,6 +683,20 @@ func _open_shop(_currency: int = -1) -> void:
 	shop.setup()
 
 
+## Opens the rewarded-ad prompt (S5-004) over the result screen when the player opts in.
+## One at a time. The prompt resolves the AdService/AnalyticsService autoloads itself and
+## routes the credit through the service chokepoint; the HUD wallet pills reflect the earn.
+func _open_rewarded_prompt() -> void:
+	if _rewarded_prompt != null and is_instance_valid(_rewarded_prompt):
+		return
+	var prompt := RewardedPrompt.new()
+	prompt.dismiss_on_backdrop = true
+	_rewarded_prompt = prompt
+	prompt.closed.connect(func() -> void: _rewarded_prompt = null)
+	_overlay_layer.add_child(prompt)
+	prompt.setup()
+
+
 # Clears the first-time-tutorial flag from settings so the coach replays. Saved
 # immediately; re-arms on the current level if eligible (the tutorial is gated to
 # the early-game flow, so on a later level it simply replays next time it applies).
@@ -736,6 +752,15 @@ func _show_result(result_mode: ResultScreen.Mode) -> void:
 	_result_screen.home_pressed.connect(_dismiss_result)
 	_overlay_layer.add_child(_result_screen)   # _ready adds the dim underneath
 	_result_screen.setup(result_mode)           # content is built above the dim
+
+	# S5-004: on a win, reveal the opt-in rewarded-ad bonus offer when a rewarded ad
+	# can currently earn (AdService owns the daily/compliance gate). Tapping it opens
+	# the RewardedPrompt over the result screen.
+	if result_mode == ResultScreen.Mode.WIN:
+		var ad := get_node_or_null("/root/AdService")
+		if ad != null and ad.is_rewarded_available():
+			_result_screen.reveal_rewarded_offer("🎬  Watch for +%d coins" % ad.rewarded_reward_amount())
+			_result_screen.rewarded_offer_pressed.connect(_open_rewarded_prompt)
 
 
 func _dismiss_result() -> void:

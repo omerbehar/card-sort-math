@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-003 done — Shop screen (787 green + screenshots)
+updated: "2026-07-15"  # S5-004 done — rewarded-ad prompt (793 green + screenshots)
 
 stories:
   - id: "S5-000"
@@ -57,11 +57,11 @@ stories:
     name: "Rewarded-ad prompt component: availability-gated, wired at result screen + booster/near-loss attach points"
     file: "scenes/ui/rewarded_prompt.gd"
     priority: must-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-005"
     name: "Interstitial mock presentation: Main boundary wiring (notify_level_completed + maybe_show_interstitial) + mock full-screen"
     file: "scenes/ui/interstitial_mock.gd"
