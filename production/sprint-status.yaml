@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-004 done — rewarded-ad prompt (793 green + screenshots)
+updated: "2026-07-15"  # S5-005 done — mock interstitial; Sprint 5 must-haves complete (796 green)
 
 stories:
   - id: "S5-000"
@@ -66,11 +66,11 @@ stories:
     name: "Interstitial mock presentation: Main boundary wiring (notify_level_completed + maybe_show_interstitial) + mock full-screen"
     file: "scenes/ui/interstitial_mock.gd"
     priority: must-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-006"
     name: "Remove-Ads offer surface: one-per-session dismissible anchor deep-linking the Shop"
     file: "scenes/ui/remove_ads_offer.gd"

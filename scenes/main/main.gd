@@ -41,6 +41,10 @@ var _pause_menu: PauseMenu
 var _shop_screen: ShopScreen = null
 ## Rewarded-ad prompt (S5-004); null when closed (only one at a time).
 var _rewarded_prompt: RewardedPrompt = null
+## Mock interstitial (S5-005); null when not presented (only one at a time).
+var _interstitial: InterstitialMock = null
+# Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
+const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
 ## Tutorial overlay; null when not active (seen or not Level 1).
 var _coach: CoachOverlay = null
@@ -114,6 +118,11 @@ func start_level(n: int) -> void:
 	GameManager.start_level(n)
 	_setup_board(LevelData.get_level(n), PROTO_OPEN_COUNT)
 	_arm_tutorial(n)
+	# S5-005: mark the puzzle active so a between-levels interstitial is never presented
+	# mid-arithmetic (AdService refuses while a puzzle is in progress).
+	var ad := get_node_or_null("/root/AdService")
+	if ad != null:
+		ad.notify_level_started()
 
 
 ## Test/tool seam: rebuilds the board from an explicit [param config] (bypassing
@@ -748,7 +757,8 @@ func _show_result(result_mode: ResultScreen.Mode) -> void:
 	_result_screen = ResultScreen.new()
 	_result_screen.name = "ResultScreen"
 	_result_screen.retry_pressed.connect(_dismiss_result)
-	_result_screen.next_pressed.connect(_dismiss_result)
+	# WIN "claim" advances through the interstitial boundary (S5-005); retry/home don't.
+	_result_screen.next_pressed.connect(_on_win_advance)
 	_result_screen.home_pressed.connect(_dismiss_result)
 	_overlay_layer.add_child(_result_screen)   # _ready adds the dim underneath
 	_result_screen.setup(result_mode)           # content is built above the dim
@@ -771,4 +781,42 @@ func _dismiss_result() -> void:
 		_result_screen = null
 	# WIN already advanced GameManager.current_level (complete_level); LOSE left it.
 	# So this both advances on a win and retries on a loss.
+	start_level(GameManager.current_level)
+
+
+## Win "claim" → the between-levels boundary (S5-005): close the result screen, then ask
+## AdService for an interstitial. On SHOWN, present the mock full-screen ad and advance
+## only once it closes; on any suppression / no-fill, advance immediately with no UI. The
+## puzzle is never interrupted — this runs after the win, not mid-arithmetic (AC-6).
+func _on_win_advance() -> void:
+	if is_instance_valid(_result_screen):
+		_result_screen.close()
+		_result_screen = null
+	var ad := get_node_or_null("/root/AdService")
+	if ad != null:
+		ad.notify_level_completed()
+		if ad.maybe_show_interstitial() == AdServiceScript.InterstitialOutcome.SHOWN:
+			_present_interstitial(ad)
+			return
+	_advance_to_next()
+
+
+# Presents the mock interstitial (S5-005) and advances to the next level once it closes.
+# Emits the impression funnel event with the ad type AdService targeted.
+func _present_interstitial(ad: Object) -> void:
+	if _interstitial != null and is_instance_valid(_interstitial):
+		return
+	var analytics := get_node_or_null("/root/AnalyticsService")
+	if analytics != null and ad.has_method("resolve_ad_type"):
+		analytics.track_ad_impression(ad.resolve_ad_type())
+	var mock := InterstitialMock.new()
+	_interstitial = mock
+	mock.closed.connect(func() -> void:
+		_interstitial = null
+		_advance_to_next())
+	_overlay_layer.add_child(mock)
+	mock.setup()
+
+
+func _advance_to_next() -> void:
 	start_level(GameManager.current_level)
