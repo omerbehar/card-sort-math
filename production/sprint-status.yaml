@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # sprint 5 kickoff (S5-001 in progress)
+updated: "2026-07-15"  # S5-001 done — verified by CI on PR #40 (green)
 
 stories:
   - id: "S5-000"
@@ -30,11 +30,11 @@ stories:
     name: "Extend IAPCatalogEntryResource with display metadata (display_name, grant_summary, icon, price_display) + update iap_catalog.tres + validation"
     file: "data/iap_catalog_entry.gd"
     priority: must-have
-    status: in-progress
+    status: done
     owner: "systems-designer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-002"
     name: "Wallet display: gems pill in hud.gd, live economy_event binding, reduced-motion-aware count-up"
     file: "scenes/ui/hud.gd"
