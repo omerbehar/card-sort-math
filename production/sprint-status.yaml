@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-007 done — monetization analytics funnel verified (798 green)
+updated: "2026-07-15"  # S5-006 done — Remove-Ads offer surface (802 green + screenshot)
 
 stories:
   - id: "S5-000"
@@ -75,11 +75,11 @@ stories:
     name: "Remove-Ads offer surface: one-per-session dismissible anchor deep-linking the Shop"
     file: "scenes/ui/remove_ads_offer.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-007"
     name: "Analytics funnel wiring: emit track_iap_purchase / track_ad_impression / track_ad_reward from the flows"
     file: "scenes/ui/shop_screen.gd"

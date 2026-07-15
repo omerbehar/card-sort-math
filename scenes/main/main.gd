@@ -43,6 +43,10 @@ var _shop_screen: ShopScreen = null
 var _rewarded_prompt: RewardedPrompt = null
 ## Mock interstitial (S5-005); null when not presented (only one at a time).
 var _interstitial: InterstitialMock = null
+## Remove-Ads offer (S5-006); null when not shown (only one at a time).
+var _remove_ads_offer: RemoveAdsOffer = null
+## Session cap for the Remove-Ads offer (S5-006): surfaced at most once per session.
+var _remove_ads_offered: bool = false
 # Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
 const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
@@ -813,10 +817,33 @@ func _present_interstitial(ad: Object) -> void:
 	_interstitial = mock
 	mock.closed.connect(func() -> void:
 		_interstitial = null
-		_advance_to_next())
+		_advance_to_next()
+		# After the first interstitial of the session, gently offer Remove-Ads (S5-006).
+		_maybe_offer_remove_ads())
 	_overlay_layer.add_child(mock)
 	mock.setup()
 
 
 func _advance_to_next() -> void:
 	start_level(GameManager.current_level)
+
+
+## Surfaces the one-per-session Remove-Ads offer (S5-006): at most once per session, and
+## never when Remove-Ads is already owned (read via the entitlement chokepoint). The offer
+## deep-links the Shop; dismissing it just closes the sheet.
+func _maybe_offer_remove_ads() -> void:
+	if _remove_ads_offered:
+		return
+	if _remove_ads_offer != null and is_instance_valid(_remove_ads_offer):
+		return
+	var ent := get_node_or_null("/root/EntitlementService")
+	if ent != null and ent.should_suppress_interstitials():
+		return   # already owned → never offer
+	_remove_ads_offered = true
+	var offer := RemoveAdsOffer.new()
+	offer.dismiss_on_backdrop = true
+	_remove_ads_offer = offer
+	offer.shop_requested.connect(func() -> void: _open_shop(EconomyEnums.Currency.GEMS))
+	offer.closed.connect(func() -> void: _remove_ads_offer = null)
+	_overlay_layer.add_child(offer)
+	offer.setup()
