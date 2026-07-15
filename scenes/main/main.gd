@@ -37,6 +37,8 @@ var _discard: DiscardRow
 var _hud: Hud
 var _hud_layer: CanvasLayer
 var _pause_menu: PauseMenu
+## Shop screen (S5-003); null when closed (only one at a time).
+var _shop_screen: ShopScreen = null
 
 ## Tutorial overlay; null when not active (seen or not Level 1).
 var _coach: CoachOverlay = null
@@ -97,6 +99,8 @@ func _build_board() -> void:
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
 	_hud.booster_pressed.connect(_on_booster_pressed)
+	# Tapping a wallet pill (S5-002) deep-links the Shop (S5-003).
+	_hud.currency_tapped.connect(_open_shop)
 	# The coins + gems readout now lives in the HUD itself (S5-002 wallet display),
 	# live-bound to WalletService.economy_event — no stopgap label on _hud_layer.
 	# Live-recolour the stacks when the colorblind palette is toggled in-game.
@@ -660,6 +664,21 @@ func _open_pause() -> void:
 func _close_pause() -> void:
 	_pause_menu = null
 	get_tree().paused = false
+
+
+## Opens the Shop (S5-003) over the board. One at a time. The [param _currency] from
+## the wallet-pill deep-link (S5-002) is accepted for a future filter/scroll-to; the MVP
+## shows the full catalog. The screen resolves the IAP/Entitlement/Analytics autoloads +
+## the authored catalog itself (see [method ShopScreen.setup]).
+func _open_shop(_currency: int = -1) -> void:
+	if _shop_screen != null and is_instance_valid(_shop_screen):
+		return
+	var shop := ShopScreen.new()
+	shop.dismiss_on_backdrop = true
+	_shop_screen = shop
+	shop.closed.connect(func() -> void: _shop_screen = null)
+	_overlay_layer.add_child(shop)
+	shop.setup()
 
 
 # Clears the first-time-tutorial flag from settings so the coach replays. Saved
