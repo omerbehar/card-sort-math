@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-005 done — mock interstitial; Sprint 5 must-haves complete (796 green)
+updated: "2026-07-15"  # S5-007 done — monetization analytics funnel verified (798 green)
 
 stories:
   - id: "S5-000"
@@ -84,11 +84,11 @@ stories:
     name: "Analytics funnel wiring: emit track_iap_purchase / track_ad_impression / track_ad_reward from the flows"
     file: "scenes/ui/shop_screen.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-008"
     name: "Accessibility + reduced-motion pass; screenshot evidence for all monetization surfaces"
     file: "production/qa/evidence/"
