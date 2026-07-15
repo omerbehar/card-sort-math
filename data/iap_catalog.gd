@@ -51,6 +51,8 @@ func validate() -> Array[String]:
 				errors.append("sku %d: unknown kind %d" % [e.sku_id, e.kind])
 		if e.price_cents <= 0:
 			errors.append("sku %d: price_cents must be > 0" % e.sku_id)
+		if e.display_name.is_empty():
+			errors.append("sku %d: display_name required for a purchasable offer" % e.sku_id)
 	return errors
 
 
@@ -90,6 +92,9 @@ static func from_dict(data: Dictionary) -> Resource:
 		e.currency = int(d.get("currency", 0))
 		e.amount = int(d.get("amount", 0))
 		e.price_cents = int(d.get("price_cents", 0))
+		e.display_name = str(d.get("display_name", ""))
+		e.grant_summary = str(d.get("grant_summary", ""))
+		e.icon_path = str(d.get("icon_path", ""))
 		built.append(e)
 	cat.entries = built
 	return cat
