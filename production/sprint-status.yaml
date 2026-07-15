@@ -14,7 +14,7 @@ goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad 
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-07-15"  # S5-001 done — verified by CI on PR #40 (green)
+updated: "2026-07-15"  # S5-002 done — HUD wallet display (780 green + screenshots)
 
 stories:
   - id: "S5-000"
@@ -39,11 +39,11 @@ stories:
     name: "Wallet display: gems pill in hud.gd, live economy_event binding, reduced-motion-aware count-up"
     file: "scenes/ui/hud.gd"
     priority: must-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-15"
   - id: "S5-003"
     name: "Shop screen: render catalog, purchase flow (pending/success/fail), restore-purchases, Remove-Ads Owned state"
     file: "scenes/ui/shop_screen.gd"

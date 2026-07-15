@@ -25,7 +25,6 @@ const UNLOCK_COST: int = 100          # coin price of adding a locked deck
 # --- debug: Settings "Reset Inventory" button (debug builds only) ---
 const DEBUG_RESET_COINS: int = 1000      # coins to grant on debug reset
 const DEBUG_RESET_BOOSTERS: int = 3      # per-booster owned count on debug reset
-var _coins_label: Label = null
 # The active unlock prompt; null when none is shown (only one at a time).
 var _unlock_popup: UnlockPopup = null
 
@@ -98,14 +97,8 @@ func _build_board() -> void:
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
 	_hud.booster_pressed.connect(_on_booster_pressed)
-	# Coin balance shown top-right, read from the real WalletService and kept in
-	# sync with earns/spends via its economy_event signal.
-	_coins_label = UiFactory.label(_hud_layer, "", Vector2(250, 12), Vector2(130, 28), 20, Color(1, 0.93, 0.5))
-	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var wallet := get_node_or_null("/root/WalletService")
-	if wallet != null and wallet.has_signal("economy_event"):
-		wallet.economy_event.connect(func(_e: Variant) -> void: _update_coins_hud())
-	_update_coins_hud()
+	# The coins + gems readout now lives in the HUD itself (S5-002 wallet display),
+	# live-bound to WalletService.economy_event — no stopgap label on _hud_layer.
 	# Live-recolour the stacks when the colorblind palette is toggled in-game.
 	SettingsService.changed.connect(_on_setting_changed)
 
@@ -390,7 +383,8 @@ func _perform_unlock(stack_index: int, paid: bool) -> void:
 	# Swap the slot to its open look before animating the pulled-in cards.
 	_stacks[stack_index].set_locked(false)
 	_stacks[stack_index].set_target(_model.stack_target(stack_index))
-	_update_coins_hud()
+	# The coin spend above (when not the free ad-stub path) emits economy_event, so
+	# the HUD wallet refreshes itself; no explicit HUD poke needed here.
 
 	_input_locked = true
 	await _play_events(events)
@@ -399,14 +393,6 @@ func _perform_unlock(stack_index: int, paid: bool) -> void:
 	_floor.refresh_exposure(_model)
 	_update_discard_warning()
 	_input_locked = false
-
-
-func _update_coins_hud() -> void:
-	if _coins_label == null:
-		return
-	var wallet := get_node_or_null("/root/WalletService")
-	var coins: int = wallet.balance(EconomyEnums.Currency.COINS) if wallet != null else 0
-	_coins_label.text = "🪙 %d" % coins
 
 
 func _update_discard_warning() -> void:
@@ -687,12 +673,14 @@ func _on_reset_tutorial() -> void:
 
 # Debug-only inventory reset (Settings → "Reset Inventory", gated to debug builds).
 # Restocks every booster to DEBUG_RESET_BOOSTERS and sets coins to DEBUG_RESET_COINS,
-# then refreshes the coin HUD (the booster badges refresh off booster_stock_changed).
+# then refreshes the wallet pills (debug_set_inventory emits booster_stock_changed
+# for the badges but no economy_event, so the wallet display is poked explicitly).
 func _on_debug_reset() -> void:
 	var wallet := get_node_or_null("/root/WalletService")
 	if wallet != null and wallet.has_method("debug_set_inventory"):
 		wallet.debug_set_inventory(DEBUG_RESET_COINS, DEBUG_RESET_BOOSTERS)
-	_update_coins_hud()
+	if _hud != null:
+		_hud.refresh_wallet()
 
 
 # No main-menu screen exists yet, so "home" restarts the current level. Rewire to

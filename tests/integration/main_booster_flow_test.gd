@@ -358,8 +358,8 @@ func test_debug_reset_button_resets_coins_and_every_buff_via_pause_menu() -> voi
 	assert_int(WalletService.booster_count(PICKER)).is_equal(main.DEBUG_RESET_BOOSTERS)
 	assert_int(WalletService.booster_count(RESHUFFLE)).is_equal(main.DEBUG_RESET_BOOSTERS)
 	assert_int(WalletService.booster_count(EXTRA_DISCARD)).is_equal(main.DEBUG_RESET_BOOSTERS)
-	# …and the coin HUD label reflects the new balance.
-	assert_str(main._coins_label.text).is_equal("🪙 %d" % main.DEBUG_RESET_COINS)
+	# …and the HUD coins pill (S5-002 wallet display) reflects the new balance.
+	assert_str(main._hud._coins_pill_label.text).is_equal("🪙 %d" % main.DEBUG_RESET_COINS)
 
 	main._close_pause()                              # restore the tree's paused flag
 

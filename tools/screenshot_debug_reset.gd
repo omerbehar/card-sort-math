@@ -35,7 +35,7 @@ func _initialize() -> void:
 		wallet.spend(coins, bal - 75)
 	elif bal < 75:
 		wallet.earn(coins, 75 - bal, EconomyEnums.EarnSource.LEVEL_WIN)
-	main._update_coins_hud()
+	main._hud.refresh_wallet()
 	await _wait_frames(3)
 	_capture(BEFORE_PATH)
 
