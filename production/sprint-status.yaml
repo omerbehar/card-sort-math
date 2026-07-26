@@ -14,7 +14,7 @@ goal: "Compliance UI: the first-run neutral age gate + CMP consent capture that 
 start: "2026-07-26"
 end: "2026-08-09"
 generated: "2026-07-26"
-updated: "2026-07-26"  # S6-004 done — child-safe parental-gated shop (823 green + screenshot)
+updated: "2026-07-26"  # S6-005 done — Sprint 6 (Compliance UI) COMPLETE (824 green)
 
 stories:
   - id: "S6-000"
@@ -66,8 +66,8 @@ stories:
     name: "Retire the 'mock consent granted' scaffolding in the monetization suites once real capture flows exist; drive from the real age-gate/consent UI"
     file: "tests/integration/"
     priority: should-have
-    status: backlog
+    status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-07-26"
