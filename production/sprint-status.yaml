@@ -14,7 +14,7 @@ goal: "Compliance UI: the first-run neutral age gate + CMP consent capture that 
 start: "2026-07-26"
 end: "2026-08-09"
 generated: "2026-07-26"
-updated: "2026-07-26"  # S6-000 + S6-002 done — consent capture sheet (817 green + screenshot)
+updated: "2026-07-26"  # S6-003 done — settings privacy view/withdraw (820 green + screenshot)
 
 stories:
   - id: "S6-000"
@@ -48,11 +48,11 @@ stories:
     name: "Settings → Privacy: view + withdraw consent (SaveService.withdraw_consent), re-open the consent sheet; verdicts flip live"
     file: "scenes/ui/pause_menu.gd"
     priority: should-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: ""
+    completed: "2026-07-26"
   - id: "S6-004"
     name: "Child-safe mode UI: CHILD age_band reflects in shop/offers (contextual-only, IAP behind a parental-gate stub); no personal-data surfaces"
     file: "scenes/ui/shop_screen.gd"

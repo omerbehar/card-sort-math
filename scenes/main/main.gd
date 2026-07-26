@@ -678,6 +678,7 @@ func _open_pause() -> void:
 	_pause_menu.reset_tutorial_pressed.connect(_on_reset_tutorial)
 	_pause_menu.debug_reset_pressed.connect(_on_debug_reset)
 	_pause_menu.restart_from_first_pressed.connect(_on_restart_from_first)
+	_pause_menu.privacy_pressed.connect(_open_privacy_consent)
 	_hud_layer.add_child(_pause_menu)
 
 
@@ -869,6 +870,25 @@ func _present_consent_sheet() -> void:
 	var sheet := ConsentSheet.new()
 	sheet.dismiss_on_backdrop = false   # an explicit choice is required
 	_consent_sheet = sheet
+	sheet.closed.connect(func() -> void: _consent_sheet = null)
+	_overlay_layer.add_child(sheet)
+	sheet.setup()
+
+
+## Opens the consent sheet from Settings (S6-003) pre-filled with the current choices, so the
+## player can review, withdraw, or re-grant. For an adult the compliance verdict equals the
+## stored consent field, so the verdicts seed the toggles; saving re-captures via
+## SaveService.capture_consent (a toggle turned off is an immediate withdrawal).
+func _open_privacy_consent() -> void:
+	if _consent_sheet != null and is_instance_valid(_consent_sheet):
+		return
+	var sheet := ConsentSheet.new()
+	sheet.dismiss_on_backdrop = true   # opened from settings — dismissable without changes
+	_consent_sheet = sheet
+	sheet.set_initial(
+		ComplianceService.can_show_targeted_ads(),
+		ComplianceService.can_collect_personal_data(),
+		ComplianceService.can_process_iap())
 	sheet.closed.connect(func() -> void: _consent_sheet = null)
 	_overlay_layer.add_child(sheet)
 	sheet.setup()
