@@ -244,3 +244,14 @@ func show_rewarded() -> int:
 ## Level completions counted since the last interstitial (frequency-cap introspection).
 func levels_since_interstitial() -> int:
 	return _levels_since_interstitial
+
+
+## The coins a completed rewarded ad would credit ([member EconomyConfig.coins_rewarded_ad]).
+## The rewarded UI (S5-004) reads the offer amount from here — it never hardcodes the
+## reward. Returns 0 if no config is wired (defensive).
+## [codeblock]
+## var n: int = AdService.rewarded_reward_amount()   # e.g. 60
+## prompt.setup("Watch for +%d coins" % n)
+## [/codeblock]
+func rewarded_reward_amount() -> int:
+	return _config.coins_rewarded_ad if _config != null else 0

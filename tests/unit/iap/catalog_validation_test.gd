@@ -10,13 +10,14 @@ const ENTRY := preload("res://data/iap_catalog_entry.gd")
 const CATALOG_TRES := "res://assets/data/iap_catalog.tres"
 
 
-func _entry(sku: int, kind: int, currency: int, amount: int, price: int):
+func _entry(sku: int, kind: int, currency: int, amount: int, price: int, display: String = "Test Offer"):
 	var e = ENTRY.new()
 	e.sku_id = sku
 	e.kind = kind
 	e.currency = currency
 	e.amount = amount
 	e.price_cents = price
+	e.display_name = display
 	return e
 
 
@@ -86,8 +87,8 @@ func test_empty_catalog_is_valid_and_safe() -> void:
 func test_from_dict_builds_remote_loaded_catalog() -> void:
 	# The shape a JsonRemoteConfigSource transport would return (string keys, JSON dicts).
 	var data: Dictionary = {
-		"1": {"kind": 1, "currency": 0, "amount": 0, "price_cents": 299},
-		"100": {"kind": 0, "currency": 0, "amount": 500, "price_cents": 99},
+		"1": {"kind": 1, "currency": 0, "amount": 0, "price_cents": 299, "display_name": "Remove Ads"},
+		"100": {"kind": 0, "currency": 0, "amount": 500, "price_cents": 99, "display_name": "Coins"},
 	}
 	var cat = CATALOG.from_dict(data)
 	assert_int(cat.ids().size()).is_equal(2)
@@ -101,3 +102,28 @@ func test_from_dict_skips_non_dict_values() -> void:
 	var data: Dictionary = {"100": {"kind": 0, "amount": 500, "price_cents": 99}, "junk": 42}
 	var cat = CATALOG.from_dict(data)
 	assert_int(cat.ids().size()).is_equal(1)  # the scalar "junk" entry is skipped
+
+
+# ---------------------------------------------------------------------------
+# Display metadata (S5-001)
+# ---------------------------------------------------------------------------
+
+func test_authored_catalog_entries_have_display_metadata() -> void:
+	var cat = load(CATALOG_TRES)
+	for e in cat.entries:
+		assert_bool(e.display_name.is_empty()).override_failure_message(
+				"sku %d missing display_name" % e.sku_id).is_false()
+		assert_bool(e.grant_summary.is_empty()).override_failure_message(
+				"sku %d missing grant_summary" % e.sku_id).is_false()
+
+
+func test_price_display_formats_cents_as_dollars() -> void:
+	assert_str(_entry(1, ENTRY.Kind.NON_CONSUMABLE_ENTITLEMENT, 0, 0, 299).price_display()).is_equal("$2.99")
+	assert_str(_entry(100, ENTRY.Kind.CONSUMABLE_CURRENCY, 0, 500, 99).price_display()).is_equal("$0.99")
+	assert_str(_entry(300, ENTRY.Kind.CONSUMABLE_CURRENCY, 0, 2500, 4999).price_display()).is_equal("$49.99")
+
+
+func test_validate_flags_missing_display_name() -> void:
+	var cat = CATALOG.new()
+	cat.entries.append(_entry(100, ENTRY.Kind.CONSUMABLE_CURRENCY, 0, 500, 99, ""))  # empty name
+	assert_bool(cat.is_valid()).is_false()

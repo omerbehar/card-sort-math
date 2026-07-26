@@ -9,92 +9,92 @@
 #   done           ↔  Complete
 #   blocked        ↔  Blocked
 
-sprint: 4
-goal: "Monetization service core (M4): consent/CMP model, IAPService, Remove-Ads EntitlementService, AdService — pure, DI-injected, mockable autoloads wired into the existing WalletService earn/spend call-ins and ComplianceService gating. Native SDK plugins and monetization UI deferred (mock-first)."
+sprint: 5
+goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad prompt, interstitial + Remove-Ads offer — thin views over the M4 service seams (PR #39). Mock-first; consent/age-gate UI carved into its own compliance-UI sprint. See production/milestones/m4-ui-definition.md + design/ux/monetization-ui.md."
 start: "2026-06-15"
 end: "2026-06-29"
 generated: "2026-06-15"
-updated: "2026-06-15"  # S4-005/006/007 done — M4 sprint complete (773 green)
+updated: "2026-07-15"  # S5-008 done — a11y/reduced-motion pass; Sprint 5 COMPLETE (802 green)
 
 stories:
-  - id: "S4-000"
-    name: "Kickoff docs: Hint→Picker ADR + m4-definition + m4-risks (S2-011) + consent ADR + service-seam ADR"
-    file: "production/milestones/m4-definition.md"
+  - id: "S5-000"
+    name: "Kickoff: monetization-ui UX spec + sprint definition"
+    file: "design/ux/monetization-ui.md"
     priority: must-have
     status: done
-    owner: "producer + technical-director"
-    estimate_days: 1.25
+    owner: "ux-designer + producer"
+    estimate_days: 0.5
     blocker: ""
     completed: "2026-06-15"
-  - id: "S4-001"
-    name: "Consent/CMP model + SaveData v5→v6 migration (routed through ComplianceService)"
-    file: "core/save_data.gd"
+  - id: "S5-001"
+    name: "Extend IAPCatalogEntryResource with display metadata (display_name, grant_summary, icon, price_display) + update iap_catalog.tres + validation"
+    file: "data/iap_catalog_entry.gd"
     priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 2.0
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-002"
-    name: "IAPService interface + mock backend (purchase state machine, catalog, receipt-restore) → WalletService.initiate_iap"
-    file: "autoloads/iap_service.gd"
-    priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 2.0
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-003"
-    name: "Remove-Ads EntitlementService (persisted on shared v6 migration, restore stub, gates AdService)"
-    file: "autoloads/entitlement_service.gd"
-    priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-004a"
-    name: "AdService interface + mock + interstitial frequency cap (TimeProvider) + rewarded earn-in"
-    file: "autoloads/ad_service.gd"
-    priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.5
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-004b"
-    name: "AdService consent/entitlement cross-gating (triple gate + integration matrix)"
-    file: "autoloads/ad_service.gd"
-    priority: should-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-005"
-    name: "Real RemoteConfigSource subclass (injectable transport, remote-wins/local-fallback)"
-    file: "autoloads/remote_config_source.gd"
-    priority: should-have
-    status: done
-    owner: "tools-programmer"
-    estimate_days: 1.5
-    blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-006"
-    name: "IAP catalog/offer config resource (currency packs, bundles, Remove-Ads SKU)"
-    file: "data/iap_catalog.gd"
-    priority: nice-to-have
     status: done
     owner: "systems-designer"
     estimate_days: 1.0
     blocker: ""
-    completed: "2026-06-15"
-  - id: "S4-007"
-    name: "Analytics interface seam + monetization funnel events to mock sink (consent-gated, M5 prep)"
-    file: "autoloads/analytics_service.gd"
-    priority: nice-to-have
+    completed: "2026-07-15"
+  - id: "S5-002"
+    name: "Wallet display: gems pill in hud.gd, live economy_event binding, reduced-motion-aware count-up"
+    file: "scenes/ui/hud.gd"
+    priority: must-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: "2026-07-15"
+  - id: "S5-003"
+    name: "Shop screen: render catalog, purchase flow (pending/success/fail), restore-purchases, Remove-Ads Owned state"
+    file: "scenes/ui/shop_screen.gd"
+    priority: must-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 2.5
+    blocker: ""
+    completed: "2026-07-15"
+  - id: "S5-004"
+    name: "Rewarded-ad prompt component: availability-gated, wired at result screen + booster/near-loss attach points"
+    file: "scenes/ui/rewarded_prompt.gd"
+    priority: must-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 1.5
+    blocker: ""
+    completed: "2026-07-15"
+  - id: "S5-005"
+    name: "Interstitial mock presentation: Main boundary wiring (notify_level_completed + maybe_show_interstitial) + mock full-screen"
+    file: "scenes/ui/interstitial_mock.gd"
+    priority: must-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: "2026-06-15"
+    completed: "2026-07-15"
+  - id: "S5-006"
+    name: "Remove-Ads offer surface: one-per-session dismissible anchor deep-linking the Shop"
+    file: "scenes/ui/remove_ads_offer.gd"
+    priority: should-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 1.0
+    blocker: ""
+    completed: "2026-07-15"
+  - id: "S5-007"
+    name: "Analytics funnel wiring: emit track_iap_purchase / track_ad_impression / track_ad_reward from the flows"
+    file: "scenes/ui/shop_screen.gd"
+    priority: should-have
+    status: done
+    owner: "gameplay-programmer"
+    estimate_days: 0.5
+    blocker: ""
+    completed: "2026-07-15"
+  - id: "S5-008"
+    name: "Accessibility + reduced-motion pass; screenshot evidence for all monetization surfaces"
+    file: "production/qa/evidence/"
+    priority: should-have
+    status: done
+    owner: "accessibility-specialist"
+    estimate_days: 1.0
+    blocker: ""
+    completed: "2026-07-15"

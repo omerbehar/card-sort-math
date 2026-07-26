@@ -25,3 +25,19 @@ enum Kind {
 @export var amount: int = 0
 ## Store price tier in USD cents (display/telemetry only). Must be > 0.
 @export var price_cents: int = 0
+
+@export_group("Display (S5-001)")
+## Player-facing offer title shown on the shop card (also serves as the localization key
+## until a string table lands). Must be non-empty for a purchasable offer.
+@export var display_name: String = ""
+## Short grant summary shown under the title (e.g. "500 coins", "Removes ads").
+@export var grant_summary: String = ""
+## Path to the offer icon (Kenney skin / booster icon set); empty falls back to a default.
+@export var icon_path: String = ""
+
+
+## Formats [member price_cents] as a mock localized price string (e.g. "$2.99"). Real
+## builds substitute the store SDK's localized price; the view never hardcodes a price.
+func price_display() -> String:
+	return "$%d.%02d" % [price_cents / 100, price_cents % 100]
+

@@ -10,6 +10,9 @@ kind = 1
 currency = 0
 amount = 0
 price_cents = 299
+display_name = "Remove Ads"
+grant_summary = "Removes interstitials, keeps rewarded"
+icon_path = ""
 
 [sub_resource type="Resource" id="entry_coins_small"]
 script = ExtResource("2_entry")
@@ -18,6 +21,9 @@ kind = 0
 currency = 0
 amount = 500
 price_cents = 99
+display_name = "Handful of Coins"
+grant_summary = "500 coins"
+icon_path = ""
 
 [sub_resource type="Resource" id="entry_coins_medium"]
 script = ExtResource("2_entry")
@@ -26,6 +32,9 @@ kind = 0
 currency = 0
 amount = 1500
 price_cents = 299
+display_name = "Sack of Coins"
+grant_summary = "1,500 coins"
+icon_path = ""
 
 [sub_resource type="Resource" id="entry_gems_small"]
 script = ExtResource("2_entry")
@@ -34,6 +43,9 @@ kind = 0
 currency = 1
 amount = 50
 price_cents = 199
+display_name = "Pouch of Gems"
+grant_summary = "50 gems"
+icon_path = ""
 
 [sub_resource type="Resource" id="entry_starter_bundle"]
 script = ExtResource("2_entry")
@@ -42,6 +54,9 @@ kind = 0
 currency = 0
 amount = 2500
 price_cents = 499
+display_name = "Starter Bundle"
+grant_summary = "2,500 coins — best value"
+icon_path = ""
 
 [resource]
 script = ExtResource("1_cat")

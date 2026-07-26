@@ -25,7 +25,6 @@ const UNLOCK_COST: int = 100          # coin price of adding a locked deck
 # --- debug: Settings "Reset Inventory" button (debug builds only) ---
 const DEBUG_RESET_COINS: int = 1000      # coins to grant on debug reset
 const DEBUG_RESET_BOOSTERS: int = 3      # per-booster owned count on debug reset
-var _coins_label: Label = null
 # The active unlock prompt; null when none is shown (only one at a time).
 var _unlock_popup: UnlockPopup = null
 
@@ -38,6 +37,18 @@ var _discard: DiscardRow
 var _hud: Hud
 var _hud_layer: CanvasLayer
 var _pause_menu: PauseMenu
+## Shop screen (S5-003); null when closed (only one at a time).
+var _shop_screen: ShopScreen = null
+## Rewarded-ad prompt (S5-004); null when closed (only one at a time).
+var _rewarded_prompt: RewardedPrompt = null
+## Mock interstitial (S5-005); null when not presented (only one at a time).
+var _interstitial: InterstitialMock = null
+## Remove-Ads offer (S5-006); null when not shown (only one at a time).
+var _remove_ads_offer: RemoveAdsOffer = null
+## Session cap for the Remove-Ads offer (S5-006): surfaced at most once per session.
+var _remove_ads_offered: bool = false
+# Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
+const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
 ## Tutorial overlay; null when not active (seen or not Level 1).
 var _coach: CoachOverlay = null
@@ -98,14 +109,10 @@ func _build_board() -> void:
 	_hud_layer.add_child(_hud)
 	_hud.settings_pressed.connect(_open_pause)
 	_hud.booster_pressed.connect(_on_booster_pressed)
-	# Coin balance shown top-right, read from the real WalletService and kept in
-	# sync with earns/spends via its economy_event signal.
-	_coins_label = UiFactory.label(_hud_layer, "", Vector2(250, 12), Vector2(130, 28), 20, Color(1, 0.93, 0.5))
-	_coins_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var wallet := get_node_or_null("/root/WalletService")
-	if wallet != null and wallet.has_signal("economy_event"):
-		wallet.economy_event.connect(func(_e: Variant) -> void: _update_coins_hud())
-	_update_coins_hud()
+	# Tapping a wallet pill (S5-002) deep-links the Shop (S5-003).
+	_hud.currency_tapped.connect(_open_shop)
+	# The coins + gems readout now lives in the HUD itself (S5-002 wallet display),
+	# live-bound to WalletService.economy_event — no stopgap label on _hud_layer.
 	# Live-recolour the stacks when the colorblind palette is toggled in-game.
 	SettingsService.changed.connect(_on_setting_changed)
 
@@ -115,6 +122,11 @@ func start_level(n: int) -> void:
 	GameManager.start_level(n)
 	_setup_board(LevelData.get_level(n), PROTO_OPEN_COUNT)
 	_arm_tutorial(n)
+	# S5-005: mark the puzzle active so a between-levels interstitial is never presented
+	# mid-arithmetic (AdService refuses while a puzzle is in progress).
+	var ad := get_node_or_null("/root/AdService")
+	if ad != null:
+		ad.notify_level_started()
 
 
 ## Test/tool seam: rebuilds the board from an explicit [param config] (bypassing
@@ -390,7 +402,8 @@ func _perform_unlock(stack_index: int, paid: bool) -> void:
 	# Swap the slot to its open look before animating the pulled-in cards.
 	_stacks[stack_index].set_locked(false)
 	_stacks[stack_index].set_target(_model.stack_target(stack_index))
-	_update_coins_hud()
+	# The coin spend above (when not the free ad-stub path) emits economy_event, so
+	# the HUD wallet refreshes itself; no explicit HUD poke needed here.
 
 	_input_locked = true
 	await _play_events(events)
@@ -399,14 +412,6 @@ func _perform_unlock(stack_index: int, paid: bool) -> void:
 	_floor.refresh_exposure(_model)
 	_update_discard_warning()
 	_input_locked = false
-
-
-func _update_coins_hud() -> void:
-	if _coins_label == null:
-		return
-	var wallet := get_node_or_null("/root/WalletService")
-	var coins: int = wallet.balance(EconomyEnums.Currency.COINS) if wallet != null else 0
-	_coins_label.text = "🪙 %d" % coins
 
 
 func _update_discard_warning() -> void:
@@ -676,6 +681,35 @@ func _close_pause() -> void:
 	get_tree().paused = false
 
 
+## Opens the Shop (S5-003) over the board. One at a time. The [param _currency] from
+## the wallet-pill deep-link (S5-002) is accepted for a future filter/scroll-to; the MVP
+## shows the full catalog. The screen resolves the IAP/Entitlement/Analytics autoloads +
+## the authored catalog itself (see [method ShopScreen.setup]).
+func _open_shop(_currency: int = -1) -> void:
+	if _shop_screen != null and is_instance_valid(_shop_screen):
+		return
+	var shop := ShopScreen.new()
+	shop.dismiss_on_backdrop = true
+	_shop_screen = shop
+	shop.closed.connect(func() -> void: _shop_screen = null)
+	_overlay_layer.add_child(shop)
+	shop.setup()
+
+
+## Opens the rewarded-ad prompt (S5-004) over the result screen when the player opts in.
+## One at a time. The prompt resolves the AdService/AnalyticsService autoloads itself and
+## routes the credit through the service chokepoint; the HUD wallet pills reflect the earn.
+func _open_rewarded_prompt() -> void:
+	if _rewarded_prompt != null and is_instance_valid(_rewarded_prompt):
+		return
+	var prompt := RewardedPrompt.new()
+	prompt.dismiss_on_backdrop = true
+	_rewarded_prompt = prompt
+	prompt.closed.connect(func() -> void: _rewarded_prompt = null)
+	_overlay_layer.add_child(prompt)
+	prompt.setup()
+
+
 # Clears the first-time-tutorial flag from settings so the coach replays. Saved
 # immediately; re-arms on the current level if eligible (the tutorial is gated to
 # the early-game flow, so on a later level it simply replays next time it applies).
@@ -687,12 +721,14 @@ func _on_reset_tutorial() -> void:
 
 # Debug-only inventory reset (Settings → "Reset Inventory", gated to debug builds).
 # Restocks every booster to DEBUG_RESET_BOOSTERS and sets coins to DEBUG_RESET_COINS,
-# then refreshes the coin HUD (the booster badges refresh off booster_stock_changed).
+# then refreshes the wallet pills (debug_set_inventory emits booster_stock_changed
+# for the badges but no economy_event, so the wallet display is poked explicitly).
 func _on_debug_reset() -> void:
 	var wallet := get_node_or_null("/root/WalletService")
 	if wallet != null and wallet.has_method("debug_set_inventory"):
 		wallet.debug_set_inventory(DEBUG_RESET_COINS, DEBUG_RESET_BOOSTERS)
-	_update_coins_hud()
+	if _hud != null:
+		_hud.refresh_wallet()
 
 
 # No main-menu screen exists yet, so "home" restarts the current level. Rewire to
@@ -725,10 +761,20 @@ func _show_result(result_mode: ResultScreen.Mode) -> void:
 	_result_screen = ResultScreen.new()
 	_result_screen.name = "ResultScreen"
 	_result_screen.retry_pressed.connect(_dismiss_result)
-	_result_screen.next_pressed.connect(_dismiss_result)
+	# WIN "claim" advances through the interstitial boundary (S5-005); retry/home don't.
+	_result_screen.next_pressed.connect(_on_win_advance)
 	_result_screen.home_pressed.connect(_dismiss_result)
 	_overlay_layer.add_child(_result_screen)   # _ready adds the dim underneath
 	_result_screen.setup(result_mode)           # content is built above the dim
+
+	# S5-004: on a win, reveal the opt-in rewarded-ad bonus offer when a rewarded ad
+	# can currently earn (AdService owns the daily/compliance gate). Tapping it opens
+	# the RewardedPrompt over the result screen.
+	if result_mode == ResultScreen.Mode.WIN:
+		var ad := get_node_or_null("/root/AdService")
+		if ad != null and ad.is_rewarded_available():
+			_result_screen.reveal_rewarded_offer("🎬  Watch for +%d coins" % ad.rewarded_reward_amount())
+			_result_screen.rewarded_offer_pressed.connect(_open_rewarded_prompt)
 
 
 func _dismiss_result() -> void:
@@ -740,3 +786,64 @@ func _dismiss_result() -> void:
 	# WIN already advanced GameManager.current_level (complete_level); LOSE left it.
 	# So this both advances on a win and retries on a loss.
 	start_level(GameManager.current_level)
+
+
+## Win "claim" → the between-levels boundary (S5-005): close the result screen, then ask
+## AdService for an interstitial. On SHOWN, present the mock full-screen ad and advance
+## only once it closes; on any suppression / no-fill, advance immediately with no UI. The
+## puzzle is never interrupted — this runs after the win, not mid-arithmetic (AC-6).
+func _on_win_advance() -> void:
+	if is_instance_valid(_result_screen):
+		_result_screen.close()
+		_result_screen = null
+	var ad := get_node_or_null("/root/AdService")
+	if ad != null:
+		ad.notify_level_completed()
+		if ad.maybe_show_interstitial() == AdServiceScript.InterstitialOutcome.SHOWN:
+			_present_interstitial(ad)
+			return
+	_advance_to_next()
+
+
+# Presents the mock interstitial (S5-005) and advances to the next level once it closes.
+# Emits the impression funnel event with the ad type AdService targeted.
+func _present_interstitial(ad: Object) -> void:
+	if _interstitial != null and is_instance_valid(_interstitial):
+		return
+	var analytics := get_node_or_null("/root/AnalyticsService")
+	if analytics != null and ad.has_method("resolve_ad_type"):
+		analytics.track_ad_impression(ad.resolve_ad_type())
+	var mock := InterstitialMock.new()
+	_interstitial = mock
+	mock.closed.connect(func() -> void:
+		_interstitial = null
+		_advance_to_next()
+		# After the first interstitial of the session, gently offer Remove-Ads (S5-006).
+		_maybe_offer_remove_ads())
+	_overlay_layer.add_child(mock)
+	mock.setup()
+
+
+func _advance_to_next() -> void:
+	start_level(GameManager.current_level)
+
+
+## Surfaces the one-per-session Remove-Ads offer (S5-006): at most once per session, and
+## never when Remove-Ads is already owned (read via the entitlement chokepoint). The offer
+## deep-links the Shop; dismissing it just closes the sheet.
+func _maybe_offer_remove_ads() -> void:
+	if _remove_ads_offered:
+		return
+	if _remove_ads_offer != null and is_instance_valid(_remove_ads_offer):
+		return
+	var ent := get_node_or_null("/root/EntitlementService")
+	if ent != null and ent.should_suppress_interstitials():
+		return   # already owned → never offer
+	_remove_ads_offered = true
+	var offer := RemoveAdsOffer.new()
+	offer.dismiss_on_backdrop = true
+	_remove_ads_offer = offer
+	offer.shop_requested.connect(func() -> void: _open_shop(EconomyEnums.Currency.GEMS))
+	offer.closed.connect(func() -> void: _remove_ads_offer = null)
+	_overlay_layer.add_child(offer)
+	offer.setup()
