@@ -41,6 +41,22 @@ func _ready() -> void:
 		_save = SaveService
 
 
+## Minimum self-declared age (years) that qualifies as ADULT (13+) under the neutral age
+## gate (ADR-0005, COPPA "mixed-audience"). A legal threshold, not a gameplay tuning knob.
+const ADULT_MIN_AGE: int = 13
+
+
+## Maps a self-declared [param birth_year] to an [enum SaveData.AgeBand] given the
+## [param current_year], for the neutral first-run age gate (ADR-0005). Year-difference
+## granularity (a birth-year gate, not full date of birth): ADULT when the player turns at
+## least [constant ADULT_MIN_AGE] this calendar year, else CHILD. Never returns UNKNOWN — a
+## submitted year always resolves to a concrete band. Pure + deterministic (unit-tested);
+## the view collects the year, this policy maps it, [SaveService] persists the band.
+static func age_band_for_birth_year(birth_year: int, current_year: int) -> SaveData.AgeBand:
+	var age: int = current_year - birth_year
+	return SaveData.AgeBand.ADULT if age >= ADULT_MIN_AGE else SaveData.AgeBand.CHILD
+
+
 ## Injects the save service. Intended for tests.
 func configure(save: Object) -> void:
 	_save = save

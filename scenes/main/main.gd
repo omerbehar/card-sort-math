@@ -47,6 +47,8 @@ var _interstitial: InterstitialMock = null
 var _remove_ads_offer: RemoveAdsOffer = null
 ## Session cap for the Remove-Ads offer (S5-006): surfaced at most once per session.
 var _remove_ads_offered: bool = false
+## First-run neutral age gate (S6-001); null once answered/closed.
+var _age_gate: AgeGate = null
 # Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
 const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
@@ -76,6 +78,7 @@ func _ready() -> void:
 	_build_board()
 	AudioService.refresh_music()
 	start_level(GameManager.current_level)
+	_maybe_present_age_gate()
 
 
 func _build_board() -> void:
@@ -826,6 +829,30 @@ func _present_interstitial(ad: Object) -> void:
 
 func _advance_to_next() -> void:
 	start_level(GameManager.current_level)
+
+
+## Presents the first-run neutral age gate (S6-001, ADR-0005) when the player has not yet
+## declared an age band. The board is built underneath, but the gate's opaque backdrop blocks
+## interaction until answered — gating before any real personal-data collection. On submit,
+## the declared birth year is mapped to a band by [ComplianceService] and persisted via
+## [SaveService] (flipping every compliance verdict live); the gate then dismisses itself.
+func _maybe_present_age_gate() -> void:
+	if SaveService.data.age_band != SaveData.AgeBand.UNKNOWN:
+		return
+	if _age_gate != null and is_instance_valid(_age_gate):
+		return
+	var gate := AgeGate.new()
+	_age_gate = gate
+	gate.age_submitted.connect(_on_age_submitted)
+	gate.closed.connect(func() -> void: _age_gate = null)
+	_overlay_layer.add_child(gate)
+	gate.setup(int(Time.get_date_dict_from_system().get("year", 2026)))
+
+
+func _on_age_submitted(birth_year: int) -> void:
+	var current_year: int = int(Time.get_date_dict_from_system().get("year", 2026))
+	var band: SaveData.AgeBand = ComplianceService.age_band_for_birth_year(birth_year, current_year)
+	SaveService.set_age_band(band)
 
 
 ## Surfaces the one-per-session Remove-Ads offer (S5-006): at most once per session, and
