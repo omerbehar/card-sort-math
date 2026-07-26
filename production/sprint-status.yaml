@@ -14,18 +14,18 @@ goal: "Compliance UI: the first-run neutral age gate + CMP consent capture that 
 start: "2026-07-26"
 end: "2026-08-09"
 generated: "2026-07-26"
-updated: "2026-07-26"  # S6-001 done — first-run neutral age gate (812 green + screenshot)
+updated: "2026-07-26"  # S6-000 + S6-002 done — consent capture sheet (817 green + screenshot)
 
 stories:
   - id: "S6-000"
     name: "Kickoff: compliance-UI UX spec + /sprint-plan refinement (age gate + consent capture flow, child-safe treatment)"
     file: "design/ux/compliance-ui.md"
     priority: must-have
-    status: backlog
+    status: done
     owner: "ux-designer + producer"
     estimate_days: 0.5
     blocker: ""
-    completed: ""
+    completed: "2026-07-26"
   - id: "S6-001"
     name: "First-run neutral age gate: birth-year entry → age_band via ComplianceService, persisted (SaveService.set_age_band), gates the board on first launch"
     file: "scenes/ui/age_gate.gd"
@@ -39,11 +39,11 @@ stories:
     name: "Consent capture UI (personalized-ads / analytics / IAP toggles) → SaveService.capture_consent; shown after the age gate for a 13+ player"
     file: "scenes/ui/consent_sheet.gd"
     priority: must-have
-    status: backlog
+    status: done
     owner: "ui-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: ""
+    completed: "2026-07-26"
   - id: "S6-003"
     name: "Settings → Privacy: view + withdraw consent (SaveService.withdraw_consent), re-open the consent sheet; verdicts flip live"
     file: "scenes/ui/pause_menu.gd"

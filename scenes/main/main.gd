@@ -49,6 +49,8 @@ var _remove_ads_offer: RemoveAdsOffer = null
 var _remove_ads_offered: bool = false
 ## First-run neutral age gate (S6-001); null once answered/closed.
 var _age_gate: AgeGate = null
+## Consent capture sheet (S6-002); null when not shown.
+var _consent_sheet: ConsentSheet = null
 # Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
 const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
@@ -853,6 +855,23 @@ func _on_age_submitted(birth_year: int) -> void:
 	var current_year: int = int(Time.get_date_dict_from_system().get("year", 2026))
 	var band: SaveData.AgeBand = ComplianceService.age_band_for_birth_year(birth_year, current_year)
 	SaveService.set_age_band(band)
+	# S6-002: a declared adult is offered the consent sheet; a child skips it entirely —
+	# never solicit personal-data consent from an under-13 (child-safe by construction).
+	if band == SaveData.AgeBand.ADULT and not SaveService.data.consent_captured:
+		_present_consent_sheet()
+
+
+## Presents the consent capture sheet (S6-002) over the board. One at a time. The sheet writes
+## the choices via SaveService.capture_consent; ComplianceService verdicts reflect them live.
+func _present_consent_sheet() -> void:
+	if _consent_sheet != null and is_instance_valid(_consent_sheet):
+		return
+	var sheet := ConsentSheet.new()
+	sheet.dismiss_on_backdrop = false   # an explicit choice is required
+	_consent_sheet = sheet
+	sheet.closed.connect(func() -> void: _consent_sheet = null)
+	_overlay_layer.add_child(sheet)
+	sheet.setup()
 
 
 ## Surfaces the one-per-session Remove-Ads offer (S5-006): at most once per session, and
