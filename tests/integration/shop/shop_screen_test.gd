@@ -72,6 +72,8 @@ func _boot() -> Variant:
 	if save != null and save.data != null:
 		save.data.tutorial_seen = true
 		save.data.age_band = SaveData.AgeBand.ADULT   # these cases test an adult (not child-gated, S6-004)
+		save.data.consent_iap = true                  # …with IAP consent (not the consent-off branch)
+		save.data.consent_captured = true
 	var runner := scene_runner(MAIN)
 	await runner.simulate_frames(5)
 	return runner

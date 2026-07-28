@@ -224,6 +224,11 @@ func _on_buy_pressed(sku: int) -> void:
 	if _is_child_restricted():
 		_show_toast(_tr("shop_parental_gate"))
 		return
+	# An adult who declined IAP consent can re-enable it in Settings → Privacy (S6-003), rather
+	# than driving a purchase that fail-closes on the compliance gate with a generic error.
+	if _iap_consent_denied():
+		_show_toast(_tr("shop_consent_off"))
+		return
 	_set_pending(sku, true)
 	# The mock backend resolves synchronously → purchase_completed fires within this
 	# call and _on_purchase_completed restyles the card. An async backend leaves the
@@ -306,6 +311,14 @@ func _entry_is_entitlement(sku: int) -> bool:
 # parental gate (ADR-0005 child-safe; S6-004).
 func _is_child_restricted() -> bool:
 	return _compliance != null and _compliance.has_method("is_restricted") and _compliance.is_restricted()
+
+
+# True for a NON-restricted (adult) player who declined IAP consent — purchases are turned
+# off, but re-enablable in Settings → Privacy (distinct from the child parental gate).
+func _iap_consent_denied() -> bool:
+	if _compliance == null or not _compliance.has_method("can_process_iap"):
+		return false
+	return not _compliance.is_restricted() and not _compliance.can_process_iap()
 
 
 # A warm, calm notice card shown atop the offer list for a restricted (child) player.
@@ -401,6 +414,7 @@ func _tr(key: String) -> String:
 		"shop_restore_none": return "Nothing to restore"
 		"shop_parental_gate": return "Ask a grown-up to buy this"
 		"shop_child_banner": return "🔒  A grown-up can make purchases"
+		"shop_consent_off": return "Purchases are off — turn them on in Settings › Privacy"
 		_:
 			push_warning("ShopScreen: unknown localization key '%s'" % key)
 			return key
