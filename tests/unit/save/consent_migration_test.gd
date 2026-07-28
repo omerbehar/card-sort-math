@@ -390,6 +390,7 @@ func test_consent_fields_read_only_by_permitted_files() -> void:
 	# Files permitted to reference consent field names (read or write).
 	var permitted: Array[String] = [
 		"res://core/save_data.gd",
+		"res://core/save_integrity.gd",   # M4-R2: signs the protected field names (integrity, not a reader)
 		"res://autoloads/save_service.gd",
 		"res://autoloads/compliance_service.gd",
 	]

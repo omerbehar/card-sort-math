@@ -338,6 +338,7 @@ func test_rewarded_always_available_regardless_of_entitlement() -> void:
 func test_remove_ads_owned_read_only_by_permitted_files() -> void:
 	var permitted: Array[String] = [
 		"res://core/save_data.gd",
+		"res://core/save_integrity.gd",   # M4-R2: signs the protected field names (integrity, not a reader)
 		"res://autoloads/save_service.gd",
 		"res://autoloads/entitlement_service.gd",
 	]

@@ -28,9 +28,11 @@ extends Node
 ##     _request_contextual_ad()
 ## [/codeblock]
 ##
-## NOTE (M4-R2, OPEN-DEFERRED): plain-JSON [code]age_band[/code] is tamperable; an
-## HMAC/signature is a required prerequisite before the first real AdService/Analytics ships
-## (ADR-0013 §4, ADR-0005). This service is the seam that fix will live behind.
+## NOTE (M4-R2, RESOLVED): plain-JSON [code]age_band[/code] + consent were tamperable; the
+## protected fields are now HMAC-signed at the persistence layer ([SaveIntegrity], verified in
+## [method SaveService.load_game]), so an edited save fails closed to conservative defaults —
+## the required tamper bar before a real AdService/Analytics trusts these fields (ADR-0013 §4,
+## ADR-0005). A client-side secret is not server-grade anti-cheat; documented in [SaveIntegrity].
 
 # SaveService dependency; resolves to the autoload at runtime, injectable in tests.
 var _save = null

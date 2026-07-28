@@ -14,7 +14,7 @@ goal: "Compliance UI: the first-run neutral age gate + CMP consent capture that 
 start: "2026-07-26"
 end: "2026-08-09"
 generated: "2026-07-26"
-updated: "2026-07-26"  # S6-005 done — Sprint 6 (Compliance UI) COMPLETE (824 green)
+updated: "2026-07-26"  # S6-006 (M4-R2) done — compliance save tamper-signing (834 green)
 
 stories:
   - id: "S6-000"
@@ -69,5 +69,14 @@ stories:
     status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
+    blocker: ""
+    completed: "2026-07-26"
+  - id: "S6-006"
+    name: "Compliance save tamper-signing (M4-R2): HMAC-sign age_band + consent + Remove-Ads; fail-closed on load. Prerequisite before a real Ad/Analytics SDK trusts these fields."
+    file: "core/save_integrity.gd"
+    priority: must-have
+    status: done
+    owner: "security-engineer"
+    estimate_days: 1.0
     blocker: ""
     completed: "2026-07-26"
