@@ -65,14 +65,14 @@ func _arm(ad) -> void:
 func test_adult_with_personalized_consent_shows_personalized() -> void:
 	var s = _stack(SaveData.AgeBand.ADULT, true, false)
 	_arm(s.ad)
-	assert_int(s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(s.backend.last_ad_type).is_equal(AD_SCRIPT.AdType.PERSONALIZED)
 
 
 func test_adult_consent_denied_shows_contextual_never_personalized() -> void:
 	var s = _stack(SaveData.AgeBand.ADULT, false, false)
 	_arm(s.ad)
-	assert_int(s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(s.backend.last_ad_type).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)
 
 
@@ -80,14 +80,14 @@ func test_unknown_audience_shows_contextual_regardless_of_consent() -> void:
 	# UNKNOWN age can never receive personalized ads even with the consent flag set.
 	var s = _stack(SaveData.AgeBand.UNKNOWN, true, false)
 	_arm(s.ad)
-	assert_int(s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(s.backend.last_ad_type).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)
 
 
 func test_child_audience_shows_contextual_regardless_of_consent() -> void:
 	var s = _stack(SaveData.AgeBand.CHILD, true, false)
 	_arm(s.ad)
-	assert_int(s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await s.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(s.backend.last_ad_type).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)
 
 
@@ -99,11 +99,11 @@ func test_remove_ads_owned_suppresses_interstitial_but_rewarded_still_earns() ->
 	var s = _stack(SaveData.AgeBand.ADULT, true, true)  # owns Remove-Ads
 	_arm(s.ad)
 	# Interstitials suppressed despite a satisfied frequency window and personalized eligibility.
-	assert_int(s.ad.maybe_show_interstitial()).is_equal(
+	assert_int(await s.ad.maybe_show_interstitial()).is_equal(
 			AD_SCRIPT.InterstitialOutcome.SUPPRESSED_ENTITLEMENT)
 	# Rewarded stays available and still credits (GAME_PLAN §8: Remove-Ads keeps rewarded).
 	assert_bool(s.ad.is_rewarded_available()).is_true()
-	assert_int(s.ad.show_rewarded()).is_equal(s.config.coins_rewarded_ad)
+	assert_int(await s.ad.show_rewarded()).is_equal(s.config.coins_rewarded_ad)
 
 
 func test_restricted_audience_blocks_rewarded_earn() -> void:
@@ -111,4 +111,4 @@ func test_restricted_audience_blocks_rewarded_earn() -> void:
 	# rewarded surface is closed even though entitlement keeps rewarded "available" in policy.
 	var s = _stack(SaveData.AgeBand.UNKNOWN, false, false)
 	assert_bool(s.ad.is_rewarded_available()).is_false()
-	assert_int(s.ad.show_rewarded()).is_equal(0)
+	assert_int(await s.ad.show_rewarded()).is_equal(0)

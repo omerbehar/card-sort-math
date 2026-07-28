@@ -805,7 +805,10 @@ func _on_win_advance() -> void:
 	var ad := get_node_or_null("/root/AdService")
 	if ad != null:
 		ad.notify_level_completed()
-		if ad.maybe_show_interstitial() == AdServiceScript.InterstitialOutcome.SHOWN:
+		# Async (real-ads plan §2): await the ad outcome. The mock resolves next frame; a real
+		# SDK resolves when its own overlay is dismissed. On SHOWN the (dev/mock) InterstitialMock
+		# is presented; a real backend would own its overlay and this would advance directly.
+		if await ad.maybe_show_interstitial() == AdServiceScript.InterstitialOutcome.SHOWN:
 			_present_interstitial(ad)
 			return
 	_advance_to_next()

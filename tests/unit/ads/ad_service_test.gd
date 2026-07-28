@@ -99,7 +99,7 @@ func test_interstitial_shown_when_both_windows_satisfied() -> void:
 	var svc = _make(2, 60)
 	svc.interstitial_shown.connect(_on_interstitial_shown)
 	_complete_levels(svc, 2)
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(_backend.interstitial_calls).is_equal(1)
 	assert_int(_shown_count).is_equal(1)
@@ -110,7 +110,7 @@ func test_interstitial_shown_when_both_windows_satisfied() -> void:
 func test_interstitial_suppressed_before_level_window() -> void:
 	var svc = _make(3, 60)
 	_complete_levels(svc, 2)  # one short of the every-3 window
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SUPPRESSED_FREQUENCY)
 	assert_int(_backend.interstitial_calls).is_equal(0)
 
@@ -118,11 +118,11 @@ func test_interstitial_suppressed_before_level_window() -> void:
 func test_second_interstitial_suppressed_inside_min_interval() -> void:
 	var svc = _make(2, 60)
 	_complete_levels(svc, 2)
-	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	# Level window satisfied again, but only 30s have passed (< 60s min).
 	_complete_levels(svc, 2)
 	_time.now_seconds = 1030
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SUPPRESSED_FREQUENCY)
 	assert_int(_backend.interstitial_calls).is_equal(1)  # backend not re-invoked
 
@@ -130,10 +130,10 @@ func test_second_interstitial_suppressed_inside_min_interval() -> void:
 func test_interstitial_shown_again_after_min_interval_elapses() -> void:
 	var svc = _make(2, 60)
 	_complete_levels(svc, 2)
-	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	_complete_levels(svc, 2)
 	_time.now_seconds = 1060  # exactly 60s later → interval satisfied
-	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(_backend.interstitial_calls).is_equal(2)
 
 
@@ -141,7 +141,7 @@ func test_interstitial_suppressed_while_puzzle_active() -> void:
 	var svc = _make(2, 60)
 	_complete_levels(svc, 2)
 	svc.notify_level_started()  # a new puzzle began
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SUPPRESSED_PUZZLE)
 	assert_int(_backend.interstitial_calls).is_equal(0)
 
@@ -150,7 +150,7 @@ func test_interstitial_suppressed_when_remove_ads_owned() -> void:
 	var svc = _make(2, 60)
 	_entitlement.suppress = true
 	_complete_levels(svc, 2)
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SUPPRESSED_ENTITLEMENT)
 	assert_int(_backend.interstitial_calls).is_equal(0)
 
@@ -159,7 +159,7 @@ func test_interstitial_no_fill_does_not_reset_cap() -> void:
 	var svc = _make(2, 60)
 	_backend.interstitial_result = AD_BACKEND.InterstitialResult.NO_FILL
 	_complete_levels(svc, 2)
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.NO_FILL)
 	assert_int(_backend.interstitial_calls).is_equal(1)
 	# Counter NOT reset — the boundary retries next time rather than restarting the window.
@@ -169,7 +169,7 @@ func test_interstitial_no_fill_does_not_reset_cap() -> void:
 func test_interstitial_disabled_when_every_n_is_zero() -> void:
 	var svc = _make(0, 60)  # 0 disables interstitials
 	_complete_levels(svc, 5)
-	var outcome: int = svc.maybe_show_interstitial()
+	var outcome: int = await svc.maybe_show_interstitial()
 	assert_int(outcome).is_equal(AD_SCRIPT.InterstitialOutcome.SUPPRESSED_FREQUENCY)
 	assert_int(_backend.interstitial_calls).is_equal(0)
 
@@ -181,7 +181,7 @@ func test_interstitial_disabled_when_every_n_is_zero() -> void:
 func test_rewarded_completed_credits_config_amount_once() -> void:
 	var svc = _make()
 	svc.rewarded_earned.connect(_on_rewarded_earned)
-	var credited: int = svc.show_rewarded()
+	var credited: int = await svc.show_rewarded()
 	assert_int(credited).is_equal(60)
 	# Routed through WalletService._earn_rewarded_ad with the config amount, exactly once.
 	assert_int(_wallet.rewarded_amounts.size()).is_equal(1)
@@ -193,7 +193,7 @@ func test_rewarded_completed_credits_config_amount_once() -> void:
 func test_rewarded_dismissed_before_completion_no_earn() -> void:
 	var svc = _make()
 	_backend.rewarded_completes = false  # player abandoned the ad
-	var credited: int = svc.show_rewarded()
+	var credited: int = await svc.show_rewarded()
 	assert_int(credited).is_equal(0)
 	assert_int(_wallet.rewarded_amounts.size()).is_equal(0)
 
@@ -201,7 +201,7 @@ func test_rewarded_dismissed_before_completion_no_earn() -> void:
 func test_rewarded_unavailable_does_not_consume_or_earn() -> void:
 	var svc = _make()
 	_wallet.ad_available = false  # daily cap reached / restricted (wallet's verdict)
-	var credited: int = svc.show_rewarded()
+	var credited: int = await svc.show_rewarded()
 	assert_int(credited).is_equal(0)
 	assert_int(_wallet.rewarded_amounts.size()).is_equal(0)
 
@@ -210,7 +210,7 @@ func test_rewarded_credited_zero_when_wallet_caps_it_no_signal() -> void:
 	var svc = _make()
 	svc.rewarded_earned.connect(_on_rewarded_earned)
 	_wallet.rewarded_return = 0  # wallet credited nothing (hit a cap inside _earn_rewarded_ad)
-	var credited: int = svc.show_rewarded()
+	var credited: int = await svc.show_rewarded()
 	assert_int(credited).is_equal(0)
 	assert_int(_rewarded_coins.size()).is_equal(0)  # no rewarded_earned emitted for a 0 credit
 
@@ -234,7 +234,7 @@ func test_interstitial_personalized_when_targeted_ads_allowed() -> void:
 	svc.interstitial_shown.connect(_on_interstitial_shown)
 	_compliance.targeted_ok = true  # ADULT + personalized consent
 	_complete_levels(svc, 2)
-	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(_backend.last_ad_type).is_equal(AD_SCRIPT.AdType.PERSONALIZED)
 	assert_array(_shown_types).is_equal([AD_SCRIPT.AdType.PERSONALIZED])
 
@@ -244,7 +244,7 @@ func test_interstitial_contextual_when_targeted_ads_denied() -> void:
 	svc.interstitial_shown.connect(_on_interstitial_shown)
 	_compliance.targeted_ok = false  # non-adult OR personalized consent denied
 	_complete_levels(svc, 2)
-	assert_int(svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await svc.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 	assert_int(_backend.last_ad_type).is_equal(AD_SCRIPT.AdType.CONTEXTUAL)
 	assert_array(_shown_types).is_equal([AD_SCRIPT.AdType.CONTEXTUAL])
 

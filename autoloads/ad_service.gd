@@ -156,7 +156,10 @@ func notify_level_completed() -> void:
 # ---------------------------------------------------------------------------
 
 ## Considers presenting an interstitial at a between-levels boundary and returns the
-## [enum InterstitialOutcome]. Gates, in order: puzzle-active → entitlement suppression →
+## [enum InterstitialOutcome]. [b]Asynchronous[/b] (real-ads plan §2): callers must
+## [code]await[/code] it — the synchronous gates run first, then the backend presentation
+## resolves via [signal AdBackend.interstitial_finished]. Gates, in order: puzzle-active →
+## entitlement suppression →
 ## frequency cap (every-N-levels AND min-seconds). When all pass, the request is targeted
 ## per [method resolve_ad_type] (the audience × consent half of the triple gate, S4-004b):
 ## [constant AdType.PERSONALIZED] only for an ADULT with personalized-ads consent, else
@@ -172,7 +175,12 @@ func maybe_show_interstitial() -> int:
 		return InterstitialOutcome.SUPPRESSED_FREQUENCY
 
 	var ad_type: int = resolve_ad_type()
-	if _backend.show_interstitial(ad_type) != AdBackendClass.InterstitialResult.SHOWN:
+	# Async backend (real-ads plan §2): drive the show, then await the outcome signal. The
+	# mock resolves next frame; a real SDK resolves when the ad is dismissed. Callers await
+	# maybe_show_interstitial() accordingly.
+	_backend.show_interstitial(ad_type)
+	var result: int = await _backend.interstitial_finished
+	if result != AdBackendClass.InterstitialResult.SHOWN:
 		return InterstitialOutcome.NO_FILL  # no-fill: do not reset the cap, retry next boundary
 
 	_last_interstitial_unix = _time.unix_seconds()
@@ -225,11 +233,15 @@ func is_rewarded_available() -> bool:
 ## [method WalletService._earn_rewarded_ad] (which owns the compliance + daily-cap policy).
 ## Returns the coins actually credited — [code]0[/code] when unavailable, abandoned, or
 ## fully capped (no view is "spent" for nothing; the wallet refuses past the cap). Emits
-## [signal rewarded_earned] only when coins were credited.
+## [signal rewarded_earned] only when coins were credited. [b]Asynchronous[/b] (real-ads plan
+## §2): callers must [code]await[/code] it — the gate runs first, then the backend resolves via
+## [signal AdBackend.rewarded_finished].
 func show_rewarded() -> int:
 	if not is_rewarded_available():
 		return 0
-	if not _backend.show_rewarded():
+	# Async backend (real-ads plan §2): drive the show, then await the completion signal.
+	_backend.show_rewarded()
+	if not await _backend.rewarded_finished:
 		return 0  # dismissed / abandoned / no-fill — no earn
 	var credited: int = _wallet._earn_rewarded_ad(_config.coins_rewarded_ad)
 	if credited > 0:

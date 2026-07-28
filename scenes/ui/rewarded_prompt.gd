@@ -120,8 +120,12 @@ func _on_watch() -> void:
 	_decline_btn.disabled = true
 
 	# The service owns presentation + the credit; it returns the coins actually credited
-	# (0 when unavailable / abandoned / capped — no view is spent for nothing).
-	var credited: int = _ad.show_rewarded() if _ad.has_method("show_rewarded") else 0
+	# (0 when unavailable / abandoned / capped — no view is spent for nothing). Async now
+	# (real-ads plan §2) — await the outcome; the buttons are already disabled above so no
+	# double-tap can slip in during the wait. (await on a fake's plain int just returns it.)
+	var credited: int = 0
+	if _ad.has_method("show_rewarded"):
+		credited = await _ad.show_rewarded()
 	if credited > 0:
 		if _analytics != null and _analytics.has_method("track_ad_reward"):
 			_analytics.track_ad_reward(credited)

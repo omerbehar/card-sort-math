@@ -89,7 +89,7 @@ func test_rewarded_completion_credits_real_wallet() -> void:
 	var coins := EconomyEnums.Currency.COINS
 
 	assert_int(stack.wallet.balance(coins)).is_equal(0)
-	var credited: int = stack.ad.show_rewarded()
+	var credited: int = await stack.ad.show_rewarded()
 
 	# Reward flowed through WalletService._earn_rewarded_ad and landed in the real balance.
 	assert_int(credited).is_equal(stack.config.coins_rewarded_ad)
@@ -101,7 +101,7 @@ func test_rewarded_abandoned_leaves_real_wallet_unchanged() -> void:
 	stack.backend.rewarded_completes = false  # dismissed before completion
 	var coins := EconomyEnums.Currency.COINS
 
-	var credited: int = stack.ad.show_rewarded()
+	var credited: int = await stack.ad.show_rewarded()
 
 	assert_int(credited).is_equal(0)
 	assert_int(stack.wallet.balance(coins)).is_equal(0)
@@ -117,12 +117,12 @@ func test_remove_ads_entitlement_suppresses_interstitial_end_to_end() -> void:
 	stack.ad.notify_level_completed()
 	stack.ad.notify_level_completed()
 	stack.ad.notify_level_completed()
-	assert_int(stack.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
+	assert_int(await stack.ad.maybe_show_interstitial()).is_equal(AD_SCRIPT.InterstitialOutcome.SHOWN)
 
 	# Now own Remove-Ads via the real EntitlementService — interstitials must suppress.
 	stack.entitlement.grant_remove_ads()
 	stack.ad.notify_level_completed()
 	stack.ad.notify_level_completed()
 	stack.ad.notify_level_completed()
-	assert_int(stack.ad.maybe_show_interstitial()).is_equal(
+	assert_int(await stack.ad.maybe_show_interstitial()).is_equal(
 			AD_SCRIPT.InterstitialOutcome.SUPPRESSED_ENTITLEMENT)
