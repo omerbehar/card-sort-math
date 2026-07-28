@@ -104,7 +104,35 @@ func _ready() -> void:
 		var loader: Node = get_node_or_null("/root/EconomyConfigLoader")
 		_config = loader.get_config() if loader != null else load(DEFAULT_CONFIG_PATH)
 	if _backend == null:
-		_backend = AdBackendClass.new()
+		_backend = _resolve_backend()
+
+
+## Chooses the presentation backend for the running target. On Android/iOS where the native ad
+## plugin is present, a [RealAdBackend] drives real ads; on every other target (desktop, headless,
+## CI) — and whenever the plugin is absent — the no-op base [AdBackend] is used, so the gdUnit4
+## suite and desktop editor never touch native code (risk M4-R3) and simply show no ads. The
+## RealAdBackend self-reports [method RealAdBackend.is_active]; if construction leaves it inert we
+## fall back to the base so behaviour is identical to "no SDK".
+func _resolve_backend() -> AdBackendClass:
+	var platform := OS.get_name()
+	if platform == "Android" or platform == "iOS":
+		var config: AdUnitConfig = _load_ad_unit_config()
+		var real := RealAdBackend.new(config)
+		if real.is_active():
+			return real
+	return AdBackendClass.new()
+
+
+# Loads the authored ad-unit config (real IDs live in this .tres); falls back to a fresh instance
+# — i.e. Google TEST ad units — when the resource is absent, so a build without it still shows only
+# test ads rather than crashing.
+func _load_ad_unit_config() -> AdUnitConfig:
+	const CONFIG_PATH := "res://assets/data/ad_unit_config.tres"
+	if ResourceLoader.exists(CONFIG_PATH):
+		var res := load(CONFIG_PATH)
+		if res is AdUnitConfig:
+			return res
+	return AdUnitConfig.new()
 
 
 ## Injects all dependencies. Intended for tests; call before any other method.

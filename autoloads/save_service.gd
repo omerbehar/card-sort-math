@@ -137,6 +137,17 @@ func capture_consent(personalized_ads: bool, analytics: bool, iap: bool) -> void
 	save_game()
 
 
+## Records ONLY the ad-personalization consent from the native CMP (AdMob UMP / iOS ATT), via
+## [AdConsentBridge] (real-ads plan §4). Leaves the analytics and IAP consent flags untouched —
+## those belong to the in-app CMP sheet (S6). Keeping this field write inside SaveService (the
+## consent chokepoint) preserves the single-reader invariant (ADR-0013 Criterion 6): the bridge
+## never touches consent fields directly. Sets [member SaveData.consent_captured] and persists.
+func capture_ad_personalization_consent(personalized_ads: bool) -> void:
+	data.consent_personalized_ads = personalized_ads
+	data.consent_captured = true
+	save_game()
+
+
 ## Withdraws a specific consent field and persists (ADR-0013 §3, "withdrawal immediacy").
 ##
 ## The withdrawal flips the relevant field to [code]false[/code] (denied) and persists.
