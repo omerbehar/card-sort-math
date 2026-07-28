@@ -71,6 +71,7 @@ func _boot() -> Variant:
 	var save := get_tree().root.get_node_or_null("SaveService")
 	if save != null and save.data != null:
 		save.data.tutorial_seen = true
+		save.data.age_band = SaveData.AgeBand.ADULT   # these cases test an adult (not child-gated, S6-004)
 	var runner := scene_runner(MAIN)
 	await runner.simulate_frames(5)
 	return runner

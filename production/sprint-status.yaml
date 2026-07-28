@@ -9,92 +9,74 @@
 #   done           ↔  Complete
 #   blocked        ↔  Blocked
 
-sprint: 5
-goal: "Monetization UI (M4 view half): wallet display, shop screen, rewarded-ad prompt, interstitial + Remove-Ads offer — thin views over the M4 service seams (PR #39). Mock-first; consent/age-gate UI carved into its own compliance-UI sprint. See production/milestones/m4-ui-definition.md + design/ux/monetization-ui.md."
-start: "2026-06-15"
-end: "2026-06-29"
-generated: "2026-06-15"
-updated: "2026-07-15"  # S5-008 done — a11y/reduced-motion pass; Sprint 5 COMPLETE (802 green)
+sprint: 6
+goal: "Compliance UI: the first-run neutral age gate + CMP consent capture that wire the shipped ComplianceService / SaveData v6 model (S4-001, ADR-0013) to real UI. Prerequisite deferred out of Sprint 5 — unblocks store launch and personalized ads (ADR-0005). Mock-first: no vendor CMP/UMP/ATT SDK yet (that's the native-SDK sprint); flows write the same SaveData consent fields the services already read. See docs/architecture/ADR-0005-audience-positioning-13plus-age-gated.md + ADR-0013-consent-cmp-model.md."
+start: "2026-07-26"
+end: "2026-08-09"
+generated: "2026-07-26"
+updated: "2026-07-26"  # S6-006 (M4-R2) done — compliance save tamper-signing (834 green)
 
 stories:
-  - id: "S5-000"
-    name: "Kickoff: monetization-ui UX spec + sprint definition"
-    file: "design/ux/monetization-ui.md"
+  - id: "S6-000"
+    name: "Kickoff: compliance-UI UX spec + /sprint-plan refinement (age gate + consent capture flow, child-safe treatment)"
+    file: "design/ux/compliance-ui.md"
     priority: must-have
     status: done
     owner: "ux-designer + producer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-06-15"
-  - id: "S5-001"
-    name: "Extend IAPCatalogEntryResource with display metadata (display_name, grant_summary, icon, price_display) + update iap_catalog.tres + validation"
-    file: "data/iap_catalog_entry.gd"
-    priority: must-have
-    status: done
-    owner: "systems-designer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-002"
-    name: "Wallet display: gems pill in hud.gd, live economy_event binding, reduced-motion-aware count-up"
-    file: "scenes/ui/hud.gd"
+    completed: "2026-07-26"
+  - id: "S6-001"
+    name: "First-run neutral age gate: birth-year entry → age_band via ComplianceService, persisted (SaveService.set_age_band), gates the board on first launch"
+    file: "scenes/ui/age_gate.gd"
     priority: must-have
     status: done
     owner: "ui-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-003"
-    name: "Shop screen: render catalog, purchase flow (pending/success/fail), restore-purchases, Remove-Ads Owned state"
-    file: "scenes/ui/shop_screen.gd"
-    priority: must-have
-    status: done
-    owner: "ui-programmer"
-    estimate_days: 2.5
-    blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-004"
-    name: "Rewarded-ad prompt component: availability-gated, wired at result screen + booster/near-loss attach points"
-    file: "scenes/ui/rewarded_prompt.gd"
+    completed: "2026-07-26"
+  - id: "S6-002"
+    name: "Consent capture UI (personalized-ads / analytics / IAP toggles) → SaveService.capture_consent; shown after the age gate for a 13+ player"
+    file: "scenes/ui/consent_sheet.gd"
     priority: must-have
     status: done
     owner: "ui-programmer"
     estimate_days: 1.5
     blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-005"
-    name: "Interstitial mock presentation: Main boundary wiring (notify_level_completed + maybe_show_interstitial) + mock full-screen"
-    file: "scenes/ui/interstitial_mock.gd"
-    priority: must-have
-    status: done
-    owner: "gameplay-programmer"
-    estimate_days: 1.0
-    blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-006"
-    name: "Remove-Ads offer surface: one-per-session dismissible anchor deep-linking the Shop"
-    file: "scenes/ui/remove_ads_offer.gd"
+    completed: "2026-07-26"
+  - id: "S6-003"
+    name: "Settings → Privacy: view + withdraw consent (SaveService.withdraw_consent), re-open the consent sheet; verdicts flip live"
+    file: "scenes/ui/pause_menu.gd"
     priority: should-have
     status: done
     owner: "ui-programmer"
     estimate_days: 1.0
     blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-007"
-    name: "Analytics funnel wiring: emit track_iap_purchase / track_ad_impression / track_ad_reward from the flows"
+    completed: "2026-07-26"
+  - id: "S6-004"
+    name: "Child-safe mode UI: CHILD age_band reflects in shop/offers (contextual-only, IAP behind a parental-gate stub); no personal-data surfaces"
     file: "scenes/ui/shop_screen.gd"
+    priority: should-have
+    status: done
+    owner: "ui-programmer"
+    estimate_days: 1.5
+    blocker: ""
+    completed: "2026-07-26"
+  - id: "S6-005"
+    name: "Retire the 'mock consent granted' scaffolding in the monetization suites once real capture flows exist; drive from the real age-gate/consent UI"
+    file: "tests/integration/"
     priority: should-have
     status: done
     owner: "gameplay-programmer"
     estimate_days: 0.5
     blocker: ""
-    completed: "2026-07-15"
-  - id: "S5-008"
-    name: "Accessibility + reduced-motion pass; screenshot evidence for all monetization surfaces"
-    file: "production/qa/evidence/"
-    priority: should-have
+    completed: "2026-07-26"
+  - id: "S6-006"
+    name: "Compliance save tamper-signing (M4-R2): HMAC-sign age_band + consent + Remove-Ads; fail-closed on load. Prerequisite before a real Ad/Analytics SDK trusts these fields."
+    file: "core/save_integrity.gd"
+    priority: must-have
     status: done
-    owner: "accessibility-specialist"
+    owner: "security-engineer"
     estimate_days: 1.0
     blocker: ""
-    completed: "2026-07-15"
+    completed: "2026-07-26"

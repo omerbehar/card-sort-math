@@ -38,6 +38,7 @@ const _SUBINK := Color(0.36, 0.38, 0.46)
 var _iap = null
 var _entitlement = null
 var _analytics = null
+var _compliance = null   # ComplianceService: child-safe / consent gating (S6-004)
 var _catalog: IAPCatalog = null
 
 # Per-SKU buy Button + entry so completion handlers can restyle the right card.
@@ -48,11 +49,12 @@ var _toast_label: Label = null
 
 ## Injects the service seams + catalog. Call before [method setup]. Any argument left
 ## null is resolved from the matching autoload / authored resource in [method setup].
-func configure(iap: Object, entitlement: Object, analytics: Object, catalog: IAPCatalog) -> void:
+func configure(iap: Object, entitlement: Object, analytics: Object, catalog: IAPCatalog, compliance: Object = null) -> void:
 	_iap = iap
 	_entitlement = entitlement
 	_analytics = analytics
 	_catalog = catalog
+	_compliance = compliance
 
 
 ## Builds the store content into the pop-up body, wires the services, and plays the
@@ -73,6 +75,8 @@ func _resolve_defaults() -> void:
 		_entitlement = get_node_or_null(^"/root/EntitlementService")
 	if _analytics == null:
 		_analytics = get_node_or_null(^"/root/AnalyticsService")
+	if _compliance == null:
+		_compliance = get_node_or_null(^"/root/ComplianceService")
 	if _catalog == null:
 		var res: Resource = load(_CATALOG_PATH)
 		if res is IAPCatalog:
@@ -117,6 +121,10 @@ func _build_ui() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 12)
 	scroll.add_child(list)
+
+	# S6-004: a child sees a calm parental-gate notice above the offers.
+	if _is_child_restricted():
+		list.add_child(_child_banner())
 
 	for entry in _catalog_entries():
 		list.add_child(_build_card(entry))
@@ -210,6 +218,12 @@ func _connect_services() -> void:
 func _on_buy_pressed(sku: int) -> void:
 	if _iap == null or not _entries.has(sku):
 		return
+	# S6-004 child-safe: an under-13 (restricted) player's purchases sit behind a parental
+	# gate. Surface a calm "ask a grown-up" cue instead of driving IAPService (which would
+	# fail-closed on the compliance gate anyway) — the wallet is never touched.
+	if _is_child_restricted():
+		_show_toast(_tr("shop_parental_gate"))
+		return
 	_set_pending(sku, true)
 	# The mock backend resolves synchronously → purchase_completed fires within this
 	# call and _on_purchase_completed restyles the card. An async backend leaves the
@@ -286,6 +300,21 @@ func _refresh_owned() -> void:
 func _entry_is_entitlement(sku: int) -> bool:
 	var e = _entries.get(sku)
 	return e != null and e.kind == IAPCatalogEntryResource.Kind.NON_CONSUMABLE_ENTITLEMENT
+
+
+# True when the player is age-restricted (under-13 / undeclared) — purchases sit behind a
+# parental gate (ADR-0005 child-safe; S6-004).
+func _is_child_restricted() -> bool:
+	return _compliance != null and _compliance.has_method("is_restricted") and _compliance.is_restricted()
+
+
+# A warm, calm notice card shown atop the offer list for a restricted (child) player.
+func _child_banner() -> Control:
+	var b := _panel(Color(1.0, 0.92, 0.74), 14, 14, 14, 14, true)
+	b.custom_minimum_size = Vector2(0.0, 50.0)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiFactory.label(b, _tr("shop_child_banner"), Vector2(10.0, 0.0), Vector2(316.0, 50.0), 15, _INK)
+	return b
 
 
 func _show_toast(text: String) -> void:
@@ -370,6 +399,8 @@ func _tr(key: String) -> String:
 		"shop_purchase_fail": return "Purchase didn't go through"
 		"shop_restore_done": return "Restored %d purchase(s)"
 		"shop_restore_none": return "Nothing to restore"
+		"shop_parental_gate": return "Ask a grown-up to buy this"
+		"shop_child_banner": return "🔒  A grown-up can make purchases"
 		_:
 			push_warning("ShopScreen: unknown localization key '%s'" % key)
 			return key

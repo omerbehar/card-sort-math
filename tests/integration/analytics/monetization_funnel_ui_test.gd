@@ -27,8 +27,10 @@ func _boot() -> Variant:
 	var save := get_tree().root.get_node_or_null("SaveService")
 	if save != null and save.data != null:
 		save.data.tutorial_seen = true
-		save.data.age_band = SaveData.AgeBand.ADULT   # adult + analytics consent → enabled
-		save.data.consent_analytics = true
+		# S6-005: establish audience + consent through the real SaveService setters (the same
+		# APIs the age gate / consent sheet now call) instead of poking protected fields.
+		save.set_age_band(SaveData.AgeBand.ADULT)
+		save.capture_consent(false, true, false)   # analytics granted
 	var runner := scene_runner(MAIN)
 	await runner.simulate_frames(5)
 	return runner
@@ -61,7 +63,7 @@ func test_no_funnel_event_without_analytics_consent() -> void:
 	# Arrange: revoke analytics consent → the AnalyticsService gate must drop the event.
 	var runner = await _boot()
 	var main = runner.scene()
-	get_tree().root.get_node("SaveService").data.consent_analytics = false
+	get_tree().root.get_node("SaveService").withdraw_consent("analytics")   # S6-005: real withdrawal API
 	_sink = SINK.MockAnalyticsSink.new()
 	AnalyticsService.configure(get_tree().root.get_node("ComplianceService"), _sink)
 

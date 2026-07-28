@@ -28,6 +28,9 @@ signal debug_reset_pressed()
 ## Emitted when the player taps the debug "Restart from Lv 1" button (controller
 ## resets progression to level 1 and reloads it). Always shown (every build).
 signal restart_from_first_pressed()
+## Emitted when the player taps "Privacy & Data" (S6-003) — the controller opens the
+## consent sheet pre-filled for review / withdraw / re-capture.
+signal privacy_pressed()
 
 # Round audio toggles, left-to-right. Keys must exist in [constant Settings.KEYS].
 const _AUDIO_TOGGLES: Array[Dictionary] = [
@@ -42,8 +45,8 @@ const _SWITCHES: Array[Dictionary] = [
 	{key = "reduced_motion", label = "Reduced Motion"},
 ]
 
-const _PANEL_POS: Vector2 = Vector2(33, 210)
-const _PANEL_SIZE: Vector2 = Vector2(324, 416)
+const _PANEL_POS: Vector2 = Vector2(33, 194)
+const _PANEL_SIZE: Vector2 = Vector2(324, 472)
 const _HEADER_H: float = 62.0
 const _KNOB_SIZE: float = 26.0
 
@@ -98,8 +101,25 @@ func _build() -> void:
 
 	_build_audio_toggles()
 	_build_switches()
+	_build_privacy_row()
 	_build_debug_row()
 	_build_actions()
+
+
+# A full-width "Privacy & Data" row (S6-003) between the accessibility switches and the
+# debug row. Opens the consent sheet for review / withdraw / re-capture via the controller.
+func _build_privacy_row() -> void:
+	var row_w: float = _PANEL_SIZE.x - 44.0
+	var pos := Vector2(_PANEL_POS.x + 22, _PANEL_POS.y + _HEADER_H + 110.0 + 2.0 * (52.0 + 12.0) + 6.0)
+	var size := Vector2(row_w, 40.0)
+	var btn := _bare_button(pos, size)
+	UiFactory.nine_patch(btn, "kenney/rect_blue.png", Vector2.ZERO, size, 16, Color(0.12, 0.32, 0.58))
+	UiFactory.label(btn, "Privacy & Data  ›", Vector2(18, 0), Vector2(size.x - 24, size.y), 17, Color.WHITE) \
+		.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.pressed.connect(func() -> void:
+		privacy_pressed.emit()
+		_resume())
+	_buttons["privacy"] = btn
 
 
 # A single debug row between the switches and the Home/Continue actions, holding

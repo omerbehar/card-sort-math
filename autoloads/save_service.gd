@@ -16,6 +16,10 @@ signal loaded
 ## Distinct from [signal loaded] so consumers/telemetry can tell lost data from a
 ## genuine first launch (see design/gdd/save-service.md Edge Case 14).
 signal load_failed
+## Emitted when a loaded save failed the compliance integrity check (M4-R2): the
+## protected fields (age_band + consent + Remove-Ads) were reset to conservative defaults.
+## The rest of the save (progress, wallet) is kept; the age gate + consent flow re-trigger.
+signal integrity_failed
 
 const DEFAULT_PATH: String = "user://save.json"
 
@@ -57,7 +61,17 @@ func load_game() -> void:
 
 	var parsed: Variant = JSON.parse_string(text)
 	if parsed is Dictionary:
-		data = SaveData.from_dict(parsed as Dictionary)
+		var dict: Dictionary = parsed as Dictionary
+		# M4-R2: verify the compliance/entitlement-protected fields. A tampered or unsigned
+		# save fails closed — drop the protected keys so from_dict() applies the conservative
+		# defaults (UNKNOWN age, all consent denied, Remove-Ads not owned), which re-triggers
+		# the age gate + consent flow. Non-protected progress (level, wallet, boosters) is kept.
+		if not SaveIntegrity.verify(dict):
+			for key in SaveIntegrity.PROTECTED_FIELDS:
+				dict.erase(key)
+			push_warning("SaveService: compliance integrity check failed; protected fields reset")
+			integrity_failed.emit()
+		data = SaveData.from_dict(dict)
 		loaded.emit()
 	else:
 		push_warning("SaveService: corrupt save at %s; using defaults" % _path)
@@ -75,7 +89,8 @@ func save_game() -> void:
 	if file == null:
 		push_error("SaveService: cannot write %s (err %d)" % [tmp_path, FileAccess.get_open_error()])
 		return
-	file.store_string(JSON.stringify(data.to_dict()))
+	# M4-R2: sign the compliance/entitlement-protected fields so an edited save is detectable.
+	file.store_string(JSON.stringify(SaveIntegrity.signed(data.to_dict())))
 	file.close()
 
 	# Atomic swap: rename the fully-written temp over the live file. On POSIX

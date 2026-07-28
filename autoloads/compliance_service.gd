@@ -28,9 +28,11 @@ extends Node
 ##     _request_contextual_ad()
 ## [/codeblock]
 ##
-## NOTE (M4-R2, OPEN-DEFERRED): plain-JSON [code]age_band[/code] is tamperable; an
-## HMAC/signature is a required prerequisite before the first real AdService/Analytics ships
-## (ADR-0013 §4, ADR-0005). This service is the seam that fix will live behind.
+## NOTE (M4-R2, RESOLVED): plain-JSON [code]age_band[/code] + consent were tamperable; the
+## protected fields are now HMAC-signed at the persistence layer ([SaveIntegrity], verified in
+## [method SaveService.load_game]), so an edited save fails closed to conservative defaults —
+## the required tamper bar before a real AdService/Analytics trusts these fields (ADR-0013 §4,
+## ADR-0005). A client-side secret is not server-grade anti-cheat; documented in [SaveIntegrity].
 
 # SaveService dependency; resolves to the autoload at runtime, injectable in tests.
 var _save = null
@@ -39,6 +41,22 @@ var _save = null
 func _ready() -> void:
 	if _save == null:
 		_save = SaveService
+
+
+## Minimum self-declared age (years) that qualifies as ADULT (13+) under the neutral age
+## gate (ADR-0005, COPPA "mixed-audience"). A legal threshold, not a gameplay tuning knob.
+const ADULT_MIN_AGE: int = 13
+
+
+## Maps a self-declared [param birth_year] to an [enum SaveData.AgeBand] given the
+## [param current_year], for the neutral first-run age gate (ADR-0005). Year-difference
+## granularity (a birth-year gate, not full date of birth): ADULT when the player turns at
+## least [constant ADULT_MIN_AGE] this calendar year, else CHILD. Never returns UNKNOWN — a
+## submitted year always resolves to a concrete band. Pure + deterministic (unit-tested);
+## the view collects the year, this policy maps it, [SaveService] persists the band.
+static func age_band_for_birth_year(birth_year: int, current_year: int) -> SaveData.AgeBand:
+	var age: int = current_year - birth_year
+	return SaveData.AgeBand.ADULT if age >= ADULT_MIN_AGE else SaveData.AgeBand.CHILD
 
 
 ## Injects the save service. Intended for tests.

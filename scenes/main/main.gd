@@ -47,6 +47,10 @@ var _interstitial: InterstitialMock = null
 var _remove_ads_offer: RemoveAdsOffer = null
 ## Session cap for the Remove-Ads offer (S5-006): surfaced at most once per session.
 var _remove_ads_offered: bool = false
+## First-run neutral age gate (S6-001); null once answered/closed.
+var _age_gate: AgeGate = null
+## Consent capture sheet (S6-002); null when not shown.
+var _consent_sheet: ConsentSheet = null
 # Preloaded for the InterstitialOutcome enum (AdService is an autoload, not a class_name).
 const AdServiceScript := preload("res://autoloads/ad_service.gd")
 
@@ -76,6 +80,7 @@ func _ready() -> void:
 	_build_board()
 	AudioService.refresh_music()
 	start_level(GameManager.current_level)
+	_maybe_present_age_gate()
 
 
 func _build_board() -> void:
@@ -673,6 +678,7 @@ func _open_pause() -> void:
 	_pause_menu.reset_tutorial_pressed.connect(_on_reset_tutorial)
 	_pause_menu.debug_reset_pressed.connect(_on_debug_reset)
 	_pause_menu.restart_from_first_pressed.connect(_on_restart_from_first)
+	_pause_menu.privacy_pressed.connect(_open_privacy_consent)
 	_hud_layer.add_child(_pause_menu)
 
 
@@ -826,6 +832,66 @@ func _present_interstitial(ad: Object) -> void:
 
 func _advance_to_next() -> void:
 	start_level(GameManager.current_level)
+
+
+## Presents the first-run neutral age gate (S6-001, ADR-0005) when the player has not yet
+## declared an age band. The board is built underneath, but the gate's opaque backdrop blocks
+## interaction until answered — gating before any real personal-data collection. On submit,
+## the declared birth year is mapped to a band by [ComplianceService] and persisted via
+## [SaveService] (flipping every compliance verdict live); the gate then dismisses itself.
+func _maybe_present_age_gate() -> void:
+	if SaveService.data.age_band != SaveData.AgeBand.UNKNOWN:
+		return
+	if _age_gate != null and is_instance_valid(_age_gate):
+		return
+	var gate := AgeGate.new()
+	_age_gate = gate
+	gate.age_submitted.connect(_on_age_submitted)
+	gate.closed.connect(func() -> void: _age_gate = null)
+	_overlay_layer.add_child(gate)
+	gate.setup(int(Time.get_date_dict_from_system().get("year", 2026)))
+
+
+func _on_age_submitted(birth_year: int) -> void:
+	var current_year: int = int(Time.get_date_dict_from_system().get("year", 2026))
+	var band: SaveData.AgeBand = ComplianceService.age_band_for_birth_year(birth_year, current_year)
+	SaveService.set_age_band(band)
+	# S6-002: a declared adult is offered the consent sheet; a child skips it entirely —
+	# never solicit personal-data consent from an under-13 (child-safe by construction).
+	if band == SaveData.AgeBand.ADULT and not SaveService.data.consent_captured:
+		_present_consent_sheet()
+
+
+## Presents the consent capture sheet (S6-002) over the board. One at a time. The sheet writes
+## the choices via SaveService.capture_consent; ComplianceService verdicts reflect them live.
+func _present_consent_sheet() -> void:
+	if _consent_sheet != null and is_instance_valid(_consent_sheet):
+		return
+	var sheet := ConsentSheet.new()
+	sheet.dismiss_on_backdrop = false   # an explicit choice is required
+	_consent_sheet = sheet
+	sheet.closed.connect(func() -> void: _consent_sheet = null)
+	_overlay_layer.add_child(sheet)
+	sheet.setup()
+
+
+## Opens the consent sheet from Settings (S6-003) pre-filled with the current choices, so the
+## player can review, withdraw, or re-grant. For an adult the compliance verdict equals the
+## stored consent field, so the verdicts seed the toggles; saving re-captures via
+## SaveService.capture_consent (a toggle turned off is an immediate withdrawal).
+func _open_privacy_consent() -> void:
+	if _consent_sheet != null and is_instance_valid(_consent_sheet):
+		return
+	var sheet := ConsentSheet.new()
+	sheet.dismiss_on_backdrop = true   # opened from settings — dismissable without changes
+	_consent_sheet = sheet
+	sheet.set_initial(
+		ComplianceService.can_show_targeted_ads(),
+		ComplianceService.can_collect_personal_data(),
+		ComplianceService.can_process_iap())
+	sheet.closed.connect(func() -> void: _consent_sheet = null)
+	_overlay_layer.add_child(sheet)
+	sheet.setup()
 
 
 ## Surfaces the one-per-session Remove-Ads offer (S5-006): at most once per session, and
